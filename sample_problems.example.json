@@ -1,0 +1,20 @@
+[
+  {
+    "id": "demo01",
+    "niveau": "2eme",
+    "chapitre": "1",
+    "question": "Ecrire un programme qui demande à l'utilisateur la longueur et la largeur d'un rectangle, puis calcule et affiche son périmètre et sa surface."
+  },
+  {
+    "id": "demo02",
+    "niveau": "2eme",
+    "chapitre": "1",
+    "question": "Ecrire un algorithme et sa traduction en Python qui saisit une température en degrés Celsius et affiche sa conversion en degrés Fahrenheit. Sachant que F = C * 9 / 5 + 32."
+  },
+  {
+    "id": "demo03",
+    "niveau": "2eme",
+    "chapitre": "1",
+    "question": "Ecrire un programme qui saisit une chaîne de caractères puis affiche sa longueur et son premier caractère en majuscule."
+  }
+]

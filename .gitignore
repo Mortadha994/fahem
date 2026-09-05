@@ -1,0 +1,41 @@
+# --- Secrets -------------------------------------------------------------
+# Never commit. .env.example is the committed template.
+.env
+.env.*
+!.env.example
+*.key
+
+# --- Copyrighted curriculum source --------------------------------------
+# Source PDFs belong to their authors (Tuto Academy) and are not ours to
+# redistribute. Users supply their own — see the README.
+data/*.pdf
+*.pdf
+
+# chunks.json is extracted text from those PDFs, so it inherits the same
+# restriction. Regenerate it with extract_chapter.py.
+chunks.json
+
+# --- Generated / regeneratable ------------------------------------------
+# Vector store: rebuild with rag_store.py from your own chunks.json.
+chroma_db/
+
+# --- Python --------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+
+# --- Node / UI -----------------------------------------------------------
+node_modules/
+ui/dist/
+*.local
+
+# --- Editor / scratch ----------------------------------------------------
+Untitled-*.algo
+.vscode/
+.idea/
+.DS_Store
+
+# Test problems are transcribed verbatim from the curriculum PDF, so they
+# inherit the same restriction as chunks.json. Copy
+# sample_problems.example.json and fill it with your own exercises.
+sample_problems.json
