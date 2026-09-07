@@ -1,0 +1,28 @@
+# Build context hygiene. The backend image copies only *.py and
+# requirements.txt, but an unfiltered context still ships .venv, node_modules
+# and the vector store to the daemon on every build.
+
+.venv/
+__pycache__/
+*.py[cod]
+
+ui/node_modules/
+ui/dist/
+
+# Runtime state - bind-mounted by compose, never baked into the image.
+chroma_db/
+chunks.json
+sample_problems.json
+data/
+
+# Secrets. Injected via compose env_file at run time, not build time.
+.env
+.env.*
+!.env.example
+
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+Untitled-*.algo

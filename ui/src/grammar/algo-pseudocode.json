@@ -1,0 +1,211 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "algo-pseudocode-fahem",
+  "displayName": "Algo Pseudocode (Fahem)",
+  "scopeName": "source.algo-pseudocode-fahem",
+  "_comment": [
+    "Original grammar written for Fahem, covering only chapter-1 syntax that",
+    "is actually pinned or corpus-verified (see the coverage report in",
+    "context.py's PINS / chunks.json). Not derived from, or structurally",
+    "modeled on, any third-party grammar - written from scratch against",
+    "Fahem's own material.",
+    "",
+    "Deliberately excluded: control-structure keywords (si/alors/sinon,",
+    "pour/tant que/repeter/selon, retourner, algorithme/fonction/procedure,",
+    "ouvrir/fermer/fin_fichier, enregistrement, ouex). These are not real",
+    "chapter-1 syntax per the coverage report, and generate.py's own",
+    "CONTROL_STRUCTURES checker treats them as violations when invented.",
+    "Leaving them unmatched here means they render as plain text - coloring",
+    "them as legitimate syntax would visually contradict what the checker",
+    "enforces. See CROSS_CHECK_NOTES.md alongside this file.",
+    "",
+    "Boundary convention: a token is bounded by lookaround rather than \\b,",
+    "because JS \\w is ASCII-only and these identifiers carry accented",
+    "letters (Écrire, sous_chaîne, racine_carrée). BOUND excludes",
+    "[A-Za-z\\u00C0-\\u00FF_] on both sides so a match can't start or end",
+    "mid-identifier (e.g. 'lire' inside 'Lire_ligne').",
+    "",
+    "Function-name categories additionally require a following '(' via a",
+    "zero-width lookahead, so a token only lights up when actually called -",
+    "reduces accidental matches and mirrors how every one of these appears",
+    "in the corpus (always as Nom(...), never as a bare word)."
+  ],
+  "patterns": [
+    { "include": "#io-functions" },
+    { "include": "#math-functions" },
+    { "include": "#string-functions" },
+    { "include": "#alea" },
+    { "include": "#assignment" },
+    { "include": "#comparison" },
+    { "include": "#arithmetic" },
+    { "include": "#logical" },
+    { "include": "#constants" }
+  ],
+  "repository": {
+    "assignment": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.algo",
+          "match": "←"
+        }
+      ]
+    },
+    "comparison": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.algo",
+          "match": "[<>=≤≥≠∈]"
+        }
+      ]
+    },
+    "arithmetic": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.algo",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.arithmetic.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:div|mod)(?![A-Za-z\\u00C0-\\u00FF_])"
+        }
+      ]
+    },
+    "logical": {
+      "patterns": [
+        {
+          "name": "keyword.operator.logical.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:et|ou|non)(?![A-Za-z\\u00C0-\\u00FF_])"
+        }
+      ]
+    },
+    "io-functions": {
+      "comment": "Compound names (écrire_nl, lire_ligne) must be tried before the plain écrire/lire so the plainer pattern doesn't win at the same start position and leave '_nl'/'_ligne' unmatched. écrire_nl/lire_ligne are not in the chapter-1 corpus - included per project owner: confirmed real bac-curriculum syntax, chapter not yet ingested.",
+      "patterns": [
+        {
+          "name": "support.function.io.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])[EÉeé]crire_nl(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.io.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])[Ll]ire_ligne(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.io.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])[EÉeé]crire(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.io.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])[Ll]ire(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        }
+      ]
+    },
+    "math-functions": {
+      "patterns": [
+        {
+          "name": "support.function.math.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:abs)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.math.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:arrondi)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "comment": "Matches the corpus spelling RacineCarré (one word, no separator) and the underscored racine_carrée form.",
+          "name": "support.function.math.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:racine)[_ ]?(?i:carr[ée]e?)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        }
+      ]
+    },
+    "string-functions": {
+      "patterns": [
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:chr)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:ord)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:convch)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:valeur)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:majus)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:effacer)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:long)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:pos)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "comment": "Matches Sous_chaine (corpus spelling, no circumflex) and sous_chaîne (reference spelling).",
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:sous)[_ ]?(?i:cha[iî]ne)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.string.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:estnum)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        }
+      ]
+    },
+    "alea": {
+      "patterns": [
+        {
+          "comment": "Covers both Aléa() and Aléa(Binf,Bsup) - both forms are always followed by '(' in the corpus.",
+          "name": "support.function.random.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:al[ée]a)(?![A-Za-z\\u00C0-\\u00FF_])(?=\\s*\\()"
+        }
+      ]
+    },
+    "types": {
+      "comment": "NOT included in the active `patterns` list above - disabled after real testing showed why. Type words (entier, réel...) never legitimately appear in the Algorithme column of the solution table this grammar is applied to; they live in the separate Objet|Nature/type declaration table, which this grammar never touches. Verified in the browser: a generated answer's own message string - 'Ecrire (\"Entrez le premier entier\")' - contains the ordinary French word 'entier' as prose, and with this category active it lit up as if it were a type declaration. Bare-word matching with no code-context guard can't tell 'entier' the type from 'entier' the adjective, so this category does more harm than good here. Left in the repository, unused, in case a future task also wraps the declaration table, where these patterns would be correct.",
+      "patterns": [
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:entier)(?![A-Za-z\\u00C0-\\u00FF_])"
+        },
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:r[ée]el)(?![A-Za-z\\u00C0-\\u00FF_])"
+        },
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:bool[ée]en)(?![A-Za-z\\u00C0-\\u00FF_])"
+        },
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:cha[iî]ne)(?![A-Za-z\\u00C0-\\u00FF_])"
+        },
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:caract[èe]re)(?![A-Za-z\\u00C0-\\u00FF_])"
+        },
+        {
+          "name": "storage.type.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:tableau)(?![A-Za-z\\u00C0-\\u00FF_])"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.algo",
+          "match": "(?<![A-Za-z\\u00C0-\\u00FF_])(?i:vrai|faux)(?![A-Za-z\\u00C0-\\u00FF_])"
+        }
+      ]
+    }
+  }
+}

@@ -80,6 +80,18 @@ CONTROL_STRUCTURES = {
     "return": re.compile(rf"{_CELL}return\b"),
     # The backslash is optional: markdown answers escape the quotes as \"...\".
     "__main__ guard": re.compile(r"__name__\s*==\s*\\?['\"]__main__"),
+    # f-strings and comprehensions are, in spirit, the same over-reach as def/
+    # return: Python beyond a linear chapter-1 script (rule 3's own language -
+    # "script Python linéaire simple"). Checked the same context-exempted way
+    # as every entry above, but in practice unconditional: verified against
+    # the full corpus, real f-string/comprehension syntax appears nowhere in
+    # it, so the exemption never fires today. Not preceded by a quote or a
+    # word character, so a literal single-character string like `"f"` in an
+    # exercise ("ch [2] = \"f\"") isn't mistaken for an f-string prefix.
+    "f-string": re.compile(r"(?<!['\"\w])(?:r?f|fr)['\"]", re.IGNORECASE),
+    "list/dict comprehension": re.compile(
+        r"[\[{][^\[\]{}\n]{0,60}\bfor\b[^\[\]{}\n]{0,60}\bin\b[^\[\]{}\n]{0,60}[\]}]"
+    ),
 }
 
 
@@ -158,19 +170,55 @@ NEGATION_RE = re.compile(
 )
 
 
+_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+
+
 def _is_negated_mention(body: str, match: re.Match) -> bool:
-    """True when the match sits in a clause that denies using the construct."""
-    start = body.rfind("\n", 0, match.start()) + 1
-    end = body.find("\n", match.end())
-    line = body[start : end if end != -1 else len(body)]
-    return bool(NEGATION_RE.search(line))
+    """True when the match sits in a clause that denies using the construct.
+
+    Scoped to the enclosing paragraph (bounded by a blank line), not the
+    physical line. Confirmed live: a model answer wrapped its remark across
+    a literal newline mid-sentence - "...ne comporte pas de structure\n
+    conditionnelle ( Si…Alors… )." - which put the negation phrase and the
+    mention on different lines despite being one sentence. A same-line check
+    missed it and reported a false violation; a same-paragraph check does
+    not, while a real (non-negated) mention in a later paragraph still
+    counts, since a blank line - not just any newline - ends the scope.
+    """
+    breaks_before = list(_PARAGRAPH_BREAK.finditer(body, 0, match.start()))
+    start = breaks_before[-1].end() if breaks_before else 0
+    break_after = _PARAGRAPH_BREAK.search(body, match.end())
+    end = break_after.start() if break_after else len(body)
+    return bool(NEGATION_RE.search(body[start:end]))
 
 
 # Python builtins checked against the context. Matched with word boundaries:
 # a plain substring test for "int(" is satisfied by "print(", which silently
 # disabled the check.
+#
+# min/max added after a real leak: `alea ← Aléa(min(a,b), max(a,b))` in an
+# Algorithme-column solution. Neither name appears anywhere in the corpus
+# (verified directly), in either column, so this mechanism - already correct
+# for randint et al. - now catches them the same way, with no new logic.
 RULE1_NAMES = ("range", "len", "input", "print", "int", "float", "round",
-               "sqrt", "abs", "randint", "str")
+               "sqrt", "abs", "randint", "str", "min", "max")
+
+
+# Algorithme-side vocabulary from a chapter not yet ingested here. écrire_nl
+# and lire_ligne are confirmed real curriculum syntax (file I/O), not
+# invented and not a Python leak - so this isn't RULE1_NAMES's "Python
+# builtin absent from context" case, it's the same context-membership idea
+# CONTROL_STRUCTURES already uses: chapter 1's context never supplies them,
+# so using them here is flagged, and the check stops flagging them on its
+# own the day a file-I/O chapter's context actually does.
+#
+# Compiled patterns rather than plain names (unlike RULE1_NAMES/_uses):
+# écrire_nl needs the same e/é spelling flexibility the corpus itself uses
+# for écrire (pinned content spells it unaccented, "Ecrire").
+FUTURE_CHAPTER_FUNCTIONS = {
+    "écrire_nl": re.compile(r"(?<![A-Za-zÀ-ÿ_])[eé]crire_nl\s*\(", re.IGNORECASE),
+    "lire_ligne": re.compile(r"(?<![A-Za-zÀ-ÿ_])lire_ligne\s*\(", re.IGNORECASE),
+}
 
 
 # Algorithme-column conventions.
@@ -200,6 +248,34 @@ ALGO_CONVENTIONS = {
     "Lire avec une affectation": re.compile(
         r"\bLire\b[^|\n<`]{0,40}?(?:←|<-)",
         re.IGNORECASE,
+    ),
+    # Python-only operators leaking into the Algorithme column. `%`/`//` are
+    # not themselves absent from context - the pinned operators table teaches
+    # them explicitly, as `div`/`mod`'s Python-side spelling ("Division
+    # entière | // | div | 21 // 4 donne 5") - so a context-membership check
+    # (RULE1_NAMES's approach) would be wrong here: it would see them in
+    # context and wave them through. The actual defect is column position,
+    # not invention, so this follows the same shape as the Lire checks above:
+    # anchored on ← (Algorithme-only; the Python column always uses =), no
+    # unescaped `|` between the arrow and the operator, so a Python-column
+    # cell on the same row can't satisfy it.
+    #
+    # Known gap, same as the Lire checks: a statement using one of these
+    # without any assignment in the same cell (e.g. `Ecrire (a % b)` with no
+    # ← anywhere in that cell) slips through. Not seen in practice yet - the
+    # confirmed leak was `reste ← alea % 2` - but noted for the same reason
+    # the file's other mechanical checks document their known blind spots.
+    "% (modulo) Python dans la colonne Algorithme": re.compile(
+        r"←[^|\n<`]{0,80}?%"
+    ),
+    "// (division entière) Python dans la colonne Algorithme": re.compile(
+        r"←[^|\n<`]{0,80}?//"
+    ),
+    # Excludes `***` (a decorative separator the corpus itself uses in
+    # exercise output, e.g. `Ecrire ("***", S, "***", ...)`) via lookaround
+    # on both sides, not just a `{2}` count, so `****` doesn't slip through.
+    "** (puissance) Python dans la colonne Algorithme": re.compile(
+        r"←[^|\n<`]{0,80}?(?<!\*)\*\*(?!\*)"
     ),
 }
 
@@ -266,6 +342,13 @@ def check_constraints(answer: str, context: str) -> tuple[list[str], list[str]]:
     for name in RULE1_NAMES:
         if _uses(name, body) and not _uses(name, context):
             violations.append(f"rule 1: uses {name}() which is absent from the context")
+
+    # Rule 2: Algorithme-side vocabulary from a chapter not yet ingested -
+    # see FUTURE_CHAPTER_FUNCTIONS. Context-membership, not invention: this
+    # stops firing on its own once a later chapter's context supplies them.
+    for label, pattern in FUTURE_CHAPTER_FUNCTIONS.items():
+        if pattern.search(body) and not pattern.search(context):
+            violations.append(f"rule 2: uses '{label}', absent from context")
 
     return violations, notes
 

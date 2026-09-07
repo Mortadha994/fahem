@@ -1,0 +1,51 @@
+# Project name, so the stack shows as "fahem" in Docker Desktop rather than
+# "learned", the directory name.
+name: fahem
+
+# Fahem - backend (FastAPI + RAG) and frontend (built UI behind nginx).
+#
+#   docker compose up --build
+#   UI  http://localhost:5173
+#   API http://localhost:8000/health
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    # GROQ_API_KEY lives here. .env is gitignored; .env.example is the
+    # committed template. generate.py's own loader uses setdefault, so what
+    # compose injects wins over the file baked next to the source.
+    env_file:
+      - .env
+    volumes:
+      # Vector store: written by the container, rebuildable on the host with
+      # rag_store.py. Bind-mounted so an index built either side is shared.
+      - ./chroma_db:/app/chroma_db
+      # Extracted chapter text and test problems - both gitignored, both read
+      # from the working directory by rag_store.py / context.py.
+      - ./chunks.json:/app/chunks.json
+      - ./sample_problems.json:/app/sample_problems.json
+      # Source PDFs are copyrighted and only ever read.
+      - ./data:/app/data:ro
+      # Embedding model cache, so a recreate does not re-download it.
+      - hf-cache:/cache/huggingface
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./ui
+      args:
+        # Baked into the bundle at build time - see ui/Dockerfile.
+        VITE_API_URL: http://127.0.0.1:8000
+    ports:
+      # 5173 on the host is deliberate, not cosmetic: the CORS allowlist in
+      # api.py permits only localhost:5173/5174, so any other host port makes
+      # the browser block every POST to /solve/stream.
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

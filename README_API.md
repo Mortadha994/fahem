@@ -37,6 +37,31 @@ unreachable.
 checker has both missed real violations and raised false ones, so an empty
 list is not a correctness guarantee.
 
+## `POST /solve/stream`
+
+Same request body as `/solve`. Returns `text/event-stream`. This is what the
+UI uses; `/solve` is unchanged and still serves the non-streaming path.
+
+| event | when | payload |
+| --- | --- | --- |
+| `meta` | once, before generation | `pinned` and `retrieved`, each **with its full `content`** — so the grounding strip can render while the answer is still arriving |
+| `delta` | many | `{"t": "…"}`, one answer fragment |
+| `done` | once, after the checker runs | `{warnings, notes, chars, elapsed_ms}` |
+| `error` | on failure mid-stream | `{message: "busy"\|"backend", status}` — generic by design; detail stays server-side |
+
+Context assembly happens *before* the response starts, so an unresolvable
+niveau/chapitre is still a clean 422 rather than an error frame inside a 200.
+
+**Reasoning tokens are filtered out.** gpt-oss streams its chain of thought
+first as `delta.reasoning` (`channel: "analysis"`) — measured at 407 reasoning
+frames over the first 1.23s before any content. `llm_stream.stream_groq`
+yields `delta.content` only. Do not "fix" this by forwarding every delta: it
+would show students the model's private monologue.
+
+Because of that reasoning phase there is ~1.2s of silence before the first
+visible token, which is why the UI shows a typing indicator rather than an
+empty bubble.
+
 ## Pre-launch items (before anyone else can reach this endpoint)
 
 These are required regardless of whether auth is added — "don't leak
@@ -49,6 +74,22 @@ internals in error text" is a separate threshold from "add a login".
       "niveau/chapitre not available" and log the detail server-side.
 - [ ] Review the other error paths for the same leak class (502 currently
       passes the upstream reason through).
+- [ ] **Decide who may receive curriculum text.** `POST /solve/stream`'s
+      `meta` event carries the *full text* of every pinned table and every
+      retrieved excerpt — roughly 6.6 KB of the chapter per request. This is
+      deliberate: it is what the UI's grounding strip renders, and showing a
+      student the exact syntax table an answer was built on is the product's
+      whole trust argument. But it means the endpoint serves copyrighted
+      chapter material to any caller who can reach it, which is a different
+      exposure than the label-and-score payload `/solve` returns. Note the
+      repo deliberately excludes the source PDF and `chunks.json` for exactly
+      this reason, so a deployed endpoint would be redistributing what the
+      repo declines to. Before opening this up, decide whether excerpts are
+      gated behind whatever identifies a legitimate student, or trimmed to
+      the pinned tables only.
+- [ ] **Restrict CORS to the real origin.** `allow_origins` currently lists
+      localhost dev ports (5173 and 5174) only, which is correct for now and
+      wrong the moment this is hosted anywhere.
 
 ## Notes
 

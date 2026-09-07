@@ -17,13 +17,17 @@ path works.
 from __future__ import annotations
 
 import re
+import json
 import time
 import urllib.error
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from llm_stream import stream_groq
 
 from context import build_context
 from generate import GROQ_MODEL, check_constraints, generate, pick_backend
@@ -193,4 +197,111 @@ def solve(request: SolveRequest) -> SolveResponse:
         ],
         warnings=violations,
         elapsed_ms=int((time.monotonic() - started) * 1000),
+    )
+
+
+def _sse(event: str, payload: dict) -> str:
+    """One Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@app.post("/solve/stream")
+def solve_stream(request: SolveRequest):
+    """Streaming counterpart of /solve.
+
+    Event order:
+      meta   - the grounding: pinned tables and retrieved excerpts, WITH their
+               text, sent before generation so the citation strip can render
+               while the answer is still arriving.
+      delta  - one answer fragment. Reasoning tokens are filtered upstream in
+               llm_stream, so nothing here is the model's private monologue.
+      done   - constraint-checker findings and timings, once the full text
+               exists. The checker is advisory: `warnings` being empty means
+               no known pattern matched, not that the answer is correct.
+      error  - something failed mid-stream; the frame carries a generic
+               message, details stay server-side.
+
+    /solve is unchanged and still serves the non-streaming path.
+    """
+    started = time.monotonic()
+
+    # Context assembly happens before the response starts, so a bad scope is
+    # still a clean 422 rather than an error frame inside a 200 stream.
+    try:
+        context = build_context(
+            request.problem,
+            niveau=request.niveau,
+            chapitre=request.chapitre,
+            k=request.k,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"could not assemble context for niveau={request.niveau} "
+            f"chapitre={request.chapitre}: {exc}",
+        ) from exc
+
+    if not context.pinned:
+        raise HTTPException(status_code=422, detail="no pinned syntax core for this scope")
+
+    rendered = context.render()
+    messages = build_messages(
+        context=rendered,
+        query=request.problem,
+        niveau=niveau_label(request.niveau),
+        chapitre=request.chapitre,
+    )
+
+    def events():
+        yield _sse(
+            "meta",
+            {
+                "model": GROQ_MODEL,
+                "niveau": request.niveau,
+                "chapitre": request.chapitre,
+                "pinned": [
+                    {"id": p.chunk_id, "label": p.label, "section": p.section,
+                     "content": p.content}
+                    for p in context.pinned
+                ],
+                "retrieved": [
+                    {"id": h.chunk_id, "section": h.section, "type": h.type,
+                     "score": round(h.score, 4), "content": h.content}
+                    for h in context.retrieved
+                ],
+            },
+        )
+
+        parts: list[str] = []
+        try:
+            for fragment in stream_groq(messages):
+                parts.append(fragment)
+                yield _sse("delta", {"t": fragment})
+        except urllib.error.HTTPError as exc:
+            yield _sse(
+                "error",
+                {"message": "busy" if exc.code == 429 else "backend",
+                 "status": exc.code},
+            )
+            return
+        except (urllib.error.URLError, KeyError):
+            yield _sse("error", {"message": "backend", "status": 502})
+            return
+
+        answer = "".join(parts)
+        violations, notes = check_constraints(answer, rendered)
+        yield _sse(
+            "done",
+            {
+                "warnings": violations,
+                "notes": notes,
+                "chars": len(answer),
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+            },
+        )
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

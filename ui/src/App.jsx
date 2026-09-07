@@ -1,107 +1,234 @@
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Sidebar from "./components/Sidebar.jsx";
+import Message from "./components/Message.jsx";
+import Composer from "./components/Composer.jsx";
+import { streamSolve, GENERIC_ERROR } from "./api.js";
+import { loadSessions, saveSessions, newSession, titleFrom } from "./sessions.js";
+import { hasRealAlgorithmeSolution } from "./lib/hasRealSolution.js";
 import "./App.css";
 
 // The corpus holds exactly one niveau/chapitre, so this is a fixed label
-// rather than a selector. Add a dropdown when a second chapter is ingested.
+// rather than a selector. Add a picker when a second chapter is ingested.
 const NIVEAU = "2eme";
 const CHAPITRE = "1";
 const SCOPE_LABEL =
   "2ème — Chapitre 1 : Les structures de données et les structures simples";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
-
-// The student never sees an API error body. The endpoint still returns verbose
-// detail (see the pre-launch items in README_API.md), and none of it belongs
-// in front of a student either way.
-const GENERIC_ERROR =
-  "Une erreur est survenue. Merci de réessayer dans un instant.";
-const BUSY_ERROR =
-  "Le service est très sollicité en ce moment. Merci de réessayer dans une minute.";
-
 export default function App() {
-  const [problem, setProblem] = useState("");
-  const [solution, setSolution] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [sessions, setSessions] = useState(() => loadSessions());
+  const [activeId, setActiveId] = useState(() => loadSessions()[0]?.id ?? null);
+  const [draft, setDraft] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (!problem.trim() || loading) return;
+  const abortRef = useRef(null);
+  const listRef = useRef(null);
+  const pinnedToBottom = useRef(true);
 
-    setLoading(true);
-    setError("");
-    setSolution("");
+  useEffect(() => saveSessions(sessions), [sessions]);
 
-    try {
-      const response = await fetch(`${API_URL}/solve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          problem: problem.trim(),
-          niveau: NIVEAU,
-          chapitre: CHAPITRE,
-        }),
-      });
+  const active = useMemo(
+    () => sessions.find((s) => s.id === activeId) ?? null,
+    [sessions, activeId]
+  );
+  const messages = active?.messages ?? [];
 
-      if (!response.ok) {
-        setError(response.status === 429 ? BUSY_ERROR : GENERIC_ERROR);
-        return;
-      }
+  // Only autoscroll when the student is already at the bottom, so scrolling up
+  // to re-read the declaration table mid-stream is not fought by the app.
+  const onScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedToBottom.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
-      const data = await response.json();
-      setSolution(data.solution);
-    } catch {
-      // Network failure, API down, CORS - all the same to the student.
-      setError(GENERIC_ERROR);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (pinnedToBottom.current && listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }
+  });
+
+  /** Patch the last assistant message of a session. */
+  const patchLast = useCallback((sessionId, patch) => {
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== sessionId) return s;
+        const msgs = s.messages.slice();
+        const i = msgs.length - 1;
+        if (i < 0 || msgs[i].role !== "assistant") return s;
+        msgs[i] = typeof patch === "function" ? patch(msgs[i]) : { ...msgs[i], ...patch };
+        return { ...s, messages: msgs, updatedAt: Date.now() };
+      })
+    );
+  }, []);
+
+  const handleNew = useCallback(() => {
+    const s = newSession({ niveau: NIVEAU, chapitre: CHAPITRE });
+    setSessions((prev) => [s, ...prev]);
+    setActiveId(s.id);
+    setSidebarOpen(false);
+    return s;
+  }, []);
+
+  const handleDelete = useCallback(
+    (id) => {
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        if (id === activeId) setActiveId(next[0]?.id ?? null);
+        return next;
+      });
+    },
+    [activeId]
+  );
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+    // Keep whatever arrived; mark it as interrupted rather than verified.
+    if (activeId) patchLast(activeId, { status: "stopped" });
+  }, [activeId, patchLast]);
+
+  const handleSend = useCallback(() => {
+    const problem = draft.trim();
+    if (!problem || streaming) return;
+
+    let session = active;
+    if (!session) session = handleNew();
+    const sessionId = session.id;
+
+    setDraft("");
+    setStreaming(true);
+    pinnedToBottom.current = true;
+
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              title: s.messages.length === 0 ? titleFrom(problem) : s.title,
+              updatedAt: Date.now(),
+              messages: [
+                ...s.messages,
+                { id: `u_${Date.now()}`, role: "user", content: problem },
+                {
+                  id: `a_${Date.now()}`,
+                  role: "assistant",
+                  content: "",
+                  pinned: [],
+                  retrieved: [],
+                  warnings: [],
+                  status: "streaming",
+                },
+              ],
+            }
+          : s
+      )
+    );
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    streamSolve(
+      { problem, niveau: NIVEAU, chapitre: CHAPITRE },
+      {
+        signal: controller.signal,
+        onMeta: (meta) =>
+          patchLast(sessionId, {
+            pinned: meta.pinned ?? [],
+            retrieved: meta.retrieved ?? [],
+          }),
+        onDelta: (t) =>
+          patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
+        onDone: (done) =>
+          patchLast(sessionId, (m) => ({
+            ...m,
+            // "none" when there's no real Algorithme solution to have
+            // checked - e.g. the model asked for the problem statement
+            // instead of answering (see prompts.py). Zero violations on
+            // that isn't "verified", it's "nothing to verify" - see
+            // hasRealAlgorithmeSolution's comment. Checked ahead of
+            // warned/clean so an empty warnings list doesn't read as a
+            // pass on content the checker never meaningfully looked at.
+            status: !hasRealAlgorithmeSolution(m.content)
+              ? "none"
+              : done.warnings?.length
+                ? "warned"
+                : "clean",
+            warnings: done.warnings ?? [],
+          })),
+        onError: (message) => patchLast(sessionId, { error: message, status: "error" }),
+      }
+    )
+      .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))
+      .finally(() => {
+        abortRef.current = null;
+        setStreaming(false);
+        // A stream that ended without a done frame still needs to leave the
+        // pending badge behind - same real-content gate as onDone, since an
+        // aborted stream's partial content has no real solution either.
+        patchLast(sessionId, (m) =>
+          m.status === "streaming"
+            ? { ...m, status: hasRealAlgorithmeSolution(m.content) ? "clean" : "none" }
+            : m
+        );
+      });
+  }, [draft, streaming, active, handleNew, patchLast]);
 
   return (
-    <main className="app">
-      <header className="header">
-        <h1>Assistant d'algorithmique</h1>
-        <p className="scope">{SCOPE_LABEL}</p>
-      </header>
+    <div className="app">
+      <Sidebar
+        sessions={sessions}
+        activeId={activeId}
+        onSelect={(id) => {
+          setActiveId(id);
+          setSidebarOpen(false);
+        }}
+        onNew={handleNew}
+        onDelete={handleDelete}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        scopeLabel={SCOPE_LABEL}
+      />
 
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="problem">Colle ton énoncé ici :</label>
-        <textarea
-          id="problem"
-          value={problem}
-          onChange={(e) => setProblem(e.target.value)}
-          placeholder="Exemple : Ecrire un programme qui demande un nombre à l'utilisateur, puis qui calcule et affiche le carré de ce nombre."
-          rows={7}
-          disabled={loading}
+      <main className="main">
+        <header className="topbar">
+          <button
+            type="button"
+            className="btn-burger"
+            onClick={() => setSidebarOpen((v) => !v)}
+            aria-label="Afficher les discussions"
+          >
+            ☰
+          </button>
+          <span className="scope">{SCOPE_LABEL}</span>
+        </header>
+
+        <div className="messages" ref={listRef} onScroll={onScroll}>
+          {messages.length === 0 ? (
+            <div className="empty">
+              <h1>Pose ta question sur le chapitre</h1>
+              <p>
+                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe
+                de ton chapitre — et te montre exactement sur quelles parties
+                du cours il s'appuie.
+              </p>
+            </div>
+          ) : (
+            messages.map((m) => (
+              <Message key={m.id} message={m} streaming={streaming} />
+            ))
+          )}
+        </div>
+
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSend={handleSend}
+          onStop={handleStop}
+          streaming={streaming}
         />
-        <button type="submit" disabled={loading || !problem.trim()}>
-          {loading ? "Résolution en cours…" : "Résoudre"}
-        </button>
-      </form>
-
-      {loading && (
-        <p className="status" role="status">
-          L'assistant rédige la solution et vérifie sa trace. Cela prend
-          quelques secondes.
-        </p>
-      )}
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {solution && (
-        <section className="solution" aria-label="Solution">
-          {/* Rendered as returned - remark-gfm is what makes the
-              Algorithme | Python tables display as tables. */}
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{solution}</ReactMarkdown>
-        </section>
-      )}
-    </main>
+      </main>
+    </div>
   );
 }
