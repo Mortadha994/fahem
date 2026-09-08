@@ -4,7 +4,8 @@ plus regression cases to confirm nothing that used to pass now fails.
 Run inside the backend container (needs torch via context.py -> rag_store.py):
     docker compose exec -T backend python test_checker_cases.py
 """
-from generate import check_constraints
+
+from checker import check_constraints
 
 # A realistic-enough context stub: the real pinned operators table (for the
 # %/// exemption checks) plus enough of the common builtins that RULE1_NAMES

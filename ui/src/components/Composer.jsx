@@ -32,7 +32,12 @@ export default function Composer({ value, onChange, onSend, onStop, streaming })
           aria-label="Énoncé de l'exercice"
         />
         {streaming ? (
-          <button type="button" className="btn-stop" onClick={onStop} aria-label="Arrêter">
+          <button
+            type="button"
+            className="btn-stop"
+            onClick={onStop}
+            aria-label="Arrêter"
+          >
             <span className="stop-square" aria-hidden="true" /> Arrêter
           </button>
         ) : (

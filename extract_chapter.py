@@ -111,9 +111,7 @@ def table_is_real(text: str, n_rows: int, n_cols: int) -> bool:
 def is_boundary(line: str) -> bool:
     """True when a line starts a new sub-topic within its section."""
     return bool(
-        SUBPOINT_LETTER_RE.match(line)
-        or SUBPOINT_NUMBER_RE.match(line)
-        or MARKER_RE.match(line)
+        SUBPOINT_LETTER_RE.match(line) or SUBPOINT_NUMBER_RE.match(line) or MARKER_RE.match(line)
     )
 
 
@@ -277,7 +275,9 @@ def extract(pdf_path: Path, niveau: str, chapitre: str) -> list[dict[str, Any]]:
                 if m_ex and in_serie:
                     flush(section)
                     section = f"Exercice {int(m_ex.group(1))}"
-                    trailing = m_ex.group(2).strip() if m_ex.lastindex and m_ex.lastindex > 1 else ""
+                    trailing = (
+                        m_ex.group(2).strip() if m_ex.lastindex and m_ex.lastindex > 1 else ""
+                    )
                     buffer.append(f"Exercice N°{int(m_ex.group(1))} :")
                     if trailing:
                         buffer.append(trailing)

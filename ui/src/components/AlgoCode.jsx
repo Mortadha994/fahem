@@ -9,7 +9,13 @@ import { onAlgoHighlighterReady, tokenizeAlgoLine } from "../lib/algoHighlighter
  * data-algo-* props and falls through to a plain <th>/<td>.
  */
 
-export function AlgoHeaderCell({ node, children, "data-algo-header": isAlgoHeader, "data-algo-full-text": fullText, ...rest }) {
+export function AlgoHeaderCell({
+  node: _node,
+  children,
+  "data-algo-header": isAlgoHeader,
+  "data-algo-full-text": fullText,
+  ...rest
+}) {
   if (!isAlgoHeader) return <th {...rest}>{children}</th>;
   return (
     <th {...rest} className="algo-col-header">
@@ -21,7 +27,13 @@ export function AlgoHeaderCell({ node, children, "data-algo-header": isAlgoHeade
   );
 }
 
-export function AlgoBodyCell({ node, children, "data-algo-col": isAlgoCol, "data-algo-text": text, ...rest }) {
+export function AlgoBodyCell({
+  node: _node,
+  children,
+  "data-algo-col": isAlgoCol,
+  "data-algo-text": text,
+  ...rest
+}) {
   if (!isAlgoCol) return <td {...rest}>{children}</td>;
   return (
     <td {...rest} className="algo-col-cell">
@@ -50,7 +62,11 @@ function AlgoLine({ text }) {
             {i > 0 && <br />}
             {tokens
               ? tokens.map((t, j) => (
-                  <span key={j} style={{ "--algo-light": t.light, "--algo-dark": t.dark }} className="algo-tok">
+                  <span
+                    key={j}
+                    style={{ "--algo-light": t.light, "--algo-dark": t.dark }}
+                    className="algo-tok"
+                  >
                     {t.text}
                   </span>
                 ))
@@ -92,7 +108,14 @@ function CopyButton({ getText }) {
 
 function CopyIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <rect x="9" y="9" width="12" height="12" rx="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
@@ -101,7 +124,14 @@ function CopyIcon() {
 
 function CheckIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <path d="M20 6 9 17l-5-5" />
     </svg>
   );

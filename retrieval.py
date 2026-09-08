@@ -98,9 +98,11 @@ def retrieve(
         where["$and"].append({"type": {"$in": wanted_types}})
 
     collection = get_collection(db_dir)
-    embedding = get_model().encode(
-        [query.strip()], normalize_embeddings=True, show_progress_bar=False
-    ).tolist()
+    embedding = (
+        get_model()
+        .encode([query.strip()], normalize_embeddings=True, show_progress_bar=False)
+        .tolist()
+    )
 
     result = collection.query(
         query_embeddings=embedding,
@@ -161,9 +163,11 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_DIR)
     args = parser.parse_args()
 
-    types = None if args.types.strip().lower() == "all" else [
-        t.strip() for t in args.types.split(",") if t.strip()
-    ]
+    types = (
+        None
+        if args.types.strip().lower() == "all"
+        else [t.strip() for t in args.types.split(",") if t.strip()]
+    )
 
     hits = retrieve(
         args.query,
@@ -174,8 +178,10 @@ def main() -> None:
         types=types,
     )
     print(f"Query: {args.query}")
-    print(f"Scope: niveau={args.niveau} chapitre={args.chapitre} k={args.k} "
-          f"types={','.join(types) if types else 'all'}")
+    print(
+        f"Scope: niveau={args.niveau} chapitre={args.chapitre} k={args.k} "
+        f"types={','.join(types) if types else 'all'}"
+    )
     if not hits:
         print("  no chunks in scope - is this niveau/chapitre ingested?")
         return

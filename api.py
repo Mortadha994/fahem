@@ -16,8 +16,8 @@ path works.
 
 from __future__ import annotations
 
-import re
 import json
+import re
 import time
 import urllib.error
 from contextlib import asynccontextmanager
@@ -27,10 +27,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from llm_stream import stream_groq
-
+import gatekeeper
+from checker import check_constraints
+from config import CORS_ORIGINS
 from context import build_context
-from generate import GROQ_MODEL, check_constraints, generate, pick_backend
+from generate import GROQ_MODEL, generate, pick_backend
+from llm_stream import stream_groq
 from prompts import build_messages
 from rag_store import get_model
 
@@ -56,19 +58,13 @@ app = FastAPI(
 
 
 # The UI runs on the Vite dev server, a different origin, so the browser
-# preflights every POST. Localhost dev ports only - this list must be replaced
-# with the real origin before the endpoint is reachable by anyone else (see
-# the pre-launch items in README_API.md).
+# preflights every POST. Origins come from config.CORS_ORIGINS, which reads
+# the CORS_ORIGINS env var (comma-separated) and defaults to the same
+# localhost dev ports this list used to hardcode - so local dev is unchanged,
+# but a deployment can set the real origin without editing this file.
 app.add_middleware(
     CORSMiddleware,
-    # 5174 as well as 5173: another Vite project already holds 5173 on this
-    # machine, so the dev server falls back a port.
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
 )
@@ -139,6 +135,50 @@ def health() -> dict:
 def solve(request: SolveRequest) -> SolveResponse:
     started = time.monotonic()
 
+    # Gatekeeper: classify before the real pipeline ever sees the message.
+    # PROBLEM falls through to the unchanged code below; META/OFF_TOPIC never
+    # reach build_context/generate at all. See gatekeeper.py's module
+    # docstring for why this is a separate layer, not a pipeline change.
+    if gatekeeper.is_input_too_long(request.problem):
+        return SolveResponse(
+            solution=gatekeeper.DECLINE_MESSAGE,
+            niveau=request.niveau,
+            chapitre=request.chapitre,
+            model="gatekeeper",
+            pinned=[],
+            retrieved=[],
+            warnings=[],
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
+
+    route = gatekeeper.classify(request.problem)
+
+    if route == "OFF_TOPIC":
+        return SolveResponse(
+            solution=gatekeeper.DECLINE_MESSAGE,
+            niveau=request.niveau,
+            chapitre=request.chapitre,
+            model="gatekeeper",
+            pinned=[],
+            retrieved=[],
+            warnings=[],
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
+
+    if route == "META":
+        answer = gatekeeper.respond_meta(request.problem)
+        return SolveResponse(
+            solution=answer,
+            niveau=request.niveau,
+            chapitre=request.chapitre,
+            model=GROQ_MODEL,
+            pinned=[],
+            retrieved=[],
+            warnings=[],
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
+
+    # route == "PROBLEM": everything below is unchanged.
     try:
         context = build_context(
             request.problem,
@@ -190,9 +230,7 @@ def solve(request: SolveRequest) -> SolveResponse:
         model=GROQ_MODEL,
         pinned=[PinnedTable(id=p.chunk_id, label=p.label) for p in context.pinned],
         retrieved=[
-            RetrievedChunk(
-                id=h.chunk_id, section=h.section, type=h.type, score=round(h.score, 4)
-            )
+            RetrievedChunk(id=h.chunk_id, section=h.section, type=h.type, score=round(h.score, 4))
             for h in context.retrieved
         ],
         warnings=violations,
@@ -203,6 +241,36 @@ def solve(request: SolveRequest) -> SolveResponse:
 def _sse(event: str, payload: dict) -> str:
     """One Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _gatekeeper_stream(text: str, model_label: str, request: SolveRequest, started: float):
+    """The meta/done/delta shape for a gatekeeper-produced reply (DoS cap,
+    OFF_TOPIC, or META), reusing the exact SSE contract /solve/stream already
+    emits for a real answer - empty pinned/retrieved, one delta, a clean
+    done - so the frontend needs no changes to render either kind of reply,
+    and the existing hasRealAlgorithmeSolution check already hides the
+    constraint badge correctly (no Algorithme|Python table in this text).
+    """
+    yield _sse(
+        "meta",
+        {
+            "model": model_label,
+            "niveau": request.niveau,
+            "chapitre": request.chapitre,
+            "pinned": [],
+            "retrieved": [],
+        },
+    )
+    yield _sse("delta", {"t": text})
+    yield _sse(
+        "done",
+        {
+            "warnings": [],
+            "notes": [],
+            "chars": len(text),
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        },
+    )
 
 
 @app.post("/solve/stream")
@@ -225,8 +293,35 @@ def solve_stream(request: SolveRequest):
     """
     started = time.monotonic()
 
-    # Context assembly happens before the response starts, so a bad scope is
-    # still a clean 422 rather than an error frame inside a 200 stream.
+    # Gatekeeper: same three-way split as /solve, before build_context ever
+    # runs. See gatekeeper.py's module docstring and _gatekeeper_stream above.
+    if gatekeeper.is_input_too_long(request.problem):
+        return StreamingResponse(
+            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", request, started),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    route = gatekeeper.classify(request.problem)
+
+    if route == "OFF_TOPIC":
+        return StreamingResponse(
+            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", request, started),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    if route == "META":
+        answer = gatekeeper.respond_meta(request.problem)
+        return StreamingResponse(
+            _gatekeeper_stream(answer, GROQ_MODEL, request, started),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # route == "PROBLEM": everything below is unchanged. Context assembly
+    # happens before the response starts, so a bad scope is still a clean
+    # 422 rather than an error frame inside a 200 stream.
     try:
         context = build_context(
             request.problem,
@@ -260,13 +355,17 @@ def solve_stream(request: SolveRequest):
                 "niveau": request.niveau,
                 "chapitre": request.chapitre,
                 "pinned": [
-                    {"id": p.chunk_id, "label": p.label, "section": p.section,
-                     "content": p.content}
+                    {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
                     for p in context.pinned
                 ],
                 "retrieved": [
-                    {"id": h.chunk_id, "section": h.section, "type": h.type,
-                     "score": round(h.score, 4), "content": h.content}
+                    {
+                        "id": h.chunk_id,
+                        "section": h.section,
+                        "type": h.type,
+                        "score": round(h.score, 4),
+                        "content": h.content,
+                    }
                     for h in context.retrieved
                 ],
             },
@@ -280,8 +379,7 @@ def solve_stream(request: SolveRequest):
         except urllib.error.HTTPError as exc:
             yield _sse(
                 "error",
-                {"message": "busy" if exc.code == 429 else "backend",
-                 "status": exc.code},
+                {"message": "busy" if exc.code == 429 else "backend", "status": exc.code},
             )
             return
         except (urllib.error.URLError, KeyError):

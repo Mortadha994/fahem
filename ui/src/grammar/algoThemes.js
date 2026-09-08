@@ -1,4 +1,4 @@
-// Shiki themes for the Fahem pseudocode grammar (algo-pseudocode.json).
+// Shiki themes for the Fahem pseudocode grammar (algoPseudocode.json).
 //
 // Colors extend App.css's existing --accent/--ok/--warn tokens rather than
 // reusing only those three for every category - ten categories sharing three

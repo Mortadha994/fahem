@@ -50,9 +50,16 @@ export default function GroundingStrip({ pinned = [], retrieved = [] }) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="ground-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+        <span className="ground-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
         Fondé sur {pinned.length} table{pinned.length > 1 ? "s" : ""} de syntaxe
-        {retrieved.length > 0 && <> et {retrieved.length} extrait{retrieved.length > 1 ? "s" : ""} du chapitre</>}
+        {retrieved.length > 0 && (
+          <>
+            {" "}
+            et {retrieved.length} extrait{retrieved.length > 1 ? "s" : ""} du chapitre
+          </>
+        )}
       </button>
 
       {open && (

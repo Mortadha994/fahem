@@ -67,8 +67,10 @@ def run_problem(problem: dict[str, Any], k: int, db_dir: Path, max_chars: int) -
         for hit in hits:
             types[hit.type] = types.get(hit.type, 0) + 1
         breakdown = ", ".join(f"{t}={n}" for t, n in sorted(types.items()))
-        print(f"  {len(hits)} hit(s) | types: {breakdown} | "
-              f"score range {hits[-1].score:.3f}-{hits[0].score:.3f}")
+        print(
+            f"  {len(hits)} hit(s) | types: {breakdown} | "
+            f"score range {hits[-1].score:.3f}-{hits[0].score:.3f}"
+        )
     print()
     return len(hits)
 
@@ -85,15 +87,19 @@ def scope_leak_check(problems: list[dict[str, Any]], db_dir: Path, k: int) -> No
 
     scopes = known_scopes(db_dir)
     if len(scopes) < 2:
-        print(f"  only {len(scopes)} scope(s) ingested - "
-              "ingest a second niveau/chapitre to make this check meaningful")
+        print(
+            f"  only {len(scopes)} scope(s) ingested - "
+            "ingest a second niveau/chapitre to make this check meaningful"
+        )
         print()
         return
 
     probe = problems[0]
     question = probe.get("question") or probe.get("enonce") or ""
-    own = (str(probe.get("niveau", "")).strip().lower(),
-           str(probe.get("chapitre", "")).strip().lower())
+    own = (
+        str(probe.get("niveau", "")).strip().lower(),
+        str(probe.get("chapitre", "")).strip().lower(),
+    )
 
     leaks = 0
     for niveau, chapitre in sorted(scopes):
@@ -104,8 +110,14 @@ def scope_leak_check(problems: list[dict[str, Any]], db_dir: Path, k: int) -> No
         tag = " (problem's own scope)" if (niveau, chapitre) == own else ""
         print(f"  {marker} niveau={niveau} chapitre={chapitre}: {len(hits)} hit(s){tag}")
     print()
-    print("  result: " + ("no cross-scope leakage" if leaks == 0
-                          else f"{leaks} LEAKED hit(s) - investigate before generation"))
+    print(
+        "  result: "
+        + (
+            "no cross-scope leakage"
+            if leaks == 0
+            else f"{leaks} LEAKED hit(s) - investigate before generation"
+        )
+    )
     print()
 
 
@@ -114,8 +126,12 @@ def main() -> None:
     parser.add_argument("--problems", type=Path, default=DEFAULT_PROBLEMS)
     parser.add_argument("-k", type=int, default=5)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_DIR)
-    parser.add_argument("--max-chars", type=int, default=700,
-                        help="truncate each printed chunk (use a big number to see tables whole)")
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=700,
+        help="truncate each printed chunk (use a big number to see tables whole)",
+    )
     parser.add_argument("--no-leak-check", action="store_true")
     args = parser.parse_args()
 

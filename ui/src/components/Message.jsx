@@ -21,7 +21,9 @@ export default function Message({ message, streaming }) {
   return (
     <div className="msg msg-assistant">
       {error ? (
-        <p className="error" role="alert">{error}</p>
+        <p className="error" role="alert">
+          {error}
+        </p>
       ) : (
         <>
           {content ? (
@@ -29,7 +31,9 @@ export default function Message({ message, streaming }) {
           ) : (
             streaming && (
               <p className="thinking" role="status">
-                <span className="dot" /><span className="dot" /><span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
                 <span className="thinking-text">Recherche dans le chapitre…</span>
               </p>
             )
@@ -43,7 +47,10 @@ export default function Message({ message, streaming }) {
             <span className="badge badge-pending">Vérification de la syntaxe…</span>
           )}
           {status === "clean" && (
-            <span className="badge badge-ok" title="Aucune syntaxe hors chapitre détectée">
+            <span
+              className="badge badge-ok"
+              title="Aucune syntaxe hors chapitre détectée"
+            >
               ✓ Syntaxe du chapitre respectée
             </span>
           )}
@@ -51,7 +58,9 @@ export default function Message({ message, streaming }) {
             <div className="badge-warn-wrap">
               <span className="badge badge-warn">⚠ Syntaxe à vérifier</span>
               <ul className="warn-list">
-                {warnings.map((w, i) => <li key={i}>{w}</li>)}
+                {warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
               </ul>
             </div>
           )}

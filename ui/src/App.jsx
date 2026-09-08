@@ -2,17 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import Message from "./components/Message.jsx";
 import Composer from "./components/Composer.jsx";
-import { streamSolve, GENERIC_ERROR } from "./api.js";
-import { loadSessions, saveSessions, newSession, titleFrom } from "./sessions.js";
+import { streamSolve, GENERIC_ERROR } from "./lib/api.js";
+import { loadSessions, saveSessions, newSession, titleFrom } from "./lib/sessions.js";
 import { hasRealAlgorithmeSolution } from "./lib/hasRealSolution.js";
+import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "./config.js";
 import "./App.css";
-
-// The corpus holds exactly one niveau/chapitre, so this is a fixed label
-// rather than a selector. Add a picker when a second chapter is ingested.
-const NIVEAU = "2eme";
-const CHAPITRE = "1";
-const SCOPE_LABEL =
-  "2ème — Chapitre 1 : Les structures de données et les structures simples";
 
 export default function App() {
   const [sessions, setSessions] = useState(() => loadSessions());
@@ -38,8 +32,7 @@ export default function App() {
   const onScroll = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
-    pinnedToBottom.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
   useEffect(() => {
@@ -56,7 +49,8 @@ export default function App() {
         const msgs = s.messages.slice();
         const i = msgs.length - 1;
         if (i < 0 || msgs[i].role !== "assistant") return s;
-        msgs[i] = typeof patch === "function" ? patch(msgs[i]) : { ...msgs[i], ...patch };
+        msgs[i] =
+          typeof patch === "function" ? patch(msgs[i]) : { ...msgs[i], ...patch };
         return { ...s, messages: msgs, updatedAt: Date.now() };
       })
     );
@@ -138,8 +132,7 @@ export default function App() {
             pinned: meta.pinned ?? [],
             retrieved: meta.retrieved ?? [],
           }),
-        onDelta: (t) =>
-          patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
+        onDelta: (t) => patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
         onDone: (done) =>
           patchLast(sessionId, (m) => ({
             ...m,
@@ -209,9 +202,9 @@ export default function App() {
             <div className="empty">
               <h1>Pose ta question sur le chapitre</h1>
               <p>
-                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe
-                de ton chapitre — et te montre exactement sur quelles parties
-                du cours il s'appuie.
+                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+                chapitre — et te montre exactement sur quelles parties du cours il
+                s'appuie.
               </p>
             </div>
           ) : (
