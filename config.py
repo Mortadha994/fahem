@@ -76,6 +76,27 @@ CORS_ORIGINS = [
 ]
 
 
+# --- relational store (PostgreSQL) ------------------------------------------
+
+# SQLAlchemy URL for the Postgres instance holding users, chat sessions and
+# chat messages. Nothing reads this yet beyond db.py and Alembic - server-side
+# persistence exists but is not wired into any endpoint (see db.py's docstring).
+#
+# The default targets localhost, which is what a developer running scripts on
+# the host gets. Inside Docker the compose file overrides the host portion with
+# the `postgres` service name, because `localhost` in a container means the
+# container itself, not the database next to it.
+#
+# `postgresql+psycopg://` selects psycopg v3. The bare `postgresql://` scheme
+# would resolve to psycopg2, which is not installed - the driver has to be
+# named explicitly or SQLAlchemy fails at connect time, not import time, which
+# is a confusing place to discover it.
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg://fahem:fahem@localhost:5432/fahem",
+)
+
+
 # --- gatekeeper limits ------------------------------------------------------
 
 # DoS guard, checked before any LLM call at all - including the classifier.
