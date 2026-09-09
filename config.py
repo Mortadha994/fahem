@@ -146,12 +146,13 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 # Lax is right when the UI and the API are same-site (app.example.tn +
 # api.example.tn share a registrable domain, so Lax cookies are sent).
 #
-# It is NOT right for the current compose setup: the UI is served from
-# localhost:5173 and VITE_API_URL points at 127.0.0.1:8000, and those are
-# different hosts, so the browser treats the call as cross-site and withholds
-# a Lax cookie entirely. Ports are irrelevant to same-site; hostnames are not.
-# Resolving that is the frontend phase's job - either point VITE_API_URL at
-# localhost:8000, or set this to "none" (which also forces Secure).
+# That holds locally too, but only because VITE_API_URL was pointed at
+# localhost:8000 rather than 127.0.0.1:8000. Ports are irrelevant to
+# same-site; hostnames are not, so localhost:5173 -> 127.0.0.1:8000 would be
+# cross-site and the browser would withhold this cookie entirely, leaving the
+# app stuck on the sign-in screen. If the API host ever moves to a different
+# registrable domain than the UI, this has to become "none" (which also
+# forces Secure).
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 

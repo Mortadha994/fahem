@@ -103,7 +103,21 @@ services:
       context: ./ui
       args:
         # Baked into the bundle at build time - see ui/Dockerfile.
-        VITE_API_URL: http://127.0.0.1:8000
+        #
+        # localhost, NOT 127.0.0.1: same-site is scheme + registrable domain,
+        # and ports are irrelevant to it, so localhost:5173 -> localhost:8000
+        # is same-site while localhost:5173 -> 127.0.0.1:8000 is cross-site.
+        # The SameSite=Lax session cookie auth.py issues is withheld entirely
+        # on a cross-site request, which would make sign-in fail with a silent
+        # 401 from /auth/me and no error pointing at the cause. Do not
+        # "normalise" this back to an IP.
+        VITE_API_URL: http://localhost:8000
+        # Interpolated from the same .env entry the backend reads, so the two
+        # copies cannot drift. The backend checks the ID token's `aud` claim
+        # against its GOOGLE_CLIENT_ID, so a mismatch fails every sign-in.
+        # Not a secret: it identifies the app to Google and ships in the
+        # bundle either way.
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
       # 5173 on the host is deliberate, not cosmetic: the CORS allowlist in
       # api.py permits only localhost:5173/5174, so any other host port makes

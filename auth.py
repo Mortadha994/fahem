@@ -1,10 +1,8 @@
 """Google sign-in and session issuance.
 
-Phase 0c. Everything here is additive: no existing endpoint requires a user,
-and get_current_user() is deliberately not applied to /solve or /solve/stream
-yet. The gate flips in a later phase, together with the frontend sign-in UI,
-so that it flips on at a moment when a client exists that can actually
-authenticate. Until then the app stays fully usable anonymously.
+Added in Phase 0c; the gate it exists for was flipped in Phase 1, so
+/solve and /solve/stream now require get_current_user() and anonymous use is
+no longer possible.
 
 Three ideas worth reading before the code:
 

@@ -605,3 +605,180 @@ body {
     font-size: 0.8rem;
   }
 }
+
+/* --- Auth (Phase 1) ------------------------------------------------------ */
+
+/* Shown only while GET /auth/me is in flight. Deliberately plain: it exists
+   to prevent a flash of the wrong screen, not to be looked at. */
+.boot {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  background: var(--bg);
+  color: var(--fg);
+}
+.boot .brand {
+  margin: 0;
+  font-size: 1.4rem;
+  letter-spacing: 0.01em;
+}
+.boot-dots {
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: boot-spin 0.7s linear infinite;
+}
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Respect a reduced-motion preference rather than spinning regardless. */
+@media (prefers-reduced-motion: reduce) {
+  .boot-dots {
+    animation: none;
+    border-top-color: var(--line);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.signin {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--bg-alt);
+}
+.signin-card {
+  width: 100%;
+  max-width: 27rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 2rem 1.75rem 1.5rem;
+  text-align: center;
+}
+.signin-brand {
+  font-size: 1.25rem;
+  color: var(--accent);
+}
+.signin-title {
+  margin: 0.2rem 0 0.6rem;
+  font-size: 1.3rem;
+  line-height: 1.25;
+}
+.signin-lead {
+  margin: 0 0 1.6rem;
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.signin-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  /* Google's iframe has its own fixed height; reserve it so the card does not
+     jump when the button finishes loading. */
+  min-height: 3.2rem;
+}
+.google-btn {
+  display: flex;
+  justify-content: center;
+}
+.signin-busy {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}
+.signin-error {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+.signin-foot {
+  margin: 1.6rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  color: var(--fg-dim);
+}
+
+/* Signed-in identity + logout, pinned under the sidebar's scope label. */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--line);
+}
+.account-avatar {
+  flex-shrink: 0;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.account-id {
+  min-width: 0; /* lets the ellipsis actually apply inside a flex child */
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.account-name,
+.account-mail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.account-mail {
+  font-size: 0.7rem;
+  color: var(--fg-dim);
+}
+.btn-logout {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.28rem 0.5rem;
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.btn-logout:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}

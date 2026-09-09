@@ -6,11 +6,13 @@ prompts.build_messages, generate.generate). Nothing about the pipeline is
 reimplemented here - this file only maps HTTP in and out of it, so the
 endpoint cannot drift from what was verified by direct script calls.
 
-No auth, no rate limiting, no persistence - this exists to prove the HTTP
-path works.
+/solve and /solve/stream require a signed-in user (Phase 1). The auth check
+runs ahead of the gatekeeper's classifier, so an anonymous request costs no
+LLM tokens. Nothing is persisted against the account yet.
 
     .venv/Scripts/python.exe -m uvicorn api:app --reload --port 8000
     curl -X POST localhost:8000/solve -H "Content-Type: application/json" \
+         --cookie "fahem_session=..." \
          -d '{"problem": "...", "niveau": "2eme", "chapitre": "1"}'
 """
 
@@ -22,13 +24,14 @@ import time
 import urllib.error
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 import auth
 import gatekeeper
+import models
 from checker import check_constraints
 from config import CORS_ORIGINS
 from context import build_context
@@ -82,8 +85,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# Sign-in, session read and sign-out. Additive: no existing route gained an
-# auth requirement, and auth.get_current_user is applied to nothing here.
+# Sign-in, session read and sign-out.
 app.include_router(auth.router)
 
 
@@ -149,7 +151,21 @@ def health() -> dict:
 
 
 @app.post("/solve", response_model=SolveResponse)
-def solve(request: SolveRequest) -> SolveResponse:
+def solve(
+    request: SolveRequest,
+    user: models.User = Depends(auth.get_current_user),
+) -> SolveResponse:
+    """Solve one problem. Requires a signed-in user (Phase 1).
+
+    The dependency is what enforces it, and FastAPI resolves dependencies
+    before the handler body runs - so an anonymous request 401s before the
+    gatekeeper's classifier call, and costs no LLM tokens at all.
+
+    `user` is intentionally unused for now: this phase gates access, it does
+    not yet attribute anything to the account. Persisting chat history against
+    the user is a later phase (models.ChatSession/ChatMessage exist and stay
+    unused).
+    """
     started = time.monotonic()
 
     # Gatekeeper: classify before the real pipeline ever sees the message.
@@ -291,8 +307,25 @@ def _gatekeeper_stream(text: str, model_label: str, request: SolveRequest, start
 
 
 @app.post("/solve/stream")
-def solve_stream(request: SolveRequest):
-    """Streaming counterpart of /solve.
+def solve_stream(
+    request: SolveRequest,
+    user: models.User = Depends(auth.get_current_user),
+):
+    """Streaming counterpart of /solve. Requires a signed-in user (Phase 1).
+
+    The 401 for an anonymous request is a plain JSON response, not an `error`
+    frame inside a 200 stream: FastAPI resolves the dependency before the
+    handler body runs, so StreamingResponse is never constructed and the SSE
+    stream never opens. That matters for the client - api.js can branch on
+    response.ok before it starts reading frames, which it could not do if the
+    rejection arrived mid-stream.
+
+    The 401 for an anonymous request is a plain JSON response, not an `error`
+    frame inside a 200 stream: FastAPI resolves the dependency before the
+    handler body runs, so StreamingResponse is never constructed and the SSE
+    stream never opens. That matters for the client - api.js can branch on
+    response.ok before it starts reading frames, which it could not do if the
+    rejection arrived mid-stream.
 
     Event order:
       meta   - the grounding: pinned tables and retrieved excerpts, WITH their

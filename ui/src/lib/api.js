@@ -17,19 +17,36 @@ export const BUSY_ERROR =
  */
 export async function streamSolve(
   { problem, niveau, chapitre, k = 5 },
-  { onMeta, onDelta, onDone, onError, signal } = {}
+  { onMeta, onDelta, onDone, onError, onUnauthorized, signal } = {}
 ) {
   let response;
   try {
     response = await fetch(`${API_URL}/solve/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Sends the httpOnly session cookie. /solve/stream requires a signed-in
+      // user since Phase 1, so without this every request is anonymous and
+      // 401s.
+      credentials: "include",
       body: JSON.stringify({ problem, niveau, chapitre, k }),
       signal,
     });
   } catch (err) {
     if (err.name === "AbortError") return;
     onError?.(GENERIC_ERROR);
+    return;
+  }
+
+  // 401 is handled apart from the generic error path: the session expired or
+  // was cleared in another tab, and the fix is to sign in again, not to
+  // retry. Showing GENERIC_ERROR here would leave the student pressing send
+  // against a wall with no way to learn what is wrong.
+  //
+  // The backend rejects before the stream opens (the dependency resolves
+  // ahead of the handler body), so this branch is reachable on a plain JSON
+  // 401 and never mid-frame.
+  if (response.status === 401) {
+    onUnauthorized?.();
     return;
   }
 
