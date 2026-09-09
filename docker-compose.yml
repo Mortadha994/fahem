@@ -35,19 +35,52 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Vector store: the embedded chapter corpus that retrieval searches.
+  # Replaced the on-disk Chroma store in Phase 0b.
+  qdrant:
+    # Pinned to match qdrant-client's major.minor in requirements.txt. The
+    # client refuses to assume compatibility across a major, and warns on a
+    # minor gap > 1 - a floating tag here would eventually start every run
+    # with a version warning, or break outright.
+    image: qdrant/qdrant:v1.19.0
+    ports:
+      # 6333 is the HTTP API (6334 is gRPC, unused here). Exposed so
+      # host-side scripts - rag_store.py's ingest CLI, test_retrieval.py -
+      # can reach it with config.py's localhost default.
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      # The image ships no curl, wget or nc - only bash - so the probe uses
+      # bash's /dev/tcp rather than an HTTP client that is not there. The
+      # readiness signal we actually need is "accepting connections on 6333",
+      # which this gives exactly.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   backend:
     build: .
     ports:
       - "8000:8000"
     environment:
-      # Overrides config.py's localhost default: inside the container,
-      # localhost is the container itself, not the database beside it.
+      # Both override config.py's localhost defaults: inside the container,
+      # localhost is the container itself, not the services beside it.
       DATABASE_URL: postgresql+psycopg://fahem:fahem@postgres:5432/fahem
+      QDRANT_URL: http://qdrant:6333
     depends_on:
       postgres:
         # service_healthy, not the default service_started: Postgres accepts
         # TCP well before it accepts queries, so plain start ordering just
         # moves the race rather than removing it.
+        condition: service_healthy
+      qdrant:
+        # Same reasoning: the backend resolves pins against Qdrant on the
+        # first request, and a not-yet-listening store surfaces as a 422
+        # "could not assemble context" rather than as a startup failure.
         condition: service_healthy
     # GROQ_API_KEY lives here. .env is gitignored; .env.example is the
     # committed template. generate.py's own loader uses setdefault, so what
@@ -55,9 +88,6 @@ services:
     env_file:
       - .env
     volumes:
-      # Vector store: written by the container, rebuildable on the host with
-      # rag_store.py. Bind-mounted so an index built either side is shared.
-      - ./chroma_db:/app/chroma_db
       # Extracted chapter text and test problems - both gitignored, both read
       # from the working directory by rag_store.py / context.py.
       - ./chunks.json:/app/chunks.json
@@ -86,3 +116,4 @@ services:
 volumes:
   hf-cache:
   pg-data:
+  qdrant-data:

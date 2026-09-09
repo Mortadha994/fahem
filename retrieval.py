@@ -1,20 +1,26 @@
-"""Scoped retrieval over the algorithmique Chroma collection.
+"""Scoped retrieval over the algorithmique Qdrant collection.
 
 The scoping rule is not optional: every query is filtered to a single
-(niveau, chapitre) with a Chroma `where` clause *before* the vector search
-runs. Chroma applies `where` as a pre-filter, so the nearest-neighbour search
-only ever sees chunks from the requested level and chapter. That is what stops
-bac-level syntax from surfacing in a 2eme session.
+(niveau, chapitre) *before* the vector search runs. Qdrant applies the filter
+as a pre-filter, the same way Chroma's `where` clause did, so the
+nearest-neighbour search only ever sees chunks from the requested level and
+chapter. That is what stops bac-level syntax from surfacing in a 2eme session.
 """
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Sequence
 
-from rag_store import DEFAULT_DB_DIR, get_collection, get_model
+from rag_store import (
+    COLLECTION_NAME,
+    QDRANT_URL,
+    TEXT_KEY,
+    get_client,
+    get_model,
+    scope_filter,
+)
 
 # Solve-mode default: cours content only.
 #
@@ -42,7 +48,12 @@ class Hit:
 
     @property
     def score(self) -> float:
-        """Cosine similarity in [0, 1]-ish, easier to read than a distance."""
+        """Cosine similarity in [0, 1]-ish, easier to read than a distance.
+
+        Qdrant returns this similarity directly; retrieve() stores it as
+        `1 - similarity` so the `distance` field keeps the meaning it had
+        under Chroma and every caller reading `.score` is unaffected.
+        """
         return 1.0 - self.distance
 
     @property
@@ -62,23 +73,12 @@ class Hit:
         return str(self.metadata.get("type", "?"))
 
 
-def _scope_filter(niveau: str, chapitre: str) -> dict[str, Any]:
-    """Build the Chroma where clause. Values are normalised the same way
-    rag_store.normalise_metadata() normalised them at ingest time."""
-    return {
-        "$and": [
-            {"niveau": {"$eq": str(niveau).strip().lower()}},
-            {"chapitre": {"$eq": str(chapitre).strip().lower()}},
-        ]
-    }
-
-
 def retrieve(
     query: str,
     niveau: str,
     chapitre: str,
     k: int = 5,
-    db_dir: Path = DEFAULT_DB_DIR,
+    url: str = QDRANT_URL,
     types: Sequence[str] | None = SOLVE_TYPES,
 ) -> list[Hit]:
     """Return the k chunks closest to `query` *within* (niveau, chapitre).
@@ -92,34 +92,39 @@ def retrieve(
     if not niveau or not chapitre:
         raise ValueError("niveau and chapitre are both required - retrieval is always scoped")
 
-    where = _scope_filter(niveau, chapitre)
-    if types:
-        wanted_types = [str(t).strip().lower() for t in types]
-        where["$and"].append({"type": {"$in": wanted_types}})
+    flt = scope_filter(niveau, chapitre, types)
 
-    collection = get_collection(db_dir)
+    client = get_client(url)
     embedding = (
         get_model()
         .encode([query.strip()], normalize_embeddings=True, show_progress_bar=False)
-        .tolist()
+        .tolist()[0]
     )
 
-    result = collection.query(
-        query_embeddings=embedding,
-        n_results=k,
-        where=where,
-        include=["documents", "metadatas", "distances"],
+    result = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=embedding,
+        query_filter=flt,
+        limit=k,
+        with_payload=True,
     )
 
-    documents = (result.get("documents") or [[]])[0]
-    metadatas = (result.get("metadatas") or [[]])[0]
-    distances = (result.get("distances") or [[]])[0]
-    ids = (result.get("ids") or [[]])[0]
-
-    hits = [
-        Hit(content=doc, metadata=meta or {}, distance=float(dist), chunk_id=cid)
-        for doc, meta, dist, cid in zip(documents, metadatas, distances, ids)
-    ]
+    hits: list[Hit] = []
+    for point in result.points:
+        payload = dict(point.payload or {})
+        # The text and the chunk id ride in the payload; everything else left
+        # in it is exactly the metadata dict Chroma used to return separately.
+        content = payload.pop(TEXT_KEY, "")
+        chunk_id = payload.pop("chunk_id", str(point.id))
+        # Qdrant scores cosine *similarity*; Hit stores a distance.
+        hits.append(
+            Hit(
+                content=content,
+                metadata=payload,
+                distance=1.0 - float(point.score),
+                chunk_id=chunk_id,
+            )
+        )
 
     # Belt and braces: if a chunk ever slipped in with the wrong scope, drop it
     # here rather than hand it to the generation step.
@@ -160,7 +165,7 @@ def main() -> None:
         default=",".join(SOLVE_TYPES),
         help="comma-separated chunk types to search, or 'all' (default: prose,table)",
     )
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_DIR)
+    parser.add_argument("--url", default=QDRANT_URL, help="Qdrant base URL")
     args = parser.parse_args()
 
     types = (
@@ -174,7 +179,7 @@ def main() -> None:
         niveau=args.niveau,
         chapitre=args.chapitre,
         k=args.k,
-        db_dir=args.db,
+        url=args.url,
         types=types,
     )
     print(f"Query: {args.query}")

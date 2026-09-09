@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from rag_store import DEFAULT_DB_DIR, get_collection
+from rag_store import QDRANT_URL, TEXT_KEY, scroll_scope
 from retrieval import SOLVE_TYPES, Hit, retrieve
 
 ARROW = "←"
@@ -130,35 +130,35 @@ class PinResolutionError(RuntimeError):
 def resolve_pins(
     niveau: str,
     chapitre: str,
-    db_dir: Path = DEFAULT_DB_DIR,
+    url: str = QDRANT_URL,
     pins: tuple[PinSpec, ...] = PINS,
 ) -> list[PinnedChunk]:
     """Locate every pinned table in the store, or fail loudly.
 
     Silently dropping a pin would quietly remove the operator table from every
     prompt, so a miss is an error rather than a warning.
+
+    This is a scoped scan, not a vector search - pins are located by exact
+    anchor substring, and ranking has nothing to do with it. Phase 0b changed
+    only the call that fetches the scope (Qdrant scroll instead of Chroma's
+    collection.get); the matching rule below is untouched, which is why the
+    same seven tables still resolve to the same seven chunks.
     """
-    collection = get_collection(db_dir)
-    scope = {
-        "$and": [
-            {"niveau": {"$eq": str(niveau).strip().lower()}},
-            {"chapitre": {"$eq": str(chapitre).strip().lower()}},
-        ]
-    }
-    got = collection.get(where=scope, include=["documents", "metadatas"])
-    documents = got.get("documents") or []
-    metadatas = got.get("metadatas") or []
-    ids = got.get("ids") or []
+    records = scroll_scope(niveau, chapitre, url=url)
+    triples = [
+        (
+            str((r.payload or {}).get("chunk_id", r.id)),
+            str((r.payload or {}).get(TEXT_KEY, "")),
+            {k: v for k, v in (r.payload or {}).items() if k not in (TEXT_KEY, "chunk_id")},
+        )
+        for r in records
+    ]
 
     resolved: list[PinnedChunk] = []
     problems: list[str] = []
 
     for pin in pins:
-        matches = [
-            (cid, doc, meta)
-            for cid, doc, meta in zip(ids, documents, metadatas)
-            if pin.anchor in doc
-        ]
+        matches = [(cid, doc, meta) for cid, doc, meta in triples if pin.anchor in doc]
         if len(matches) != 1:
             problems.append(
                 f"{pin.label!r}: expected exactly 1 chunk containing "
@@ -217,10 +217,10 @@ def build_context(
     niveau: str,
     chapitre: str,
     k: int = 5,
-    db_dir: Path = DEFAULT_DB_DIR,
+    url: str = QDRANT_URL,
 ) -> Context:
     """Pinned syntax core + k retrieved extras that are not already pinned."""
-    pinned = resolve_pins(niveau, chapitre, db_dir)
+    pinned = resolve_pins(niveau, chapitre, url)
     pinned_ids = {p.chunk_id for p in pinned}
 
     # Over-fetch so that dropping pinned duplicates still leaves k extras.
@@ -229,7 +229,7 @@ def build_context(
         niveau=niveau,
         chapitre=chapitre,
         k=k + len(pinned),
-        db_dir=db_dir,
+        url=url,
         types=SOLVE_TYPES,
     )
     extras = [h for h in candidates if h.chunk_id not in pinned_ids][:k]
@@ -268,7 +268,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Assemble and check context blocks.")
     parser.add_argument("--problems", type=Path, default=Path("sample_problems.json"))
     parser.add_argument("-k", type=int, default=5)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_DIR)
+    parser.add_argument("--url", default=QDRANT_URL, help="Qdrant base URL")
     parser.add_argument("--show", action="store_true", help="print the full context block")
     args = parser.parse_args()
 
@@ -282,7 +282,7 @@ def main() -> None:
             niveau=str(problem["niveau"]),
             chapitre=str(problem["chapitre"]),
             k=args.k,
-            db_dir=args.db,
+            url=args.url,
         )
 
         print("=" * 78)

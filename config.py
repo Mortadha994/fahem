@@ -9,7 +9,7 @@ logic where it was; only the values moved.
 Backwards compatibility note: generate.py and rag_store.py re-export the
 names they previously defined, so existing imports elsewhere
 (`from generate import GROQ_MODEL, GROQ_URL` in llm_stream.py,
-`from rag_store import DEFAULT_DB_DIR` in context.py/test_retrieval.py)
+`from rag_store import QDRANT_URL` in context.py/test_retrieval.py)
 keep working untouched.
 """
 
@@ -53,11 +53,20 @@ EMBEDDING_MODEL_NAME = os.environ.get(
 )
 COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "algorithmique")
 
-# Both are CWD-relative on purpose: the container bind-mounts ./chroma_db and
-# ./chunks.json onto /app, which is also the WORKDIR, so a relative path
-# resolves to the mounted copy in Docker and to the repo copy locally.
-# Changing these to absolute paths would break the compose mounts.
-DEFAULT_DB_DIR = Path(os.environ.get("CHROMA_DB_DIR", "chroma_db"))
+# Qdrant replaced Chroma as the vector store in Phase 0b. The practical
+# difference for this file: the store is no longer a directory on disk, it is
+# a service over HTTP, so there is no path to keep CWD-relative any more.
+#
+# The default targets localhost, which is what a developer running scripts on
+# the host gets through the published 6333 port. Inside Docker the compose
+# file overrides the host portion with the `qdrant` service name - same
+# reasoning as DATABASE_URL below.
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+
+# Kept CWD-relative on purpose: the container bind-mounts ./chunks.json onto
+# /app, which is also the WORKDIR, so a relative path resolves to the mounted
+# copy in Docker and to the repo copy locally. Making it absolute would break
+# the compose mount.
 DEFAULT_CHUNKS = Path(os.environ.get("CHUNKS_PATH", "chunks.json"))
 
 
@@ -95,6 +104,55 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+psycopg://fahem:fahem@localhost:5432/fahem",
 )
+
+
+# --- authentication (Google OAuth + session cookie) -------------------------
+
+# The OAuth 2.0 Client ID from the project's Google Cloud console. No default
+# on purpose: it is per-project, it is what the ID token's `aud` claim is
+# checked against, and a wrong-but-present value would make every sign-in fail
+# in a way that looks like a Google outage rather than a config mistake.
+# Empty means "auth is not configured" - auth.py refuses to verify a token at
+# all in that state rather than accepting one with an unchecked audience.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+
+# HMAC key for the session JWT.
+#
+# *** PRE-LAUNCH: this default MUST be replaced in any real deployment. ***
+#
+# It is not a weak secret, it is a *published* one - anyone reading this repo
+# can sign a token for any user id and be authenticated as that user. It is a
+# full authentication bypass, not a hardening nit. The dev default exists so
+# `docker compose up` works out of the box; treat it like the fahem/fahem
+# Postgres credentials, on the same pre-launch checklist.
+# The default is >= 32 bytes so PyJWT does not raise InsecureKeyLengthWarning
+# (RFC 7518 3.2) on every call - the length is not what makes it unsafe, its
+# publication is.
+SESSION_SECRET_KEY = os.environ.get(
+    "SESSION_SECRET_KEY", "dev-only-insecure-session-key-do-not-use-in-production"
+)
+
+# 7 days. Long enough that a student is not re-authenticating every session,
+# short enough that a stolen cookie expires on its own.
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60)))
+
+SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "fahem_session")
+
+# Secure defaults to False *only* because local dev is plain http. Any
+# deployment served over https must set it true - a session cookie without
+# Secure can be sent over http and read off the wire.
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+
+# Lax is right when the UI and the API are same-site (app.example.tn +
+# api.example.tn share a registrable domain, so Lax cookies are sent).
+#
+# It is NOT right for the current compose setup: the UI is served from
+# localhost:5173 and VITE_API_URL points at 127.0.0.1:8000, and those are
+# different hosts, so the browser treats the call as cross-site and withholds
+# a Lax cookie entirely. Ports are irrelevant to same-site; hostnames are not.
+# Resolving that is the frontend phase's job - either point VITE_API_URL at
+# localhost:8000, or set this to "none" (which also forces Secure).
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 
 # --- gatekeeper limits ------------------------------------------------------

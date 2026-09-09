@@ -23,8 +23,9 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Source only. chunks.json, chroma_db/ and data/ are runtime state and arrive
-# as bind mounts - see docker-compose.yml.
+# Source only. chunks.json and data/ are runtime state and arrive as bind
+# mounts; the vector store lives in the qdrant service - see
+# docker-compose.yml.
 COPY *.py ./
 
 # Migrations. Separate COPY lines because `COPY *.py` above matches neither the

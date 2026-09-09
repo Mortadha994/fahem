@@ -43,7 +43,7 @@ made the top-k. So the context is built in two parts:
 | --- | --- |
 | **1. Extraction** | `extract_chapter.py` turns a chapter PDF into tagged chunks. Tables are pulled out whole (the two-column *Algorithme \| Python* blocks are nonsense when flattened), prose splits at the document's own sub-boundaries rather than a character cap, and pseudocode blocks are never cut. |
 | **2. Correction** | `patch_chunks.py` applies pinned, hand-verified fixes. The PDFs draw the assignment arrow `←` with a custom font glyph that decodes as `-`, turning an assignment into a subtraction. This is deliberately **not** automated — a regex would also rewrite genuine subtraction in the same tables. |
-| **3. Embedding + retrieval** | `rag_store.py` embeds with a multilingual model into Chroma; `retrieval.py` filters by scope, then searches semantically inside it. |
+| **3. Embedding + retrieval** | `rag_store.py` embeds with a multilingual model into Qdrant; `retrieval.py` filters by scope, then searches semantically inside it. |
 | **4. Context assembly** | `context.py` builds the pinned core + retrieved extras, with a build check that fails loudly if a pinned table is missing or its arrows were lost. |
 | **5. Generation** | `prompts.py` holds the teaching constraints; `generate.py` calls the model and runs a mechanical constraint check over the answer. |
 | **6. API** | `api.py` — one FastAPI endpoint, `POST /solve`. See `README_API.md`. |
@@ -144,10 +144,12 @@ docker compose up --build -d      # UI on :5173, API on :8000
 docker compose logs -f backend
 ```
 
-`chroma_db/`, `chunks.json`, `sample_problems.json` and `data/` are
-bind-mounted, so the index you built locally is the one the container uses,
-and rebuilding the image does not discard it. `GROQ_API_KEY` comes from
-`.env` via compose's `env_file`. The frontend image bakes `VITE_API_URL` at
+`chunks.json`, `sample_problems.json` and `data/` are bind-mounted, so
+rebuilding the image does not discard them. The vector store is the `qdrant`
+service, holding its data in the `qdrant-data` named volume - it survives
+`docker compose down`, and is rebuilt from `chunks.json` with
+`docker compose exec backend python rag_store.py --reset`. Postgres likewise
+keeps `pg-data`. `GROQ_API_KEY` comes from `.env` via compose's `env_file`. The frontend image bakes `VITE_API_URL` at
 build time — changing the backend URL means rebuilding that image.
 
 **Configuration.** Everything tunable is in `config.py`, read from env with
@@ -158,7 +160,8 @@ working defaults, so no edit is needed for local use:
 | `GROQ_API_KEY` | *(required)* |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `CORS_ORIGINS` | localhost 5173/5174 |
-| `CHROMA_DB_DIR` / `CHUNKS_PATH` | `chroma_db` / `chunks.json` |
+| `QDRANT_URL` / `CHUNKS_PATH` | `http://localhost:6333` / `chunks.json` |
+| `DATABASE_URL` | `postgresql+psycopg://fahem:fahem@localhost:5432/fahem` |
 | `GATEKEEPER_MAX_INPUT_CHARS` | `2000` |
 | `GATEKEEPER_ROUTER_MAX_TOKENS` / `_META_MAX_TOKENS` | `250` / `250` |
 
@@ -211,7 +214,7 @@ llm_stream.py        streaming Groq call; filters the reasoning channel
 prompts.py           the teaching constraints (generation prompt)
 context.py           pinned syntax core + retrieved extras
 retrieval.py         scope-filtered semantic search
-rag_store.py         embedding + Chroma storage
+rag_store.py         embedding + Qdrant storage
 extract_chapter.py   PDF → tagged chunks          (offline tool)
 patch_chunks.py      pinned corrections           (offline tool)
 ```
