@@ -19,3 +19,12 @@ psycopg[binary]>=3.2.0
 # at import time without it. Plain `google-auth` installs but cannot verify.
 google-auth[requests]>=2.30.0
 PyJWT>=2.8.0
+
+# Rate limiting (Phase 2). slowapi is a thin FastAPI/Starlette adapter over
+# `limits`, which does the window arithmetic and owns the Redis storage
+# backend - so the counter logic is not hand-rolled here. Chosen over
+# fastapi-limiter, whose last release was 2023: a stale dependency on the
+# cost-control path is the same risk that ruled out python-jose in Phase 0c.
+# redis is slowapi's storage driver, not a direct dependency of our code.
+slowapi>=0.1.9
+redis>=5.0.0

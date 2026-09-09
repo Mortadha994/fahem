@@ -17,7 +17,7 @@ export const BUSY_ERROR =
  */
 export async function streamSolve(
   { problem, niveau, chapitre, k = 5 },
-  { onMeta, onDelta, onDone, onError, onUnauthorized, signal } = {}
+  { onMeta, onDelta, onDone, onError, onUnauthorized, onRateLimited, signal } = {}
 ) {
   let response;
   try {
@@ -50,8 +50,21 @@ export async function streamSolve(
     return;
   }
 
+  // 429 is the per-user rate limit (Phase 2), and it is separate from the
+  // generic error path for the same reason 401 is: retrying immediately
+  // cannot work, and the student needs to be told to wait rather than left
+  // pressing send. Retry-After carries how long, in seconds.
+  //
+  // Like the 401, the backend rejects before the stream opens, so this is a
+  // plain JSON response and never a half-read stream.
+  if (response.status === 429) {
+    const header = Number(response.headers.get("Retry-After"));
+    onRateLimited?.(Number.isFinite(header) && header > 0 ? header : null);
+    return;
+  }
+
   if (!response.ok) {
-    onError?.(response.status === 429 ? BUSY_ERROR : GENERIC_ERROR);
+    onError?.(GENERIC_ERROR);
     return;
   }
 

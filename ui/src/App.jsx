@@ -15,6 +15,25 @@ const SIGNIN_FAILED =
 const SIGNIN_UNREACHABLE =
   "Impossible de joindre le serveur. Vérifie ta connexion et réessaie.";
 
+/**
+ * Rate-limit message. Retry-After is turned into something a student can read
+ * rather than a raw seconds count - "réessaie dans 47 secondes" is actionable,
+ * "retry_after: 47" is not. Falls back to a vague-but-honest wording when the
+ * header is missing, rather than inventing a number.
+ */
+function rateLimitMessage(retryAfterSeconds) {
+  if (!retryAfterSeconds) {
+    return "Tu as atteint la limite de requêtes. Réessaie dans quelques instants.";
+  }
+  if (retryAfterSeconds < 60) {
+    return `Tu as atteint la limite de requêtes. Réessaie dans ${retryAfterSeconds} secondes.`;
+  }
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return `Tu as atteint la limite de requêtes. Réessaie dans ${minutes} minute${
+    minutes > 1 ? "s" : ""
+  }.`;
+}
+
 export default function App() {
   // Three states, not a boolean: "checking" has to be distinguishable from
   // "signed out", otherwise the sign-in screen flashes on every reload before
@@ -237,6 +256,14 @@ export default function App() {
           });
           handleUnauthorized();
         },
+        // Stays in the chat, unlike onUnauthorized: the session is still
+        // valid, the student just has to wait. Bouncing them to the sign-in
+        // screen would be both wrong and infuriating.
+        onRateLimited: (retryAfter) =>
+          patchLast(sessionId, {
+            error: rateLimitMessage(retryAfter),
+            status: "error",
+          }),
       }
     )
       .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))

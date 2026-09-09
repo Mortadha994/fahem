@@ -2,7 +2,8 @@
 
 Added in Phase 0c; the gate it exists for was flipped in Phase 1, so
 /solve and /solve/stream now require get_current_user() and anonymous use is
-no longer possible.
+no longer possible. /auth/google carries a per-IP rate limit (Phase 2) since
+it is the one route here reachable before a session exists.
 
 Three ideas worth reading before the code:
 
@@ -32,14 +33,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, Field
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+import ratelimit as _ratelimit
 from config import (
     GOOGLE_CLIENT_ID,
+    RATE_LIMIT_AUTH,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SAMESITE,
     SESSION_COOKIE_SECURE,
@@ -238,16 +241,46 @@ def get_current_user(session_cookie: str | None = Cookie(None, alias=SESSION_COO
     return user
 
 
+def bind_user(
+    request: Request,
+    user: User = Depends(get_current_user),
+) -> User:
+    """get_current_user, plus publishing the id for the rate limiter's key.
+
+    Lives here rather than in ratelimit.py because ratelimit.py must not
+    import this module - auth.py imports it for the /auth/google decorator,
+    and the reverse import would be a cycle.
+
+    The ordering this relies on: FastAPI resolves dependencies before the
+    endpoint function runs, and slowapi's decorator wraps that function, so
+    the id is already on request.state when the limiter evaluates its key.
+    That is what lets the limit key off the DB-verified identity rather than a
+    separately re-parsed token, which can disagree - a deleted account still
+    presents a well-formed unexpired token.
+    """
+    setattr(request.state, _ratelimit.STATE_USER_ID, user.id)
+    return user
+
+
 # --- routes ------------------------------------------------------------------
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/google", response_model=UserOut)
-def google_sign_in(request: GoogleSignInRequest, response: Response) -> UserOut:
-    """Exchange a Google ID token for a session cookie."""
+@_ratelimit.limiter.limit(RATE_LIMIT_AUTH, key_func=_ratelimit.ip_key)
+def google_sign_in(request: Request, payload: GoogleSignInRequest, response: Response) -> UserOut:
+    """Exchange a Google ID token for a session cookie.
+
+    Rate-limited per client IP, not per user: there is no user yet at this
+    point. See config.RATE_LIMIT_AUTH for why the limit is deliberately loose
+    (a school behind one NAT shares it) and what it does and does not protect.
+
+    `request` is the Starlette Request, required by slowapi under that exact
+    name; the body model is `payload`.
+    """
     try:
-        claims = verify_google_id_token(request.id_token)
+        claims = verify_google_id_token(payload.id_token)
     except AuthConfigurationError as exc:
         # A server misconfiguration, not a bad request from the client.
         raise HTTPException(status_code=503, detail=str(exc))
