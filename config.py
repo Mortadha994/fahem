@@ -156,6 +156,48 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 
+# --- rate limiting (Redis) --------------------------------------------------
+
+# Counter store for slowapi. Same host-vs-service-name split as DATABASE_URL
+# and QDRANT_URL: localhost for scripts on the host, overridden to the `redis`
+# service name inside compose.
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+
+# EVERY LIMIT BELOW IS A STARTING POINT, NOT A TUNED VALUE. There is no real
+# usage data yet - these were picked from what the app costs and how a student
+# actually works, and they should be revisited against real traffic before or
+# shortly after launch.
+#
+# /solve and /solve/stream share one budget (they are the same work behind two
+# response shapes, and separate buckets would let a caller double the spend by
+# alternating). Two windows, both enforced:
+#
+#   per minute - a burst guard. A real generation takes ~3s and a student
+#                reads the answer before sending the next one, so 10/min is
+#                far above human pace while still stopping a hot loop.
+#   per hour   - the actual cost ceiling. A long revision session might be
+#                20-40 exercises; 100 leaves generous headroom and still caps
+#                what one compromised session can spend in an hour.
+RATE_LIMIT_SOLVE = os.environ.get("RATE_LIMIT_SOLVE", "10/minute;100/hour")
+
+# /auth/google is reachable before there is a user to key on, so it is limited
+# per client IP instead.
+#
+# KNOWN WEAKNESS, deliberately left loose: a school behind one NAT presents
+# every student as the same IP, so a class signing in together shares this
+# budget. That is why it is 30/minute and not the 5/minute a login endpoint
+# would normally get - it is sized to not break a classroom, which makes it a
+# weak brute-force control. It is acceptable only because this endpoint does
+# not accept a password: the credential is a Google-signed ID token, and
+# guessing one is not a rate-limitable attack. It exists to stop hammering,
+# not to stop credential stuffing.
+RATE_LIMIT_AUTH = os.environ.get("RATE_LIMIT_AUTH", "30/minute")
+
+# Sent as Retry-After on a 429. slowapi knows the true window reset, and the
+# handler prefers it; this is only the fallback when it cannot be derived.
+RATE_LIMIT_RETRY_AFTER_FALLBACK = int(os.environ.get("RATE_LIMIT_RETRY_AFTER_FALLBACK", "60"))
+
+
 # --- gatekeeper limits ------------------------------------------------------
 
 # DoS guard, checked before any LLM call at all - including the classifier.

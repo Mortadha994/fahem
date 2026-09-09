@@ -6,9 +6,10 @@ prompts.build_messages, generate.generate). Nothing about the pipeline is
 reimplemented here - this file only maps HTTP in and out of it, so the
 endpoint cannot drift from what was verified by direct script calls.
 
-/solve and /solve/stream require a signed-in user (Phase 1). The auth check
-runs ahead of the gatekeeper's classifier, so an anonymous request costs no
-LLM tokens. Nothing is persisted against the account yet.
+/solve and /solve/stream require a signed-in user (Phase 1) and share one
+per-user rate limit (Phase 2). Both checks run ahead of the gatekeeper's
+classifier, so a rejected request costs no LLM tokens. Nothing is persisted
+against the account yet.
 
     .venv/Scripts/python.exe -m uvicorn api:app --reload --port 8000
     curl -X POST localhost:8000/solve -H "Content-Type: application/json" \
@@ -24,16 +25,18 @@ import time
 import urllib.error
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from slowapi.errors import RateLimitExceeded
 
 import auth
 import gatekeeper
 import models
+import ratelimit
 from checker import check_constraints
-from config import CORS_ORIGINS
+from config import CORS_ORIGINS, RATE_LIMIT_SOLVE
 from context import build_context
 from generate import GROQ_MODEL, generate, pick_backend
 from llm_stream import stream_groq
@@ -77,15 +80,36 @@ app = FastAPI(
 # This does not change anything for the existing anonymous requests: /solve
 # and /solve/stream send no credentials, and a request without credentials is
 # unaffected by the header this adds.
+#
+# expose_headers is not optional for the rate limiter to be usable from the
+# browser. Only a handful of response headers are readable cross-origin by
+# default, and Retry-After is not one of them - without this,
+# `response.headers.get("Retry-After")` is null in fetch() even though the
+# header is plainly on the wire, and the UI silently degrades to its vague
+# "réessaie dans quelques instants" fallback. Verified by observing exactly
+# that before adding this line.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
+    expose_headers=[
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+    ],
 )
 
-# Sign-in, session read and sign-out.
+# Rate limiting (Phase 2). slowapi reads the limiter off app.state, so this
+# assignment is wiring, not decoration - without it every decorated route
+# raises at request time.
+app.state.limiter = ratelimit.limiter
+app.add_exception_handler(RateLimitExceeded, ratelimit.rate_limit_handler)
+
+# Sign-in, session read and sign-out. Included after app.state.limiter is set
+# because auth.py's /auth/google carries its own IP-based limit.
 app.include_router(auth.router)
 
 
@@ -151,20 +175,40 @@ def health() -> dict:
 
 
 @app.post("/solve", response_model=SolveResponse)
+@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
 def solve(
-    request: SolveRequest,
-    user: models.User = Depends(auth.get_current_user),
+    request: Request,
+    response: Response,
+    payload: SolveRequest,
+    user: models.User = Depends(auth.bind_user),
 ) -> SolveResponse:
-    """Solve one problem. Requires a signed-in user (Phase 1).
+    """Solve one problem. Requires a signed-in user (Phase 1), rate-limited
+    per user (Phase 2).
 
-    The dependency is what enforces it, and FastAPI resolves dependencies
-    before the handler body runs - so an anonymous request 401s before the
-    gatekeeper's classifier call, and costs no LLM tokens at all.
+    Two things run before this body, and both are cheap by design:
 
-    `user` is intentionally unused for now: this phase gates access, it does
-    not yet attribute anything to the account. Persisting chat history against
-    the user is a later phase (models.ChatSession/ChatMessage exist and stay
-    unused).
+    1. The auth dependency. FastAPI resolves dependencies before the handler,
+       so an anonymous request 401s before the gatekeeper's classifier call
+       and costs no LLM tokens.
+    2. The rate limit. slowapi's decorator wraps this function, so it is
+       evaluated after dependency resolution but still before the first line
+       here - an over-limit request costs a Redis INCR, not a generation.
+
+    `request` is here because slowapi requires the Starlette Request by that
+    exact name; the body model moved to `payload` for it. `response` is also
+    required by slowapi, and only because headers_enabled=True: it injects the
+    X-RateLimit-* headers into it, and with no Response to write to it raises
+    - turning every successful call into a 500. FastAPI merges headers set on
+    that injected object into the real response when the handler returns a
+    model, which is what happens here.
+
+    `user` is still intentionally unused by the body - this phase limits
+    access, it does not attribute anything to the account
+    (models.ChatSession/ChatMessage remain unused).
+
+    shared_limit with SOLVE_SCOPE means this and /solve/stream draw on one
+    budget. Separate buckets would let a caller double the spend by
+    alternating between two endpoints that do identical work.
     """
     started = time.monotonic()
 
@@ -172,11 +216,11 @@ def solve(
     # PROBLEM falls through to the unchanged code below; META/OFF_TOPIC never
     # reach build_context/generate at all. See gatekeeper.py's module
     # docstring for why this is a separate layer, not a pipeline change.
-    if gatekeeper.is_input_too_long(request.problem):
+    if gatekeeper.is_input_too_long(payload.problem):
         return SolveResponse(
             solution=gatekeeper.DECLINE_MESSAGE,
-            niveau=request.niveau,
-            chapitre=request.chapitre,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
             model="gatekeeper",
             pinned=[],
             retrieved=[],
@@ -184,13 +228,13 @@ def solve(
             elapsed_ms=int((time.monotonic() - started) * 1000),
         )
 
-    route = gatekeeper.classify(request.problem)
+    route = gatekeeper.classify(payload.problem)
 
     if route == "OFF_TOPIC":
         return SolveResponse(
             solution=gatekeeper.DECLINE_MESSAGE,
-            niveau=request.niveau,
-            chapitre=request.chapitre,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
             model="gatekeeper",
             pinned=[],
             retrieved=[],
@@ -199,11 +243,11 @@ def solve(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(request.problem)
+        answer = gatekeeper.respond_meta(payload.problem)
         return SolveResponse(
             solution=answer,
-            niveau=request.niveau,
-            chapitre=request.chapitre,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
             model=GROQ_MODEL,
             pinned=[],
             retrieved=[],
@@ -214,16 +258,16 @@ def solve(
     # route == "PROBLEM": everything below is unchanged.
     try:
         context = build_context(
-            request.problem,
-            niveau=request.niveau,
-            chapitre=request.chapitre,
-            k=request.k,
+            payload.problem,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
+            k=payload.k,
         )
     except Exception as exc:  # pin resolution failure, empty scope, bad store
         raise HTTPException(
             status_code=422,
-            detail=f"could not assemble context for niveau={request.niveau} "
-            f"chapitre={request.chapitre}: {exc}",
+            detail=f"could not assemble context for niveau={payload.niveau} "
+            f"chapitre={payload.chapitre}: {exc}",
         ) from exc
 
     if not context.pinned:
@@ -232,12 +276,12 @@ def solve(
     rendered = context.render()
     messages = build_messages(
         context=rendered,
-        query=request.problem,
+        query=payload.problem,
         # The prompt shows the niveau to the student, so it gets the accented
         # display form; build_context above got the raw value the store keys
         # on. Keeping the two separate is deliberate.
-        niveau=niveau_label(request.niveau),
-        chapitre=request.chapitre,
+        niveau=niveau_label(payload.niveau),
+        chapitre=payload.chapitre,
     )
 
     try:
@@ -258,8 +302,8 @@ def solve(
 
     return SolveResponse(
         solution=answer,
-        niveau=request.niveau,
-        chapitre=request.chapitre,
+        niveau=payload.niveau,
+        chapitre=payload.chapitre,
         model=GROQ_MODEL,
         pinned=[PinnedTable(id=p.chunk_id, label=p.label) for p in context.pinned],
         retrieved=[
@@ -276,7 +320,7 @@ def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _gatekeeper_stream(text: str, model_label: str, request: SolveRequest, started: float):
+def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, started: float):
     """The meta/done/delta shape for a gatekeeper-produced reply (DoS cap,
     OFF_TOPIC, or META), reusing the exact SSE contract /solve/stream already
     emits for a real answer - empty pinned/retrieved, one delta, a clean
@@ -288,8 +332,8 @@ def _gatekeeper_stream(text: str, model_label: str, request: SolveRequest, start
         "meta",
         {
             "model": model_label,
-            "niveau": request.niveau,
-            "chapitre": request.chapitre,
+            "niveau": payload.niveau,
+            "chapitre": payload.chapitre,
             "pinned": [],
             "retrieved": [],
         },
@@ -307,18 +351,27 @@ def _gatekeeper_stream(text: str, model_label: str, request: SolveRequest, start
 
 
 @app.post("/solve/stream")
+@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
 def solve_stream(
-    request: SolveRequest,
-    user: models.User = Depends(auth.get_current_user),
+    request: Request,
+    response: Response,
+    payload: SolveRequest,
+    user: models.User = Depends(auth.bind_user),
 ):
-    """Streaming counterpart of /solve. Requires a signed-in user (Phase 1).
+    """Streaming counterpart of /solve. Requires a signed-in user (Phase 1),
+    sharing /solve's per-user rate limit (Phase 2).
 
-    The 401 for an anonymous request is a plain JSON response, not an `error`
-    frame inside a 200 stream: FastAPI resolves the dependency before the
-    handler body runs, so StreamingResponse is never constructed and the SSE
-    stream never opens. That matters for the client - api.js can branch on
-    response.ok before it starts reading frames, which it could not do if the
-    rejection arrived mid-stream.
+    Like the 401, the 429 is a plain JSON response rather than an `error`
+    frame inside a 200 stream: both the dependency and slowapi's wrapper run
+    before StreamingResponse is constructed, so the SSE stream never opens and
+    api.js can branch on response.status before it reads a single frame.
+
+    `response` exists only to satisfy slowapi's header injection (see /solve).
+    Known limitation: this handler returns its own StreamingResponse, and
+    FastAPI only merges the injected object's headers when the handler returns
+    a model - so the informational X-RateLimit-* headers do NOT appear on this
+    endpoint. The 429 and its Retry-After are unaffected, because those come
+    from ratelimit.rate_limit_handler rather than from header injection.
 
     The 401 for an anonymous request is a plain JSON response, not an `error`
     frame inside a 200 stream: FastAPI resolves the dependency before the
@@ -345,26 +398,26 @@ def solve_stream(
 
     # Gatekeeper: same three-way split as /solve, before build_context ever
     # runs. See gatekeeper.py's module docstring and _gatekeeper_stream above.
-    if gatekeeper.is_input_too_long(request.problem):
+    if gatekeeper.is_input_too_long(payload.problem):
         return StreamingResponse(
-            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", request, started),
+            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    route = gatekeeper.classify(request.problem)
+    route = gatekeeper.classify(payload.problem)
 
     if route == "OFF_TOPIC":
         return StreamingResponse(
-            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", request, started),
+            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(request.problem)
+        answer = gatekeeper.respond_meta(payload.problem)
         return StreamingResponse(
-            _gatekeeper_stream(answer, GROQ_MODEL, request, started),
+            _gatekeeper_stream(answer, GROQ_MODEL, payload, started),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -374,16 +427,16 @@ def solve_stream(
     # 422 rather than an error frame inside a 200 stream.
     try:
         context = build_context(
-            request.problem,
-            niveau=request.niveau,
-            chapitre=request.chapitre,
-            k=request.k,
+            payload.problem,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
+            k=payload.k,
         )
     except Exception as exc:
         raise HTTPException(
             status_code=422,
-            detail=f"could not assemble context for niveau={request.niveau} "
-            f"chapitre={request.chapitre}: {exc}",
+            detail=f"could not assemble context for niveau={payload.niveau} "
+            f"chapitre={payload.chapitre}: {exc}",
         ) from exc
 
     if not context.pinned:
@@ -392,9 +445,9 @@ def solve_stream(
     rendered = context.render()
     messages = build_messages(
         context=rendered,
-        query=request.problem,
-        niveau=niveau_label(request.niveau),
-        chapitre=request.chapitre,
+        query=payload.problem,
+        niveau=niveau_label(payload.niveau),
+        chapitre=payload.chapitre,
     )
 
     def events():
@@ -402,8 +455,8 @@ def solve_stream(
             "meta",
             {
                 "model": GROQ_MODEL,
-                "niveau": request.niveau,
-                "chapitre": request.chapitre,
+                "niveau": payload.niveau,
+                "chapitre": payload.chapitre,
                 "pinned": [
                     {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
                     for p in context.pinned

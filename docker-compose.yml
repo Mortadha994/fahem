@@ -62,6 +62,32 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Rate-limit counters (Phase 2). Nothing else uses Redis yet.
+  redis:
+    image: redis:7-alpine
+    # Persistence deliberately OFF (no RDB snapshots, no AOF). Rate-limit
+    # counters are short-lived by definition: the worst case on a restart is
+    # that every window resets early, which self-corrects within one window
+    # and cannot corrupt anything. Writing them to disk would buy a marginal
+    # anti-abuse edge in exchange for constant disk I/O and a volume to
+    # manage.
+    #
+    # Revisit if Redis ever holds session revocation state - see the
+    # follow-up flagged in this phase's report. That data is NOT ephemeral:
+    # losing it would silently un-revoke every revoked session.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      # Exposed so host-side checks can inspect counters directly, same
+      # reasoning as the postgres and qdrant ports.
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   backend:
     build: .
     ports:
@@ -71,6 +97,7 @@ services:
       # localhost is the container itself, not the services beside it.
       DATABASE_URL: postgresql+psycopg://fahem:fahem@postgres:5432/fahem
       QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         # service_healthy, not the default service_started: Postgres accepts
@@ -81,6 +108,11 @@ services:
         # Same reasoning: the backend resolves pins against Qdrant on the
         # first request, and a not-yet-listening store surfaces as a 422
         # "could not assemble context" rather than as a startup failure.
+        condition: service_healthy
+      redis:
+        # A missing rate-limit store must not look like an unlimited one:
+        # waiting for healthy means the limiter is enforcing from the first
+        # request rather than failing open during startup.
         condition: service_healthy
     # GROQ_API_KEY lives here. .env is gitignored; .env.example is the
     # committed template. generate.py's own loader uses setdefault, so what
