@@ -2,13 +2,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import Message from "./components/Message.jsx";
 import Composer from "./components/Composer.jsx";
+import SignInScreen from "./components/SignInScreen.jsx";
 import { streamSolve, GENERIC_ERROR } from "./lib/api.js";
+import { fetchMe, signInWithGoogle, logout } from "./lib/auth.js";
 import { loadSessions, saveSessions, newSession, titleFrom } from "./lib/sessions.js";
 import { hasRealAlgorithmeSolution } from "./lib/hasRealSolution.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "./config.js";
 import "./App.css";
 
+const SIGNIN_FAILED =
+  "La connexion a échoué. Réessaie, ou vérifie que tu utilises un compte Google valide.";
+const SIGNIN_UNREACHABLE =
+  "Impossible de joindre le serveur. Vérifie ta connexion et réessaie.";
+
 export default function App() {
+  // Three states, not a boolean: "checking" has to be distinguishable from
+  // "signed out", otherwise the sign-in screen flashes on every reload before
+  // /auth/me answers, and a logged-in student sees a login form for a moment.
+  const [authState, setAuthState] = useState("checking"); // checking|out|in
+  const [user, setUser] = useState(null);
+  const [signinBusy, setSigninBusy] = useState(false);
+  const [signinError, setSigninError] = useState(null);
+
   const [sessions, setSessions] = useState(() => loadSessions());
   const [activeId, setActiveId] = useState(() => loadSessions()[0]?.id ?? null);
   const [draft, setDraft] = useState("");
@@ -20,6 +35,70 @@ export default function App() {
   const pinnedToBottom = useRef(true);
 
   useEffect(() => saveSessions(sessions), [sessions]);
+
+  // One /auth/me on load. The cookie is httpOnly, so asking the server is the
+  // only way to know whether there is a session - there is nothing readable
+  // in the browser to check first.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((me) => {
+        if (cancelled) return;
+        setUser(me);
+        setAuthState(me ? "in" : "out");
+      })
+      .catch(() => {
+        // A backend outage is not a logged-out user, but there is nothing
+        // useful to render either - the sign-in screen at least offers an
+        // action, and the error explains why it may not work yet.
+        if (cancelled) return;
+        setAuthState("out");
+        setSigninError(SIGNIN_UNREACHABLE);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCredential = useCallback(async (idToken) => {
+    setSigninBusy(true);
+    setSigninError(null);
+    try {
+      const me = await signInWithGoogle(idToken);
+      setUser(me);
+      setAuthState("in");
+    } catch {
+      setSigninError(SIGNIN_FAILED);
+    } finally {
+      setSigninBusy(false);
+    }
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+    try {
+      await logout();
+    } finally {
+      // Local state resets either way: if the network call failed the cookie
+      // may survive, but leaving the UI in a signed-in state it cannot use is
+      // worse than showing the sign-in screen.
+      //
+      // localStorage chat history is deliberately NOT cleared - it is
+      // browser-scoped, not identity-scoped, in this phase.
+      setUser(null);
+      setAuthState("out");
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  /** The session went away mid-use (expired, or logged out in another tab). */
+  const handleUnauthorized = useCallback(() => {
+    setUser(null);
+    setAuthState("out");
+    setSigninError("Ta session a expiré. Reconnecte-toi pour continuer.");
+  }, []);
 
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -151,6 +230,13 @@ export default function App() {
             warnings: done.warnings ?? [],
           })),
         onError: (message) => patchLast(sessionId, { error: message, status: "error" }),
+        onUnauthorized: () => {
+          patchLast(sessionId, {
+            error: "Ta session a expiré. Reconnecte-toi pour continuer.",
+            status: "error",
+          });
+          handleUnauthorized();
+        },
       }
     )
       .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))
@@ -166,7 +252,29 @@ export default function App() {
             : m
         );
       });
-  }, [draft, streaming, active, handleNew, patchLast]);
+  }, [draft, streaming, active, handleNew, patchLast, handleUnauthorized]);
+
+  // Neither the chat nor the sign-in screen, until /auth/me has answered -
+  // rendering either one early means a visible flash of the wrong app.
+  if (authState === "checking") {
+    return (
+      <div className="boot" role="status" aria-live="polite">
+        <span className="brand">Fahem</span>
+        <span className="boot-dots" aria-hidden="true" />
+        <span className="sr-only">Chargement…</span>
+      </div>
+    );
+  }
+
+  if (authState === "out") {
+    return (
+      <SignInScreen
+        onCredential={handleCredential}
+        busy={signinBusy}
+        error={signinError}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -182,6 +290,8 @@ export default function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         scopeLabel={SCOPE_LABEL}
+        user={user}
+        onLogout={handleLogout}
       />
 
       <main className="main">
