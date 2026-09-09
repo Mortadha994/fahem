@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from slowapi.errors import RateLimitExceeded
 
 import auth
+import chapters
 import gatekeeper
 import models
 import ratelimit
@@ -111,6 +112,11 @@ app.add_exception_handler(RateLimitExceeded, ratelimit.rate_limit_handler)
 # Sign-in, session read and sign-out. Included after app.state.limiter is set
 # because auth.py's /auth/google carries its own IP-based limit.
 app.include_router(auth.router)
+
+# Chapter catalogue, exercises and the lesson PDF (Phase 3a). Every route
+# behind get_current_user; none rate-limited, since none of them reach a
+# model - see chapters.py's module docstring.
+app.include_router(chapters.router)
 
 
 # Store keys are normalised and unaccented ("2eme"); a student should not see
