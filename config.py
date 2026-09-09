@@ -9,7 +9,7 @@ logic where it was; only the values moved.
 Backwards compatibility note: generate.py and rag_store.py re-export the
 names they previously defined, so existing imports elsewhere
 (`from generate import GROQ_MODEL, GROQ_URL` in llm_stream.py,
-`from rag_store import DEFAULT_DB_DIR` in context.py/test_retrieval.py)
+`from rag_store import QDRANT_URL` in context.py/test_retrieval.py)
 keep working untouched.
 """
 
@@ -53,11 +53,20 @@ EMBEDDING_MODEL_NAME = os.environ.get(
 )
 COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "algorithmique")
 
-# Both are CWD-relative on purpose: the container bind-mounts ./chroma_db and
-# ./chunks.json onto /app, which is also the WORKDIR, so a relative path
-# resolves to the mounted copy in Docker and to the repo copy locally.
-# Changing these to absolute paths would break the compose mounts.
-DEFAULT_DB_DIR = Path(os.environ.get("CHROMA_DB_DIR", "chroma_db"))
+# Qdrant replaced Chroma as the vector store in Phase 0b. The practical
+# difference for this file: the store is no longer a directory on disk, it is
+# a service over HTTP, so there is no path to keep CWD-relative any more.
+#
+# The default targets localhost, which is what a developer running scripts on
+# the host gets through the published 6333 port. Inside Docker the compose
+# file overrides the host portion with the `qdrant` service name - same
+# reasoning as DATABASE_URL below.
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+
+# Kept CWD-relative on purpose: the container bind-mounts ./chunks.json onto
+# /app, which is also the WORKDIR, so a relative path resolves to the mounted
+# copy in Docker and to the repo copy locally. Making it absolute would break
+# the compose mount.
 DEFAULT_CHUNKS = Path(os.environ.get("CHUNKS_PATH", "chunks.json"))
 
 

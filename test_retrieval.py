@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rag_store import DEFAULT_DB_DIR, get_collection
+from rag_store import QDRANT_URL, count, scroll_scope
 from retrieval import format_hit, retrieve
 
 DEFAULT_PROBLEMS = Path("sample_problems.json")
@@ -30,16 +30,20 @@ def load_problems(path: Path) -> list[dict[str, Any]]:
     return problems
 
 
-def known_scopes(db_dir: Path) -> set[tuple[str, str]]:
-    """Every (niveau, chapitre) pair actually present in the store."""
-    collection = get_collection(db_dir)
-    if collection.count() == 0:
-        return set()
-    metas = collection.get(include=["metadatas"])["metadatas"]
-    return {(str(m.get("niveau")), str(m.get("chapitre"))) for m in metas}
+def known_scopes(url: str) -> set[tuple[str, str]]:
+    """Every (niveau, chapitre) pair actually present in the store.
+
+    An empty store yields an empty set on its own now - scroll_scope()
+    returns nothing when the collection is missing, so the explicit
+    count()-guard Chroma needed is gone rather than reimplemented.
+    """
+    return {
+        (str((r.payload or {}).get("niveau")), str((r.payload or {}).get("chapitre")))
+        for r in scroll_scope(url=url)
+    }
 
 
-def run_problem(problem: dict[str, Any], k: int, db_dir: Path, max_chars: int) -> int:
+def run_problem(problem: dict[str, Any], k: int, url: str, max_chars: int) -> int:
     """Print retrieval results for one problem. Returns the number of hits."""
     pid = problem.get("id", "?")
     question = problem.get("question") or problem.get("enonce") or ""
@@ -56,7 +60,7 @@ def run_problem(problem: dict[str, Any], k: int, db_dir: Path, max_chars: int) -
         print()
         return 0
 
-    hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, db_dir=db_dir)
+    hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, url=url)
     if not hits:
         print("  no chunks retrieved in this scope")
     for i, hit in enumerate(hits, 1):
@@ -75,7 +79,7 @@ def run_problem(problem: dict[str, Any], k: int, db_dir: Path, max_chars: int) -
     return len(hits)
 
 
-def scope_leak_check(problems: list[dict[str, Any]], db_dir: Path, k: int) -> None:
+def scope_leak_check(problems: list[dict[str, Any]], url: str, k: int) -> None:
     """Sanity check that the where clause really is a hard filter.
 
     Re-runs the first problem against every *other* scope in the store: anything
@@ -85,7 +89,7 @@ def scope_leak_check(problems: list[dict[str, Any]], db_dir: Path, k: int) -> No
     print("SCOPE FILTER CHECK")
     print("-" * 78)
 
-    scopes = known_scopes(db_dir)
+    scopes = known_scopes(url)
     if len(scopes) < 2:
         print(
             f"  only {len(scopes)} scope(s) ingested - "
@@ -103,7 +107,7 @@ def scope_leak_check(problems: list[dict[str, Any]], db_dir: Path, k: int) -> No
 
     leaks = 0
     for niveau, chapitre in sorted(scopes):
-        hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, db_dir=db_dir)
+        hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, url=url)
         bad = [h for h in hits if (h.niveau, h.chapitre) != (niveau, chapitre)]
         leaks += len(bad)
         marker = "OK " if not bad else "LEAK"
@@ -125,7 +129,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect retrieval output. No LLM.")
     parser.add_argument("--problems", type=Path, default=DEFAULT_PROBLEMS)
     parser.add_argument("-k", type=int, default=5)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_DIR)
+    parser.add_argument("--url", default=QDRANT_URL, help="Qdrant base URL")
     parser.add_argument(
         "--max-chars",
         type=int,
@@ -135,24 +139,24 @@ def main() -> None:
     parser.add_argument("--no-leak-check", action="store_true")
     args = parser.parse_args()
 
-    collection = get_collection(args.db)
-    if collection.count() == 0:
+    total_points = count(args.url)
+    if total_points == 0:
         raise SystemExit(
-            f"Chroma collection at {args.db}/ is empty. Ingest first:\n"
+            f"Qdrant collection at {args.url} is empty. Ingest first:\n"
             "  python rag_store.py --chunks chunks.json"
         )
-    print(f"Store: {collection.count()} chunk(s) in {args.db}/")
-    scopes = sorted(known_scopes(args.db))
+    print(f"Store: {total_points} chunk(s) at {args.url}")
+    scopes = sorted(known_scopes(args.url))
     print("Scopes present: " + ", ".join(f"{n}/ch{c}" for n, c in scopes))
     print()
 
     problems = load_problems(args.problems)
     total = 0
     for problem in problems:
-        total += run_problem(problem, args.k, args.db, args.max_chars)
+        total += run_problem(problem, args.k, args.url, args.max_chars)
 
     if not args.no_leak_check:
-        scope_leak_check(problems, args.db, args.k)
+        scope_leak_check(problems, args.url, args.k)
 
     print("=" * 78)
     print(f"{len(problems)} problem(s), {total} chunk(s) retrieved in total.")
