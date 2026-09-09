@@ -1,5 +1,12 @@
 export default function Sidebar({
-  sessions, activeId, onSelect, onNew, onDelete, open, onClose, scopeLabel,
+  sessions,
+  activeId,
+  onSelect,
+  onNew,
+  onDelete,
+  open,
+  onClose,
+  scopeLabel,
 }) {
   return (
     <>
@@ -25,7 +32,11 @@ export default function Sidebar({
               key={s.id}
               className={`session ${s.id === activeId ? "session-active" : ""}`}
             >
-              <button type="button" className="session-btn" onClick={() => onSelect(s.id)}>
+              <button
+                type="button"
+                className="session-btn"
+                onClick={() => onSelect(s.id)}
+              >
                 <span className="session-title">{s.title}</span>
                 <span className="session-sub">
                   {s.niveau} · ch. {s.chapitre}

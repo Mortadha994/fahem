@@ -21,10 +21,19 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
-COLLECTION_NAME = "algorithmique"
-DEFAULT_DB_DIR = Path("chroma_db")
-DEFAULT_CHUNKS = Path("chunks.json")
+# Config moved to config.py; re-exported here so existing imports keep
+# working unchanged - context.py and test_retrieval.py both do
+# `from rag_store import DEFAULT_DB_DIR, get_collection`.
+from config import (  # noqa: F401  (re-exported for backwards compatibility)
+    COLLECTION_NAME,
+    DEFAULT_CHUNKS,
+    DEFAULT_DB_DIR,
+    EMBEDDING_MODEL_NAME,
+)
+
+# Kept as the module's own name: this file's log lines and CLI help refer to
+# MODEL_NAME, and the value is the embedding model specifically.
+MODEL_NAME = EMBEDDING_MODEL_NAME
 
 # Metadata keys we require on every chunk. niveau + chapitre drive the hard
 # retrieval filter, so a chunk missing either of them is unusable.
@@ -174,8 +183,14 @@ def ingest(
         try:
             client.delete_collection(COLLECTION_NAME)
             print(f"Dropped existing collection '{COLLECTION_NAME}'")
-        except Exception:
-            pass
+        except Exception as exc:
+            # A missing collection is the normal case on a first --reset run,
+            # so this stays non-fatal - but it used to `pass` silently, which
+            # made a genuinely failed drop (locked file, permissions, a
+            # corrupt store) look exactly like a successful one, and the
+            # re-ingest below would then quietly append to a collection the
+            # caller believed was empty.
+            print(f"Could not drop collection '{COLLECTION_NAME}': {type(exc).__name__}: {exc}")
 
     collection = get_collection(db_dir)
     ids, docs, metas = prepare(chunks)

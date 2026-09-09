@@ -31,7 +31,11 @@ const COMPONENTS = { th: AlgoHeaderCell, td: AlgoBodyCell };
 export default function Markdown({ children }) {
   return (
     <div className="md">
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={COMPONENTS}>
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={COMPONENTS}
+      >
         {children}
       </ReactMarkdown>
     </div>

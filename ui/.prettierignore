@@ -1,0 +1,7 @@
+dist
+node_modules
+package-lock.json
+# Shiki grammar: hand-authored regex patterns with deliberate formatting and
+# an inline "_comment" block explaining each scope. Reflowing it makes the
+# patterns harder to read without making them any more correct.
+src/grammar/algoPseudocode.json

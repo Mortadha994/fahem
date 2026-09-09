@@ -27,6 +27,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # as bind mounts - see docker-compose.yml.
 COPY *.py ./
 
+# Migrations. Separate COPY lines because `COPY *.py` above matches neither the
+# ini file nor the alembic/ directory, so `alembic upgrade head` inside the
+# container would fail on a missing config rather than a missing database.
+COPY alembic.ini ./
+COPY alembic ./alembic
+
 EXPOSE 8000
 
 # curl is not in -slim, so the check goes through the interpreter that is.

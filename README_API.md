@@ -87,9 +87,12 @@ internals in error text" is a separate threshold from "add a login".
       repo declines to. Before opening this up, decide whether excerpts are
       gated behind whatever identifies a legitimate student, or trimmed to
       the pinned tables only.
-- [ ] **Restrict CORS to the real origin.** `allow_origins` currently lists
-      localhost dev ports (5173 and 5174) only, which is correct for now and
-      wrong the moment this is hosted anywhere.
+- [x] **Restrict CORS to the real origin.** No longer a code change: origins
+      come from the `CORS_ORIGINS` env var (comma-separated) via `config.py`,
+      defaulting to the same localhost dev ports (5173, 5174). Set the var to
+      the real origin when hosting — but note the default is still permissive
+      for local dev, so a deployment that *forgets* to set it falls back to
+      localhost-only rather than to a wildcard, which fails closed.
 
 ## Notes
 
@@ -98,3 +101,28 @@ internals in error text" is a separate threshold from "add a login".
 - `niveau` is stored/queried unaccented (`2eme`) and shown to the student
   accented (`2ème`) via `niveau_label()`. Requests should send the raw
   store form.
+
+## Gatekeeper (added after the pre-launch list above)
+
+Every request to `/solve` and `/solve/stream` now passes through
+`gatekeeper.py` before `build_context` runs:
+
+- **> 2000 characters** → fixed decline, zero model calls.
+- **Classifier** (one cheap call, output forced to one of three words) →
+  `PROBLEM` continues to the unchanged pipeline; `META` goes to a
+  zero-context responder; `OFF_TOPIC` gets a fixed decline with no further
+  model call. Anything unparseable falls back to `OFF_TOPIC` — the only
+  branch that makes no further calls and never touches curriculum content.
+- **Meta replies** are checked before being returned (length cap,
+  system-prompt phrases, algorithm-shaped content); a failure returns the
+  same decline sentence.
+
+For `/solve/stream`, gatekeeper replies reuse the existing SSE contract
+exactly — a `meta` event with empty `pinned`/`retrieved`, one `delta`, and a
+clean `done` — so the frontend needs no special handling and the grounding
+strip and constraint badge correctly stay hidden.
+
+This does **not** change the exposure noted above: a `PROBLEM`-classified
+request still receives the full pinned/retrieved excerpts in its `meta`
+event. The gatekeeper reduces *how many* requests reach that path; it does
+not gate who may receive curriculum text once they do.

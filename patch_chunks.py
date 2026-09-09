@@ -52,14 +52,14 @@ PATCHES: list[tuple[int, str, str, int]] = [
     # All cours content in section VI, so all inside the solve-mode pool.
     # Note "22-23" below is a real hyphen inside a string literal - which is
     # exactly why these are pinned rather than pattern-matched.
-    (12, 'Ch - sous_chaine(', f"Ch {ARROW} sous_chaine(", 1),
-    (12, 'Ch - Effacer(', f"Ch {ARROW} Effacer(", 1),
-    (12, 'Ch1 - Convch (', f"Ch1 {ARROW} Convch (", 1),
-    (12, 'CH2 - Convch(', f"CH2 {ARROW} Convch(", 1),
-    (12, 'B - Estnum(', f"B {ARROW} Estnum(", 1),
-    (12, 'X1 - valeur(', f"X1 {ARROW} valeur(", 1),
-    (12, 'X2 - valeur(', f"X2 {ARROW} valeur(", 1),
-    (12, 'X3 - valeur(', f"X3 {ARROW} valeur(", 1),
+    (12, "Ch - sous_chaine(", f"Ch {ARROW} sous_chaine(", 1),
+    (12, "Ch - Effacer(", f"Ch {ARROW} Effacer(", 1),
+    (12, "Ch1 - Convch (", f"Ch1 {ARROW} Convch (", 1),
+    (12, "CH2 - Convch(", f"CH2 {ARROW} Convch(", 1),
+    (12, "B - Estnum(", f"B {ARROW} Estnum(", 1),
+    (12, "X1 - valeur(", f"X1 {ARROW} valeur(", 1),
+    (12, "X2 - valeur(", f"X2 {ARROW} valeur(", 1),
+    (12, "X3 - valeur(", f"X3 {ARROW} valeur(", 1),
 ]
 
 
@@ -72,15 +72,11 @@ def apply(chunks_path: Path) -> int:
         targets = [c for c in chunks if c.get("page") == page and old in c.get("content", "")]
 
         if not targets:
-            already = [
-                c for c in chunks if c.get("page") == page and new in c.get("content", "")
-            ]
+            already = [c for c in chunks if c.get("page") == page and new in c.get("content", "")]
             if already:
                 print(f"  page {page}: already patched, skipping")
                 continue
-            failures.append(
-                f"page {page}: target not found and not already patched:\n    {old!r}"
-            )
+            failures.append(f"page {page}: target not found and not already patched:\n    {old!r}")
             continue
 
         if len(targets) != expected:
@@ -103,9 +99,7 @@ def apply(chunks_path: Path) -> int:
         raise SystemExit(1)
 
     if applied:
-        chunks_path.write_text(
-            json.dumps(chunks, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        chunks_path.write_text(json.dumps(chunks, ensure_ascii=False, indent=2), encoding="utf-8")
     return applied
 
 
@@ -163,9 +157,7 @@ def verify(chunks_path: Path) -> None:
                 head = stripped[: match.start()]
                 if any(tok in head for tok in SUBTRACTION_MARKERS):
                     continue
-                suspects.append(
-                    (chunk.get("page", 0), chunk.get("section", "?"), stripped)
-                )
+                suspects.append((chunk.get("page", 0), chunk.get("section", "?"), stripped))
 
     print(f"\nVisual check: {arrows} '{ARROW}' present in chunks.json")
     if suspects:

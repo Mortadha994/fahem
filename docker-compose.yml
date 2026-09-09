@@ -9,10 +9,46 @@ name: fahem
 #   API http://localhost:8000/health
 
 services:
+  # Relational store: users, chat sessions, chat messages. Nothing in the app
+  # reads it yet (Phase 0a) - it exists so migrations and the data layer have
+  # something real to run against.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fahem
+      POSTGRES_PASSWORD: fahem
+      POSTGRES_DB: fahem
+    ports:
+      # Exposed so host-side scripts (alembic, test_db.py) can reach it with
+      # config.py's localhost default, without going through the container.
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      # -U/-d matter: bare pg_isready reports ready while the init scripts are
+      # still creating the role and database, so backend would connect to a
+      # server that has no `fahem` user yet.
+      test: ["CMD-SHELL", "pg_isready -U fahem -d fahem"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   backend:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      # Overrides config.py's localhost default: inside the container,
+      # localhost is the container itself, not the database beside it.
+      DATABASE_URL: postgresql+psycopg://fahem:fahem@postgres:5432/fahem
+    depends_on:
+      postgres:
+        # service_healthy, not the default service_started: Postgres accepts
+        # TCP well before it accepts queries, so plain start ordering just
+        # moves the race rather than removing it.
+        condition: service_healthy
     # GROQ_API_KEY lives here. .env is gitignored; .env.example is the
     # committed template. generate.py's own loader uses setdefault, so what
     # compose injects wins over the file baked next to the source.
@@ -49,3 +85,4 @@ services:
 
 volumes:
   hf-cache:
+  pg-data:

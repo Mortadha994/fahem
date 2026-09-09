@@ -256,9 +256,7 @@ def build_check(context: Context) -> list[str]:
     pinned_ids = {p.chunk_id for p in context.pinned}
     duplicated = [h for h in context.retrieved if h.chunk_id in pinned_ids]
     if duplicated:
-        failures.append(
-            f"{len(duplicated)} retrieved chunk(s) duplicate pinned content"
-        )
+        failures.append(f"{len(duplicated)} retrieved chunk(s) duplicate pinned content")
 
     if not context.retrieved:
         failures.append("retrieval added nothing")

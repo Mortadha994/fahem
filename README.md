@@ -133,8 +133,34 @@ python generate.py --temperature 0          # deterministic-ish
 cd ui && npm install && npm run dev
 ```
 
-Vite prints the URL it picks. If it is not 5173, add that origin to the CORS
-allowlist in `api.py`.
+Vite prints the URL it picks. 5173 and 5174 are allowed by default; for any
+other port, set the `CORS_ORIGINS` env var (comma-separated) rather than
+editing code.
+
+### 7. Or run both in Docker
+
+```bash
+docker compose up --build -d      # UI on :5173, API on :8000
+docker compose logs -f backend
+```
+
+`chroma_db/`, `chunks.json`, `sample_problems.json` and `data/` are
+bind-mounted, so the index you built locally is the one the container uses,
+and rebuilding the image does not discard it. `GROQ_API_KEY` comes from
+`.env` via compose's `env_file`. The frontend image bakes `VITE_API_URL` at
+build time — changing the backend URL means rebuilding that image.
+
+**Configuration.** Everything tunable is in `config.py`, read from env with
+working defaults, so no edit is needed for local use:
+
+| Variable | Default |
+|---|---|
+| `GROQ_API_KEY` | *(required)* |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` |
+| `CORS_ORIGINS` | localhost 5173/5174 |
+| `CHROMA_DB_DIR` / `CHUNKS_PATH` | `chroma_db` / `chunks.json` |
+| `GATEKEEPER_MAX_INPUT_CHARS` | `2000` |
+| `GATEKEEPER_ROUTER_MAX_TOKENS` / `_META_MAX_TOKENS` | `250` / `250` |
 
 ---
 
@@ -150,6 +176,16 @@ before presenting it. Across every test round the trace has confirmed already
 correct work; it has never had an error to catch, so there is no evidence it
 would catch one.
 
+**Not every message reaches the pipeline.** `gatekeeper.py` classifies each
+incoming message first: `PROBLEM` goes to the RAG pipeline unchanged, `META`
+("what is this?", "what does chapter 1 cover?") is answered by a second model
+that has *no* retrieval and *no* pinned tables in its context — so it has
+nothing curriculum-related to leak even if fully compromised — and
+`OFF_TOPIC` gets a fixed sentence with no model call at all. Messages over
+2000 characters are declined before any model call. A meta reply is also
+run through an output-side check (length, system-prompt phrases,
+algorithm-shaped content) before it is shown.
+
 **Retrieval is symmetric.** Queries are instructions ("Ecrire un programme
 qui…") and the corpus is exposition, so scoring rewards shared vocabulary over
 relevance. This is why the syntax core is pinned rather than retrieved. An
@@ -160,17 +196,75 @@ deferred until a chapter's universal table set is too large to curate by hand.
 
 ## Layout
 
+### Where does X live?
+
+**Backend** (flat at repo root — deliberately, see *Structure notes* below)
+
 ```
-extract_chapter.py   PDF → tagged chunks
-patch_chunks.py      pinned corrections + standing arrow check
-rag_store.py         embedding + Chroma storage
-retrieval.py         scope-filtered semantic search
+config.py            all env/config: endpoints, model names, paths, limits
+api.py               FastAPI app: /health, /solve, /solve/stream
+gatekeeper.py        routes each message PROBLEM / META / OFF_TOPIC before
+                     the pipeline sees it; meta-responder + output safety net
+checker.py           the constraint checker (rules, patterns, thresholds)
+generate.py          Groq/Ollama HTTP clients + CLI harness
+llm_stream.py        streaming Groq call; filters the reasoning channel
+prompts.py           the teaching constraints (generation prompt)
 context.py           pinned syntax core + retrieved extras
-prompts.py           the teaching constraints
-generate.py          model call + constraint checking
-api.py               POST /solve
-ui/                  React frontend
+retrieval.py         scope-filtered semantic search
+rag_store.py         embedding + Chroma storage
+extract_chapter.py   PDF → tagged chunks          (offline tool)
+patch_chunks.py      pinned corrections           (offline tool)
 ```
+
+**Frontend** (`ui/src`)
+
+```
+config.js            NIVEAU / CHAPITRE / SCOPE_LABEL / API_URL
+App.jsx              session state, streaming orchestration, layout
+App.css              all styling
+components/          Message, Composer, Sidebar, Markdown, AlgoCode,
+                     GroundingStrip
+lib/                 api.js (SSE client), sessions.js (localStorage),
+                     algoHighlighter.js, remarkAlgoTable.js,
+                     hasRealSolution.js
+grammar/             algoPseudocode.json (TextMate grammar), algoThemes.js
+```
+
+**Tests**
+
+```
+test_checker.py               real pass/fail suite for checker.py (16 cases)
+test_retrieval.py             retrieval inspection harness (no assertions)
+test_gatekeeper_adversarial.py  adversarial transcripts (no assertions)
+```
+
+### Structure notes
+
+The backend is intentionally flat rather than split into packages. A
+restructure was scoped and deliberately kept conservative: only the
+constraint checker was extracted out of `generate.py` (which was doing HTTP
+clients *and* the checker *and* a CLI), because only the checker has a real
+test suite behind it. `llm_stream.py`, `api.py`, and the RAG modules
+(`rag_store.py`, `retrieval.py`, `context.py`) were left in place — their
+behaviour is subtle (the reasoning-channel filter, the SSE generator, the pin
+anchors) and nothing but manual verification would catch a mistake in moving
+them.
+
+`config.py` is the single source for values that used to be scattered.
+`generate.py` and `rag_store.py` re-export the names they used to define, so
+older imports elsewhere keep working.
+
+### Linting and formatting
+
+```bash
+.venv/Scripts/python.exe -m ruff check .     # lint
+.venv/Scripts/python.exe -m ruff format .    # format
+cd ui && npm run lint && npm run format      # oxlint + prettier
+```
+
+Config lives in `pyproject.toml` (ruff) and `ui/.prettierrc.json` +
+`ui/.oxlintrc.json`. `E501` is off and `F401` is ignored in the two
+re-exporting modules — both deliberate, see the comments in `pyproject.toml`.
 
 ## Status
 

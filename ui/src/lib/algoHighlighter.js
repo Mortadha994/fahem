@@ -1,6 +1,6 @@
 import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import grammar from "../grammar/algo-pseudocode.json";
+import grammar from "../grammar/algoPseudocode.json";
 import { algoLightTheme, algoDarkTheme } from "../grammar/algoThemes.js";
 
 // The pure-JS regex engine (oniguruma-to-es under the hood) rather than the
@@ -47,7 +47,10 @@ export function onAlgoHighlighterReady(cb) {
  */
 export function tokenizeAlgoLine(line) {
   if (!highlighter || !line) return null;
-  const [tokens] = highlighter.codeToTokensWithThemes(line, { lang: LANG, themes: THEMES });
+  const [tokens] = highlighter.codeToTokensWithThemes(line, {
+    lang: LANG,
+    themes: THEMES,
+  });
   return tokens.map((t) => ({
     text: t.content,
     light: t.variants.light?.color,
