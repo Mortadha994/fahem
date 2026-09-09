@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+import auth
 import gatekeeper
 from checker import check_constraints
 from config import CORS_ORIGINS
@@ -62,12 +63,28 @@ app = FastAPI(
 # the CORS_ORIGINS env var (comma-separated) and defaults to the same
 # localhost dev ports this list used to hardcode - so local dev is unchanged,
 # but a deployment can set the real origin without editing this file.
+#
+# allow_credentials=True is what lets the browser send and store the session
+# cookie auth.py issues. It is safe here only because allow_origins is an
+# explicit allowlist - the CORS spec forbids pairing credentials with "*",
+# and Starlette silently ignores the wildcard in that combination rather than
+# erroring, so an origins list that ever becomes ["*"] would break auth
+# quietly instead of loudly.
+#
+# This does not change anything for the existing anonymous requests: /solve
+# and /solve/stream send no credentials, and a request without credentials is
+# unaffected by the header this adds.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
 )
+
+# Sign-in, session read and sign-out. Additive: no existing route gained an
+# auth requirement, and auth.get_current_user is applied to nothing here.
+app.include_router(auth.router)
 
 
 # Store keys are normalised and unaccented ("2eme"); a student should not see

@@ -8,3 +8,14 @@ uvicorn[standard]>=0.30.0
 sqlalchemy>=2.0.0
 alembic>=1.13.0
 psycopg[binary]>=3.2.0
+
+# Auth (Phase 0c). google-auth verifies Google ID tokens against Google's
+# published keys. PyJWT signs/verifies our own session cookie: chosen over
+# python-jose, which has had no release since 2021 and carried CVE-2024-33663
+# / CVE-2024-33664 - PyJWT is narrower, actively maintained, and is what
+# FastAPI's own security docs use.
+# [requests] is not optional for us: google.auth.transport.requests, which
+# verify_oauth2_token needs to fetch Google's public keys, raises ImportError
+# at import time without it. Plain `google-auth` installs but cannot verify.
+google-auth[requests]>=2.30.0
+PyJWT>=2.8.0
