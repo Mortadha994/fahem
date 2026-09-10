@@ -16,6 +16,70 @@
   --err: #b3261e;
   --err-bg: #fdecea;
   color-scheme: light dark;
+
+  /* --- scales (Step 1 of the frontend audit) ----------------------------
+     The colour tokens above were the only system this stylesheet had. These
+     add the rest: spacing, radius, type, elevation, motion, focus, layout.
+
+     Applied so far only where the resulting value is byte-identical to what
+     was already there, so this step is not supposed to change how anything
+     looks. The exception is deliberate and approved: body text moves 15px ->
+     16px, which reflows text-heavy areas on purpose.
+
+     Values that do NOT sit on these scales were left as raw numbers rather
+     than snapped, because snapping is a visual change and belongs in its own
+     reviewable pass. docs/frontend-design-audit.md carries the list. */
+
+  /* Spacing - 4px base. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Radius - the eleven values in this file collapse to these four. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* Type. --text-base is 16px, not the 15px the file used: the one place
+     this step accepts a visual change. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 1rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --leading-tight: 1.3;
+  --leading-normal: 1.55;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Elevation. Nothing consumes these yet - the UI is deliberately flat and
+     giving it depth is a later step. They are defined here so that when a
+     dropdown or dialog needs to sit above the page there is one answer
+     rather than an invented shadow. */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.08);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.1);
+
+  /* Motion. */
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+
+  /* Focus. Double ring: the inner band matches the page so the outer accent
+     ring stays visible on --bg and on the darker --side, where a single ring
+     against the sidebar would disappear. Not applied yet. */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* Layout constants that were repeated as literals. */
+  --content-max: 62rem;
+  --sidebar-w: 264px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -32,6 +96,14 @@
     --warn-bg: #33280f;
     --err: #ff8f87;
     --err-bg: #3a1d1a;
+
+    /* Shadows are restated, not inherited. The light-mode values are tuned
+       against a white page; at 6-8% on a #1c1c1f ground they are close to
+       invisible, so a surface that is meant to float just looks smudged.
+       Raising the opacity and the spread is what makes elevation read at
+       all on a dark background. */
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.55);
   }
 }
 
@@ -47,11 +119,12 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font:
-    15px/1.55 system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  /* Longhands, not the `font` shorthand, so the tokens can be used. The
+     shorthand also reset font-weight/style, which nothing here relied on.
+     15px -> 16px is the deliberate, approved reflow. */
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
 }
 
 /* ---------- shell: only .messages scrolls ---------- */
@@ -73,12 +146,12 @@ body {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.25rem 1rem 2rem;
+  padding: 1.25rem var(--space-4) var(--space-6);
 }
 
 /* ---------- sidebar ---------- */
 .sidebar {
-  width: 264px;
+  width: var(--sidebar-w);
   flex-shrink: 0;
   background: var(--side);
   border-right: 1px solid var(--line);
@@ -97,14 +170,14 @@ body {
 }
 .btn-new {
   width: 100%;
-  padding: 0.5rem 0.7rem;
+  padding: var(--space-2) 0.7rem;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .btn-new:hover {
   border-color: var(--accent);
@@ -113,17 +186,17 @@ body {
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  padding: var(--space-2);
 }
 .session-empty {
   color: var(--fg-dim);
   font-size: 0.85rem;
-  padding: 0.5rem;
+  padding: var(--space-2);
 }
 .session {
   display: flex;
   align-items: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .session:hover {
   background: var(--bg-alt);
@@ -138,7 +211,7 @@ body {
   background: none;
   border: 0;
   cursor: pointer;
-  padding: 0.5rem 0.6rem;
+  padding: var(--space-2) 0.6rem;
   font: inherit;
   color: inherit;
 }
@@ -150,7 +223,7 @@ body {
 }
 .session-sub {
   display: block;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .session-del {
@@ -159,7 +232,7 @@ body {
   cursor: pointer;
   color: var(--fg-dim);
   font-size: 1.1rem;
-  padding: 0 0.5rem;
+  padding: 0 var(--space-2);
   opacity: 0;
 }
 .session:hover .session-del {
@@ -169,7 +242,7 @@ body {
   margin: 0;
   padding: 0.7rem 0.85rem;
   border-top: 1px solid var(--line);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 
@@ -178,7 +251,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.6rem 1rem;
+  padding: 0.6rem var(--space-4);
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
@@ -203,7 +276,7 @@ body {
 }
 .empty h1 {
   font-size: 1.5rem;
-  margin: 0 0 0.5rem;
+  margin: 0 0 var(--space-2);
 }
 .empty p {
   color: var(--fg-dim);
@@ -222,7 +295,7 @@ body {
 .msg-user .bubble {
   background: var(--bg-alt);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 0.6rem 0.85rem;
   max-width: 80%;
   white-space: pre-wrap;
@@ -269,7 +342,7 @@ body {
   display: inline-block;
   margin-top: 0.6rem;
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.78rem;
   font-weight: 600;
 }
@@ -294,7 +367,7 @@ body {
 .error {
   background: var(--err-bg);
   color: var(--err);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.7rem 0.9rem;
 }
 
@@ -311,7 +384,7 @@ body {
   background: none;
   border: 0;
   cursor: pointer;
-  padding: 0.55rem 0.75rem;
+  padding: 0.55rem var(--space-3);
   font: inherit;
   font-size: 0.85rem;
   color: var(--fg-dim);
@@ -325,10 +398,10 @@ body {
   color: var(--fg-dim);
 }
 .grounding-body {
-  padding: 0 0.75rem 0.7rem;
+  padding: 0 var(--space-3) 0.7rem;
 }
 .ground-group {
-  margin: 0.5rem 0 0.3rem;
+  margin: var(--space-2) 0 0.3rem;
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -361,7 +434,7 @@ body {
   min-width: 0;
 }
 .ground-meta {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   white-space: nowrap;
 }
@@ -370,7 +443,7 @@ body {
   padding: 0.6rem 0.7rem;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 0.78rem;
   line-height: 1.5;
   white-space: pre;
@@ -385,7 +458,7 @@ body {
 .md h2,
 .md h3 {
   font-size: 1.05rem;
-  margin: 1.2rem 0 0.5rem;
+  margin: 1.2rem 0 var(--space-2);
 }
 .md p,
 .md ul,
@@ -422,12 +495,12 @@ body {
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
   font-size: 0.88em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .md pre {
   background: var(--bg-alt);
   padding: 0.7rem 0.8rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
 }
 .md pre code {
@@ -445,7 +518,7 @@ body {
 .algo-col-cell {
   background: var(--bg-alt) !important;
   border-left: 3px solid var(--accent) !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
 }
 .algo-col-header {
@@ -455,10 +528,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--space-2);
   padding: 0.35rem 0.55rem;
   border-bottom: 1px solid var(--line);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 .algo-header-label {
@@ -501,13 +574,13 @@ body {
 .composer {
   border-top: 1px solid var(--line);
   background: var(--bg);
-  padding: 0.7rem 1rem 1rem;
+  padding: 0.7rem var(--space-4) var(--space-4);
 }
 .composer-inner {
   max-width: 52rem;
   margin: 0 auto;
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: flex-end;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -532,7 +605,7 @@ body {
 .btn-send,
 .btn-stop {
   flex-shrink: 0;
-  padding: 0.5rem 0.9rem;
+  padding: var(--space-2) 0.9rem;
   font: inherit;
   font-weight: 600;
   border: 0;
@@ -565,7 +638,7 @@ body {
 .composer-hint {
   max-width: 52rem;
   margin: 0.4rem auto 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 
@@ -666,7 +739,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: var(--space-5);
   background: var(--bg-alt);
 }
 .signin-card {
@@ -674,8 +747,8 @@ body {
   max-width: 27rem;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 2rem 1.75rem 1.5rem;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) 1.75rem var(--space-5);
   text-align: center;
 }
 .signin-brand {
@@ -722,7 +795,7 @@ body {
 }
 .signin-foot {
   margin: 1.6rem 0 0;
-  padding-top: 1rem;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--line);
   font-size: 0.72rem;
   color: var(--fg-dim);
@@ -775,7 +848,7 @@ body {
   background: none;
   border: 1px solid var(--line);
   border-radius: 7px;
-  padding: 0.28rem 0.5rem;
+  padding: 0.28rem var(--space-2);
   font: inherit;
   font-size: 0.7rem;
   color: var(--fg-dim);
@@ -807,8 +880,8 @@ body {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 0.9rem;
+  gap: var(--space-4);
+  padding: var(--space-2) 0.9rem;
   background: var(--side);
   border-bottom: 1px solid var(--line);
 }
@@ -839,7 +912,7 @@ body {
 }
 .appbar-cta {
   padding: 0.32rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--accent);
   font-size: 0.85rem;
   color: var(--accent);
@@ -854,7 +927,7 @@ body {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   min-width: 0;
 }
 .appbar-name {
@@ -871,8 +944,8 @@ body {
 .page {
   height: 100%;
   overflow-y: auto;
-  padding: 1.5rem 1.25rem 3rem;
-  max-width: 62rem;
+  padding: var(--space-5) 1.25rem var(--space-7);
+  max-width: var(--content-max);
   margin: 0 auto;
 }
 .page-head {
@@ -901,7 +974,7 @@ body {
   font-size: 0.88rem;
 }
 .page-error {
-  padding: 0.6rem 0.75rem;
+  padding: 0.6rem var(--space-3);
   border-radius: 8px;
   background: var(--err-bg);
   color: var(--err);
@@ -921,7 +994,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  padding: 1rem;
+  padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--bg);
@@ -951,8 +1024,8 @@ body {
 .chapter-tag {
   align-self: flex-start;
   margin-top: auto;
-  padding: 0.12rem 0.5rem;
-  border-radius: 999px;
+  padding: 0.12rem var(--space-2);
+  border-radius: var(--radius-full);
   font-size: 0.7rem;
   font-weight: 600;
 }
@@ -971,13 +1044,13 @@ body {
   display: flex;
   gap: 0.3rem;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 .tab {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  padding: 0.5rem 0.8rem;
+  padding: var(--space-2) 0.8rem;
   margin-bottom: -1px;
   font: inherit;
   font-size: 0.88rem;
@@ -999,7 +1072,7 @@ body {
   width: 100%;
   height: min(78vh, 900px);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg-alt);
 }
 
@@ -1015,10 +1088,10 @@ body {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  padding: 0.85rem 1rem;
+  gap: var(--space-4);
+  padding: 0.85rem var(--space-4);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   font: inherit;
   color: inherit;
@@ -1047,7 +1120,7 @@ body {
     display: none;
   }
   .page {
-    padding: 1rem 0.85rem 2.5rem;
+    padding: var(--space-4) 0.85rem 2.5rem;
   }
 }
 
