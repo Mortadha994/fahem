@@ -1050,3 +1050,11 @@ body {
     padding: 1rem 0.85rem 2.5rem;
   }
 }
+
+/* The tab panels are always mounted and toggled with the `hidden` attribute
+   so the PDF viewer keeps its page and zoom across tab switches. The browser's
+   own [hidden] rule already hides them; this is here so that giving .tabpanel
+   a display value later cannot silently un-hide the inactive panel. */
+.tabpanel[hidden] {
+  display: none;
+}

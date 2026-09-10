@@ -55,6 +55,33 @@ export default function Chat() {
 
   useEffect(() => saveSessions(sessions), [sessions]);
 
+  // Abort any stream still running when this screen goes away.
+  //
+  // Phase 3b made this necessary and then forgot it. Before routing, chat was
+  // the whole app and the only way to leave a stream was logging out, which
+  // App.jsx handled by aborting before it called /auth/logout. Splitting Chat
+  // into a route moved abortRef here and added a second exit that never
+  // existed: clicking "Chapitres" or "Poser une question" mid-generation
+  // unmounts this component. Without this cleanup the fetch keeps reading the
+  // SSE and the backend keeps generating against Groq for a conversation
+  // nobody is watching - burning exactly the budget Phase 2's limiter exists
+  // to cap, just through a different door.
+  //
+  // Written as an unmount cleanup rather than a logout-specific call because
+  // it covers every cause at once - route change, logout, or anything added
+  // later - instead of one that has to be remembered per exit path. Logging
+  // out reaches it too: App stops rendering <Routes> when the session goes,
+  // which unmounts this subtree.
+  //
+  // Empty deps so it runs only on unmount; the ref is read at cleanup time,
+  // so it always sees the current controller.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
+
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
     [sessions, activeId]

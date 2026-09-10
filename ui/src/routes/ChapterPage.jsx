@@ -51,8 +51,15 @@ function ChapterView({ id }) {
   const [exercises, setExercises] = useState(null);
   const [exosFailed, setExosFailed] = useState(false);
 
-  // Title for the header. Cheap: the list is three entries and already cached
-  // by the browser from the home page in the usual flow.
+  // Title for the header.
+  //
+  // This is a second, genuinely redundant round trip: Home has usually just
+  // fetched the same list, and /chapters sends no cache-control or etag, so
+  // nothing is reused - the request goes out again and the header reads
+  // "Chapitre 1" until it lands. Accepted for now because the payload is
+  // three entries and the endpoint does no work, not because it is free.
+  // Passing the chapter through router state from Home, or caching in
+  // lib/chapters.js, would remove it.
   useEffect(() => {
     let cancelled = false;
     fetchChapters()
@@ -143,66 +150,79 @@ function ChapterView({ id }) {
         </button>
       </div>
 
-      {tab === DOC && (
-        <section className="tabpanel" role="tabpanel" aria-label="Documentation">
-          {pdfFailed ? (
-            <p className="page-error" role="alert">
-              Impossible d'afficher le cours. Recharge la page pour réessayer.
+      {/* Both panels stay mounted; only visibility is toggled. Unmounting
+          the <object> on every tab flip would hand the browser a brand-new
+          PDF viewer each time, resetting the student back to page 1 at
+          default zoom - so glancing at the exercise list would cost them
+          their place in the cours, on the most common move this screen has.
+          The exercise list is a handful of buttons and costs nothing to keep
+          around. */}
+      <section
+        className="tabpanel"
+        role="tabpanel"
+        aria-label="Documentation"
+        hidden={tab !== DOC}
+      >
+        {pdfFailed ? (
+          <p className="page-error" role="alert">
+            Impossible d'afficher le cours. Recharge la page pour réessayer.
+          </p>
+        ) : pdfUrl ? (
+          <object className="pdf-frame" data={pdfUrl} type="application/pdf">
+            {/* Shown only if the browser has no built-in PDF viewer. */}
+            <p className="page-muted">
+              Ton navigateur ne peut pas afficher le PDF directement.{" "}
+              <a href={pdfUrl} download={`fahem-chapitre-${id}.pdf`}>
+                Télécharge le cours
+              </a>
+              .
             </p>
-          ) : pdfUrl ? (
-            <object className="pdf-frame" data={pdfUrl} type="application/pdf">
-              {/* Shown only if the browser has no built-in PDF viewer. */}
-              <p className="page-muted">
-                Ton navigateur ne peut pas afficher le PDF directement.{" "}
-                <a href={pdfUrl} download={`fahem-chapitre-${id}.pdf`}>
-                  Télécharge le cours
-                </a>
-                .
-              </p>
-            </object>
-          ) : (
-            <p className="page-muted" role="status">
-              Chargement du cours…
-            </p>
-          )}
-        </section>
-      )}
+          </object>
+        ) : (
+          <p className="page-muted" role="status">
+            Chargement du cours…
+          </p>
+        )}
+      </section>
 
-      {tab === EXOS && (
-        <section className="tabpanel" role="tabpanel" aria-label="Exercices">
-          {exosFailed && (
-            <p className="page-error" role="alert">
-              Impossible de charger les exercices. Recharge la page pour réessayer.
-            </p>
-          )}
-          {exercises === null && !exosFailed && (
-            <p className="page-muted" role="status">
-              Chargement…
-            </p>
-          )}
-          {exercises?.length === 0 && (
-            <p className="page-muted">Aucun exercice pour ce chapitre.</p>
-          )}
+      <section
+        className="tabpanel"
+        role="tabpanel"
+        aria-label="Exercices"
+        hidden={tab !== EXOS}
+      >
+        {exosFailed && (
+          <p className="page-error" role="alert">
+            Impossible de charger les exercices. Recharge la page pour réessayer.
+          </p>
+        )}
+        {exercises === null && !exosFailed && (
+          <p className="page-muted" role="status">
+            Chargement…
+          </p>
+        )}
+        {exercises?.length === 0 && (
+          <p className="page-muted">Aucun exercice pour ce chapitre.</p>
+        )}
 
-          <ul className="exo-list">
-            {(exercises ?? []).map((e) => (
-              <li key={e.id}>
-                <button
-                  type="button"
-                  className="exo"
-                  onClick={() => solve(e.question)}
-                  title="Résoudre avec Fahem"
-                >
-                  <span className="exo-q">{e.question}</span>
-                  <span className="exo-go" aria-hidden="true">
-                    Résoudre →
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        <ul className="exo-list">
+          {(exercises ?? []).map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                className="exo"
+                onClick={() => solve(e.question)}
+                title="Résoudre avec Fahem"
+              >
+                <span className="exo-q">{e.question}</span>
+                <span className="exo-go" aria-hidden="true">
+                  Résoudre →
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
     </main>
   );
 }

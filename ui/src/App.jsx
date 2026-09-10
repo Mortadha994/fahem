@@ -71,17 +71,31 @@ export default function App() {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    // Signed-out state first, network call second, and the order matters.
+    //
+    // Dropping the session here stops <Routes> rendering, which unmounts the
+    // chat screen, which fires its cleanup and aborts any stream still in
+    // flight - so an in-progress generation is cancelled *before* the request
+    // to /auth/logout goes out, rather than continuing to bill Groq for the
+    // length of that round trip. Before Phase 3b, App.jsx aborted here
+    // directly; the controller now lives in the chat route, and this is what
+    // reaches it.
+    //
+    // Resetting before awaiting is also the more honest failure mode: if the
+    // logout request fails the cookie may survive server-side, but leaving
+    // the UI signed in with a session it cannot rely on is worse than showing
+    // the sign-in screen.
+    //
+    // localStorage chat history is deliberately NOT cleared - it is
+    // browser-scoped, not identity-scoped, in this phase.
+    setUser(null);
+    setAuthState("out");
     try {
       await logout();
-    } finally {
-      // Local state resets either way: if the network call failed the cookie
-      // may survive, but leaving the UI in a signed-in state it cannot use is
-      // worse than showing the sign-in screen.
-      //
-      // localStorage chat history is deliberately NOT cleared - it is
-      // browser-scoped, not identity-scoped, in this phase.
-      setUser(null);
-      setAuthState("out");
+    } catch {
+      // Nothing useful to do: the UI is already signed out, and the cookie
+      // expires on its own. Swallowed rather than surfaced on a screen the
+      // student has just left.
     }
   }, []);
 
