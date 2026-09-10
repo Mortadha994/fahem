@@ -156,6 +156,44 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 
+# --- chapter content --------------------------------------------------------
+
+# The exercise catalogue. Same file the retrieval and context build checks
+# already run against, so the exercises a student sees and the ones the
+# regression baselines use cannot drift apart.
+#
+# Bind-mounted like chunks.json, and CWD-relative for the same reason.
+#
+# Note: context.py, generate.py and test_retrieval.py each still carry their
+# own `Path("sample_problems.json")` CLI default. Those are RAG-side files and
+# out of scope for this phase, so they were left alone rather than pointed
+# here - worth folding in whenever one of them is next touched.
+DEFAULT_PROBLEMS = Path(os.environ.get("PROBLEMS_PATH", "sample_problems.json"))
+
+# The lesson PDF a student reads in-app, served by GET /chapters/{id}/pdf.
+#
+# *** PLACEHOLDER: this document is stand-in content for the MVP and will be
+# replaced. *** Swapping it must stay a one-line change here - never edit
+# chapters.py or an endpoint to point at a different file.
+#
+# Two PDFs sit in data/, and they are not interchangeable:
+#   Chap1_Structures_donnees_simples.pdf  - the cours itself, 15 pages,
+#       opening straight on "Chapitre I". This is the one a student reads.
+#   chap 1 + serie.pdf                    - the RAG extraction source that
+#       every chunk in chunks.json cites, 17 pages, cover page plus the
+#       exercise serie. Not the reading copy.
+#
+# CWD-relative for the same reason as DEFAULT_CHUNKS: compose bind-mounts
+# ./data onto /app/data (read-only), and /app is the WORKDIR, so a relative
+# path resolves to the mounted copy in Docker and the repo copy locally.
+# data/*.pdf is gitignored and data/ is in .dockerignore, so the file only
+# ever arrives through that mount - it is deliberately not baked into the
+# image.
+LESSON_PDF_PATH = Path(
+    os.environ.get("LESSON_PDF_PATH", "data/Chap1_Structures_donnees_simples.pdf")
+)
+
+
 # --- rate limiting (Redis) --------------------------------------------------
 
 # Counter store for slowapi. Same host-vs-service-name split as DATABASE_URL
