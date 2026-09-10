@@ -97,6 +97,18 @@
     --err: #ff8f87;
     --err-bg: #3a1d1a;
 
+    /* Ink on an accent fill is dark here, not white.
+       --accent has two jobs: coloured text/borders on a dark page, and a
+       filled background for .btn-send, .appbar-cta-on and .account-avatar.
+       In dark mode those pull in opposite directions and cannot both be met
+       by one colour - text on --bg needs the accent at luminance >= 0.228,
+       while white on the accent needs it <= 0.183. No value satisfies both.
+       Keeping the accent light (it passes as text at 4.9-5.2:1) and darkening
+       the ink resolves it: white on #5b8ad6 was 3.47:1, --bg on #5b8ad6 is
+       4.9:1. Reusing --bg rather than a new hex keeps the palette the size it
+       was, and the filled chip reads as cut out of the page. */
+    --accent-fg: var(--bg);
+
     /* Shadows are restated, not inherited. The light-mode values are tuned
        against a white page; at 6-8% on a #1c1c1f ground they are close to
        invisible, so a surface that is meant to float just looks smudged.
@@ -274,7 +286,7 @@ body {
   margin: 14vh auto 0;
   text-align: center;
 }
-.empty h1 {
+.empty h2 {
   font-size: 1.5rem;
   margin: 0 0 var(--space-2);
 }

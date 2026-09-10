@@ -49,6 +49,10 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  /* One short line, replaced once per finished answer. See the live region in
+     the markup for why this is not driven off the streaming text. */
+  const [announcement, setAnnouncement] = useState("");
+
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const pinnedToBottom = useRef(true);
@@ -153,6 +157,9 @@ export default function Chat() {
   const send = useCallback(
     (problem, session) => {
       const sessionId = session.id;
+      // Cleared per send so an identical verdict is announced again rather
+      // than being swallowed as an unchanged live-region value.
+      setAnnouncement("");
       setStreaming(true);
       pinnedToBottom.current = true;
 
@@ -195,7 +202,14 @@ export default function Chat() {
             }),
           onDelta: (t) =>
             patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
-          onDone: (done) =>
+          onDone: (done) => {
+            setAnnouncement(
+              done.warnings?.length
+                ? `Réponse terminée. ${done.warnings.length} point${
+                    done.warnings.length > 1 ? "s" : ""
+                  } de syntaxe à vérifier.`
+                : "Réponse terminée. Syntaxe du chapitre respectée."
+            );
             patchLast(sessionId, (m) => ({
               ...m,
               // "none" when there's no real Algorithme solution to have
@@ -211,24 +225,30 @@ export default function Chat() {
                   ? "warned"
                   : "clean",
               warnings: done.warnings ?? [],
-            })),
-          onError: (message) =>
-            patchLast(sessionId, { error: message, status: "error" }),
+            }));
+          },
+          onError: (message) => {
+            setAnnouncement("La réponse a échoué.");
+            patchLast(sessionId, { error: message, status: "error" });
+          },
           onUnauthorized: () => {
             patchLast(sessionId, {
               error: "Ta session a expiré. Reconnecte-toi pour continuer.",
               status: "error",
             });
+            setAnnouncement("Session expirée.");
             onUnauthorized();
           },
           // Stays in the chat, unlike onUnauthorized: the session is still
           // valid, the student just has to wait. Bouncing them to the sign-in
           // screen would be both wrong and infuriating.
-          onRateLimited: (retryAfter) =>
+          onRateLimited: (retryAfter) => {
+            setAnnouncement(rateLimitMessage(retryAfter));
             patchLast(sessionId, {
               error: rateLimitMessage(retryAfter),
               status: "error",
-            }),
+            });
+          },
         }
       )
         .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))
@@ -301,6 +321,25 @@ export default function Chat() {
       />
 
       <main className="main">
+        {/* The page's only <h1>, and it is here rather than inside the empty
+            state because the empty state disappears the moment a conversation
+            starts - which left this screen with no headings at all once it
+            was actually in use. Visually hidden: the topbar already says what
+            this is on screen, and a second visible title would be noise. */}
+        <h1 className="sr-only">Discussion — {SCOPE_LABEL}</h1>
+
+        {/* Announces one short line per finished answer. Deliberately NOT
+            aria-live on the message list itself: that streams token by token,
+            and a live region there makes a screen reader restart on every
+            fragment, which is worse than saying nothing. The full answer is
+            long technical markdown, so this reports that it is ready and what
+            the checker concluded, and leaves the reading to the user. The
+            "searching" half is already covered - Message.jsx's thinking
+            indicator carries role="status". */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {announcement}
+        </p>
+
         <header className="topbar">
           <button
             type="button"
@@ -316,7 +355,9 @@ export default function Chat() {
         <div className="messages" ref={listRef} onScroll={onScroll}>
           {messages.length === 0 ? (
             <div className="empty">
-              <h1>Pose ta question sur le chapitre</h1>
+              {/* h2, not h1: the page-level h1 above is persistent, and this
+                  prompt only exists while the thread is empty. */}
+              <h2>Pose ta question sur le chapitre</h2>
               <p>
                 Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
                 chapitre — et te montre exactement sur quelles parties du cours il
