@@ -1,8 +1,40 @@
 ## Running the API
 
 ```
-.venv/Scripts/python.exe -m uvicorn api:app --reload --port 8000
+docker compose up --build -d                      # recommended: the whole stack
+.venv/Scripts/python.exe -m uvicorn api:app --reload --port 8000   # or natively
 ```
+
+Natively, Postgres, Qdrant and Redis still have to be running
+(`docker compose up -d postgres qdrant redis`).
+
+## Authentication and rate limits
+
+Everything except `GET /health` and `POST /auth/google` needs a signed-in
+session. Sign-in exchanges a Google ID token for Fahem's own session, carried
+in an `httpOnly` cookie (`fahem_session` by default), so a browser client must
+send requests with credentials (`fetch(..., { credentials: "include" })`).
+Without a valid session a route answers **401** `{"detail": "not
+authenticated"}`.
+
+The cookie is `SameSite=Lax`, so the UI and the API must be *same-site*:
+`localhost:5173 → localhost:8000` works, `localhost:5173 → 127.0.0.1:8000`
+does not (the browser withholds the cookie and every call 401s).
+
+| Limit | Keyed by | Default | Env var |
+| --- | --- | --- | --- |
+| `/solve` + `/solve/stream`, one shared budget | user | `10/minute;100/hour` | `RATE_LIMIT_SOLVE` |
+| `POST /auth/google` | client IP | `30/minute` | `RATE_LIMIT_AUTH` |
+
+Over the limit, a route answers **429** with a `Retry-After` header (seconds)
+and:
+
+```json
+{ "detail": "rate limit exceeded", "limit": "10 per 1 minute", "retry_after": 47 }
+```
+
+Counters live in Redis. The stack waits for Redis to be healthy before
+starting the backend, so a missing store never looks like an unlimited one.
 
 `POST /solve`
 
@@ -28,10 +60,11 @@ Response:
 
 `GET /health` returns `{"status":"ok","model":"..."}`.
 
-Status codes: 422 for a bad request body or a niveau/chapitre with no pinned
-syntax core; 429 when the upstream token-per-minute cap is hit (passed
-through, not masked as a server error); 502 if the model backend is
-unreachable.
+Status codes: 401 without a valid session; 422 for a bad request body or a
+niveau/chapitre with no pinned syntax core; 429 either from Fahem's own
+per-user limit (with `Retry-After`, see above) or when the upstream
+token-per-minute cap is hit (passed through, not masked as a server error);
+502 if the model backend is unreachable.
 
 `warnings` carries constraint-checker findings and is advisory only — the
 checker has both missed real violations and raised false ones, so an empty
@@ -61,6 +94,31 @@ would show students the model's private monologue.
 Because of that reasoning phase there is ~1.2s of silence before the first
 visible token, which is why the UI shows a typing indicator rather than an
 empty bubble.
+
+## Sign-in routes (`/auth`)
+
+| Route | Body / result |
+| --- | --- |
+| `POST /auth/google` | `{"id_token": "<Google ID token>"}` → sets the session cookie, returns the user. 401 for a token Google's keys reject; 503 if `GOOGLE_CLIENT_ID` is unset (the backend refuses to verify rather than skip the audience check). |
+| `GET /auth/me` | The current user, or 401. This is how the UI learns whether it is signed in — the cookie is `httpOnly`, so there is nothing to read client-side. |
+| `POST /auth/logout` | 204; clears the session. |
+
+A user is `{"id": "<uuid>", "email": "…", "display_name": "…"}`. Google's
+internal subject id never leaves the backend.
+
+## Chapter routes (`/chapters`)
+
+All need a session.
+
+| Route | Returns |
+| --- | --- |
+| `GET /chapters` | `[{"id": "1", "title": "…", "niveau": "2eme", "status": "active"}, …]` — including chapters with `"status": "coming_soon"`, so a client can show what is on the way rather than a list that looks complete. |
+| `GET /chapters/{id}/exercises` | `[{"id": "…", "question": "Ecrire un programme qui …"}, …]` |
+| `GET /chapters/{id}/pdf` | The lesson PDF (`application/pdf`). |
+
+404 for a chapter with no content behind it; 503 if the exercise file or the
+PDF is missing on the server. The PDF and exercises are the author's
+material — see the curriculum-text item below, which applies here too.
 
 ## Pre-launch items (before anyone else can reach this endpoint)
 
