@@ -7,6 +7,9 @@ import {
   UnauthorizedError,
 } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
+import Alert from "../components/ui/Alert.jsx";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import Skeleton from "../components/ui/Skeleton.jsx";
 
 const DOC = "doc";
 const EXOS = "exos";
@@ -211,11 +214,11 @@ function ChapterView({ id }) {
         hidden={tab !== DOC}
       >
         {pdfFailed ? (
-          <p className="page-error" role="alert">
+          <Alert className="page-alert">
             Impossible d'afficher le cours. Recharge la page pour réessayer.
-          </p>
+          </Alert>
         ) : pdfUrl ? (
-          <object className="pdf-frame" data={pdfUrl} type="application/pdf">
+          <object className="pdf-frame surface" data={pdfUrl} type="application/pdf">
             {/* Shown only if the browser has no built-in PDF viewer. */}
             <p className="page-muted">
               Ton navigateur ne peut pas afficher le PDF directement.{" "}
@@ -226,9 +229,12 @@ function ChapterView({ id }) {
             </p>
           </object>
         ) : (
-          <p className="page-muted" role="status">
-            Chargement du cours…
-          </p>
+          <>
+            <p className="sr-only" role="status">
+              Chargement du cours…
+            </p>
+            <Skeleton radius="lg" className="pdf-skeleton" />
+          </>
         )}
       </section>
 
@@ -241,25 +247,34 @@ function ChapterView({ id }) {
         hidden={tab !== EXOS}
       >
         {exosFailed && (
-          <p className="page-error" role="alert">
+          <Alert className="page-alert">
             Impossible de charger les exercices. Recharge la page pour réessayer.
-          </p>
+          </Alert>
         )}
         {exercises === null && !exosFailed && (
-          <p className="page-muted" role="status">
+          <p className="sr-only" role="status">
             Chargement…
           </p>
         )}
         {exercises?.length === 0 && (
-          <p className="page-muted">Aucun exercice pour ce chapitre.</p>
+          <EmptyState size="sm">Aucun exercice pour ce chapitre.</EmptyState>
         )}
 
         <ul className="exo-list">
+          {/* One-line-row placeholders, the height of the shortest real
+              exercise, so the list has a shape before the énoncés arrive. */}
+          {exercises === null &&
+            !exosFailed &&
+            [0, 1, 2].map((i) => (
+              <li key={`skeleton-${i}`} aria-hidden="true">
+                <Skeleton height="3rem" radius="lg" />
+              </li>
+            ))}
           {(exercises ?? []).map((e) => (
             <li key={e.id}>
               <button
                 type="button"
-                className="exo"
+                className="exo surface surface-interactive"
                 onClick={() => solve(e.question)}
                 title="Résoudre avec Fahem"
               >

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Button from "./ui/Button.jsx";
+import EmptyState from "./ui/EmptyState.jsx";
 
 /**
  * Deleting a discussion asks first.
@@ -46,14 +48,14 @@ export default function Sidebar({
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <div className="sidebar-head">
           <span className="brand">Fahem</span>
-          <button type="button" className="btn-new" onClick={onNew}>
+          <Button variant="secondary" className="btn-new" onClick={onNew}>
             + Nouvelle discussion
-          </button>
+          </Button>
         </div>
 
         <nav className="session-list" aria-label="Discussions">
           {sessions.length === 0 && (
-            <p className="session-empty">Aucune discussion pour l'instant.</p>
+            <EmptyState size="sm">Aucune discussion pour l'instant.</EmptyState>
           )}
           {sessions.map((s) => (
             <div
@@ -70,8 +72,12 @@ export default function Sidebar({
                   {s.niveau} · ch. {s.chapitre}
                 </span>
               </button>
-              <button
-                type="button"
+              {/* ghost at rest, danger while asking: the variant is what turns
+                  the bare glyph into the red "Supprimer ?" chip. The
+                  session-del classes only handle the hover/focus reveal. */}
+              <Button
+                variant={confirmingId === s.id ? "danger" : "ghost"}
+                size="sm"
                 className={`session-del${
                   confirmingId === s.id ? " session-del-confirm" : ""
                 }`}
@@ -111,7 +117,7 @@ export default function Sidebar({
                 title={confirmingId === s.id ? "Confirmer" : "Supprimer"}
               >
                 {confirmingId === s.id ? "Supprimer ?" : "×"}
-              </button>
+              </Button>
             </div>
           ))}
         </nav>

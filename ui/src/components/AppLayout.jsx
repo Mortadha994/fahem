@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../lib/authContext.js";
+import Button from "./ui/Button.jsx";
 
 /**
  * The header every authenticated route sits under.
@@ -53,9 +54,9 @@ export default function AppLayout() {
           <span className="appbar-name" title={user?.email || label}>
             {label}
           </span>
-          <button type="button" className="btn-logout" onClick={logout}>
+          <Button variant="secondary" size="sm" className="btn-logout" onClick={logout}>
             Déconnexion
-          </button>
+          </Button>
         </div>
       </header>
 

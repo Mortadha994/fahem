@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
+import Button from "../components/ui/Button.jsx";
+import EmptyState from "../components/ui/EmptyState.jsx";
 import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
 import { loadSessions, saveSessions, newSession, titleFrom } from "../lib/sessions.js";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
@@ -341,29 +343,30 @@ export default function Chat() {
         </p>
 
         <header className="topbar">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             className="btn-burger"
             onClick={() => setSidebarOpen((v) => !v)}
             aria-label="Afficher les discussions"
           >
             ☰
-          </button>
+          </Button>
           <span className="scope">{SCOPE_LABEL}</span>
         </header>
 
         <div className="messages" ref={listRef} onScroll={onScroll}>
           {messages.length === 0 ? (
-            <div className="empty">
-              {/* h2, not h1: the page-level h1 above is persistent, and this
-                  prompt only exists while the thread is empty. */}
-              <h2>Pose ta question sur le chapitre</h2>
-              <p>
-                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-                chapitre — et te montre exactement sur quelles parties du cours il
-                s'appuie.
-              </p>
-            </div>
+            /* h2, not h1: the page-level h1 above is persistent, and this
+               prompt only exists while the thread is empty. */
+            <EmptyState
+              titleAs="h2"
+              title="Pose ta question sur le chapitre"
+              className="chat-empty"
+            >
+              Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+              chapitre — et te montre exactement sur quelles parties du cours il
+              s'appuie.
+            </EmptyState>
           ) : (
             messages.map((m) => (
               <Message key={m.id} message={m} streaming={streaming} />

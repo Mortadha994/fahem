@@ -144,6 +144,253 @@ body {
   line-height: var(--leading-normal);
 }
 
+/* ---------- primitives (Step 4) ----------
+   Declared before every screen-specific rule on purpose. Call sites add a
+   class of their own for placement (width, show/hide at a breakpoint), and
+   with equal specificity the later rule wins - so placement can override the
+   primitive's display without !important, and never the other way round. */
+
+/* Button - components/ui/Button.jsx. Every size keeps the 44px floor. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.btn-md {
+  padding: var(--space-2) var(--space-3);
+}
+.btn-sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+}
+/* The designed focus state (P2-6). box-shadow draws the double ring from the
+   token; the transparent outline is kept so forced-colors mode, which drops
+   box-shadow, still paints a visible ring. */
+.btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.btn:disabled {
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* Mixed toward --fg, not a fixed darker hex: in light mode that darkens the
+   fill under white ink, in dark mode it lightens it under dark ink, so the
+   hover state only ever raises the contrast Step 2 established. */
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--fg));
+}
+.btn-primary:disabled {
+  background: var(--line);
+  color: var(--fg-dim);
+}
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--line);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--fg-dim);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+
+.btn-danger {
+  background: var(--err-bg);
+  color: var(--err);
+}
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--err);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+}
+
+/* Badge - components/ui/Badge.jsx. No margin: spacing is the call site's. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+.badge-neutral {
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+}
+.badge-success {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.badge-warning {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.badge-danger {
+  background: var(--err-bg);
+  color: var(--err);
+}
+
+/* Surface - the one bordered panel (audit §8: the same border was declared
+   twelve times). A class rather than a component because it lands on a
+   <Link>, a <button>, an <object> and plain <div>s alike. Call sites that
+   need different padding restate only the padding. */
+.surface {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+/* A surface that is itself the click target: a chapter card, an exercise. */
+.surface-interactive {
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.surface-interactive:hover {
+  border-color: var(--accent);
+}
+.surface-interactive:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface-interactive {
+    transition: none;
+  }
+}
+
+/* Alert - components/ui/Alert.jsx. Wraps so an action button drops under
+   the message on a narrow card instead of squeezing it. */
+.alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+.alert-body {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+.alert-danger {
+  background: var(--err-bg);
+  color: var(--err);
+}
+.alert-warning {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.alert-info {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+
+/* Skeleton - components/ui/Skeleton.jsx. --line rather than --bg-alt: in
+   dark mode --bg-alt on --bg is too close to read as a shape at all. */
+.skeleton {
+  display: block;
+  max-width: 100%;
+  height: 1em;
+  background: var(--line);
+  animation: skeleton-pulse 1.6s var(--ease) infinite;
+}
+.skeleton-r-sm {
+  border-radius: var(--radius-sm);
+}
+.skeleton-r-md {
+  border-radius: var(--radius-md);
+}
+.skeleton-r-lg {
+  border-radius: var(--radius-lg);
+}
+.skeleton-r-full {
+  border-radius: var(--radius-full);
+}
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* EmptyState - components/ui/EmptyState.jsx. Centred at both sizes, so an
+   empty panel reads as deliberately empty rather than as a list that failed
+   to fill. Vertical placement (e.g. the chat's 14vh drop) is the caller's. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.empty-state-md {
+  padding-block: var(--space-5);
+}
+.empty-state-sm {
+  padding-block: var(--space-4);
+  font-size: var(--text-sm);
+}
+.empty-state-icon {
+  color: var(--fg-dim);
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+.empty-state-title {
+  margin: 0;
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  color: var(--fg);
+}
+.empty-state-md .empty-state-title {
+  font-size: var(--text-xl);
+}
+.empty-state-body {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--fg-dim);
+}
+
 /* ---------- shell: only .messages scrolls ---------- */
 /* 100% not 100vh since Phase 3b: .app is now nested inside .shell-body,
    under the app bar, so a viewport-height child would overflow by exactly
@@ -185,30 +432,13 @@ body {
   font-size: 1.1rem;
   margin-bottom: 0.6rem;
 }
+/* Placement only - the look is .btn-secondary. */
 .btn-new {
-  min-height: var(--tap);
   width: 100%;
-  padding: var(--space-2) 0.7rem;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-}
-.btn-new:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2);
-}
-.session-empty {
-  color: var(--fg-dim);
-  font-size: 0.85rem;
   padding: var(--space-2);
 }
 .session {
@@ -244,17 +474,12 @@ body {
   font-size: var(--text-xs);
   color: var(--fg-dim);
 }
+/* The look is .btn-ghost / .btn-danger (see Sidebar.jsx). This rule only
+   sizes the bare glyph and hides it until the row is hovered or focused. */
 .session-del {
-  min-width: var(--tap);
-  min-height: var(--tap);
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: var(--fg-dim);
+  flex-shrink: 0;
   font-size: 1.1rem;
-  padding: 0 var(--space-2);
+  font-weight: 400;
   opacity: 0;
 }
 /* Revealed on hover, on keyboard focus, and whenever it is mid-confirm.
@@ -265,12 +490,9 @@ body {
 .session-del-confirm {
   opacity: 1;
 }
-/* The confirm state is wider than the bare glyph and reads as destructive. */
+/* The confirm state is a word, not a glyph: back to the sm type size, and
+   kept on one line. Colour comes from .btn-danger. */
 .session-del-confirm {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--err-bg);
-  color: var(--err);
   font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
@@ -296,32 +518,21 @@ body {
   font-size: 0.85rem;
   color: var(--fg-dim);
 }
+/* Placement only - the look is .btn-ghost. Hidden until the drawer
+   breakpoint below turns it back on. */
 .btn-burger {
-  min-width: var(--tap);
-  min-height: var(--tap);
-  align-items: center;
-  justify-content: center;
   display: none;
-  background: none;
-  border: 0;
   font-size: 1.2rem;
-  cursor: pointer;
-  color: inherit;
 }
 
-/* ---------- empty state ---------- */
-.empty {
+/* ---------- empty chat ----------
+   Placement only - the prompt is the EmptyState primitive. The 14vh drop
+   puts it near the optical centre of an empty thread; the primitive's own
+   block padding is zeroed so the drop stays exactly what it was. */
+.chat-empty {
   max-width: 46rem;
   margin: 14vh auto 0;
-  text-align: center;
-}
-.empty h2 {
-  font-size: 1.5rem;
-  margin: 0 0 var(--space-2);
-}
-.empty p {
-  color: var(--fg-dim);
-  margin: 0;
+  padding-block: 0;
 }
 
 /* ---------- messages ---------- */
@@ -378,26 +589,11 @@ body {
   }
 }
 
-/* ---------- badges ---------- */
-.badge {
-  display: inline-block;
+/* ---------- checker verdict ----------
+   The pill itself is the Badge primitive; this only spaces it off the
+   answer above. */
+.msg-verdict {
   margin-top: 0.6rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-full);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.badge-pending {
-  background: var(--bg-alt);
-  color: var(--fg-dim);
-}
-.badge-ok {
-  background: var(--ok-bg);
-  color: var(--ok);
-}
-.badge-warn {
-  background: var(--warn-bg);
-  color: var(--warn);
 }
 .warn-list {
   margin: 0.4rem 0 0;
@@ -405,11 +601,10 @@ body {
   font-size: 0.8rem;
   color: var(--warn);
 }
-.error {
-  background: var(--err-bg);
-  color: var(--err);
-  border-radius: var(--radius-sm);
-  padding: 0.7rem 0.9rem;
+/* The box is the Alert primitive. This keeps the 1em block margins the old
+   <p class="error"> had from the browser, so the thread does not shift. */
+.msg-error {
+  margin: var(--space-4) 0;
 }
 
 /* ---------- grounding strip ---------- */
@@ -623,16 +818,16 @@ body {
   background: var(--bg);
   padding: 0.7rem var(--space-4) var(--space-4);
 }
+/* Border, fill and radius from .surface. The padding is its own: tight on
+   three sides so Envoyer sits close to the edge, wider on the left where the
+   caret starts. */
 .composer-inner {
   max-width: 52rem;
   margin: 0 auto;
   display: flex;
   gap: var(--space-2);
   align-items: flex-end;
-  border: 1px solid var(--line);
-  border-radius: 12px;
   padding: 0.45rem 0.45rem 0.45rem 0.7rem;
-  background: var(--bg);
 }
 .composer-inner:focus-within {
   border-color: var(--accent);
@@ -650,33 +845,9 @@ body {
   max-height: 220px;
   padding: 0.3rem 0;
 }
-.btn-send,
-.btn-stop {
-  min-height: var(--tap);
+/* Placement only - Envoyer is .btn-primary, Arrêter is .btn-secondary. */
+.btn-composer {
   flex-shrink: 0;
-  padding: var(--space-2) 0.9rem;
-  font: inherit;
-  font-weight: 600;
-  border: 0;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.btn-send {
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-.btn-send:disabled {
-  background: var(--line);
-  color: var(--fg-dim);
-  cursor: not-allowed;
-}
-.btn-stop {
-  background: var(--bg-alt);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
 }
 .stop-square {
   width: 9px;
@@ -793,12 +964,10 @@ body {
   padding: var(--space-5);
   background: var(--bg-alt);
 }
+/* Border, fill and radius from .surface; the roomier padding is its own. */
 .signin-card {
   width: 100%;
   max-width: 27rem;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
   padding: var(--space-6) 1.75rem var(--space-5);
   text-align: center;
 }
@@ -834,15 +1003,6 @@ body {
   margin: 0;
   font-size: 0.85rem;
   color: var(--fg-dim);
-}
-.signin-error {
-  margin: 0;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
-  background: var(--err-bg);
-  color: var(--err);
-  font-size: 0.83rem;
-  line-height: 1.45;
 }
 .signin-foot {
   margin: 1.6rem 0 0;
@@ -893,22 +1053,9 @@ body {
   font-size: 0.7rem;
   color: var(--fg-dim);
 }
+/* Placement only - the look is .btn-secondary at sm. */
 .btn-logout {
-  min-height: var(--tap);
-  margin-left: auto;
   flex-shrink: 0;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 0.28rem var(--space-2);
-  font: inherit;
-  font-size: 0.7rem;
-  color: var(--fg-dim);
-  cursor: pointer;
-}
-.btn-logout:hover {
-  color: var(--fg);
-  border-color: var(--fg-dim);
 }
 
 /* --- app shell + routing (Phase 3b) -------------------------------------- */
@@ -1037,12 +1184,10 @@ body {
   color: var(--fg-dim);
   font-size: 0.88rem;
 }
-.page-error {
-  padding: 0.6rem var(--space-3);
-  border-radius: 8px;
-  background: var(--err-bg);
-  color: var(--err);
-  font-size: 0.85rem;
+/* Placement only - the box is the Alert primitive. Stands in for the 1em
+   block margins the old <p class="page-error"> inherited. */
+.page-alert {
+  margin-block: var(--space-3);
 }
 
 .chapter-grid {
@@ -1053,20 +1198,15 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   gap: 0.8rem;
 }
+/* Border, fill, radius, padding and hover all come from .surface /
+   .surface-interactive. */
 .chapter-card {
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg);
   text-decoration: none;
   color: inherit;
-}
-.chapter-card-on:hover {
-  border-color: var(--accent);
 }
 /* Not merely greyed: no pointer, no hover affordance, nothing that invites a
    click there is nothing behind. */
@@ -1085,21 +1225,11 @@ body {
   font-weight: 600;
   line-height: 1.35;
 }
+/* Placement only - the pill is the Badge primitive. Pinned to the bottom of
+   the card so the tags line up across cards whose titles wrap differently. */
 .chapter-tag {
   align-self: flex-start;
   margin-top: auto;
-  padding: 0.12rem var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-.chapter-tag-on {
-  background: var(--ok-bg);
-  color: var(--ok);
-}
-.chapter-tag-soon {
-  background: var(--bg-alt);
-  color: var(--fg-dim);
 }
 
 /* ---------- chapter tabs ---------- */
@@ -1136,9 +1266,16 @@ body {
 .pdf-frame {
   width: 100%;
   height: min(78vh, 900px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  /* The viewer fills the frame edge to edge, and the letterbox behind a
+     not-yet-painted page stays the tinted --bg-alt it always was. */
+  padding: 0;
   background: var(--bg-alt);
+}
+/* Holds exactly the frame's box while the PDF downloads, so the page does not
+   jump by the height of the viewer when it lands. */
+.pdf-skeleton {
+  width: 100%;
+  height: min(78vh, 900px);
 }
 
 .exo-list {
@@ -1149,22 +1286,19 @@ body {
   flex-direction: column;
   gap: 0.55rem;
 }
+/* Surface + hover from .surface-interactive. Vertical padding is tighter
+   than the surface default: seven of these stack, and a full --space-4 would
+   push the last ones below the fold for no gain in legibility. */
 .exo {
   width: 100%;
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
-  padding: 0.85rem var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg);
+  padding: var(--space-3) var(--space-4);
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
-}
-.exo:hover {
-  border-color: var(--accent);
 }
 .exo-q {
   flex: 1;
