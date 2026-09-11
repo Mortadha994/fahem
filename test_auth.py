@@ -212,9 +212,510 @@ def main() -> None:
     with session_scope() as s:
         check("test user cleaned up", s.get(User, first_id) is None)
 
+    password_accounts(run_id)
+
     print()
     print("ALL PASSED" if failures == 0 else f"{failures} CHECK(S) FAILED")
     raise SystemExit(1 if failures else 0)
+
+
+# =============================================================================
+# Phase 4: email + password accounts
+#
+# Runs the REAL /auth routers, the real slowapi limiter and the real 429
+# handlers through FastAPI's TestClient, against real Postgres and Redis.
+# Only two things are stubbed, and both on purpose:
+#   - emails.send_quietly -> a recorder, so a test run never mails anyone;
+#     the real Resend send is verified separately, by hand, once.
+#   - auth.verify_google_id_token, only inside the Google-parity section -
+#     the same one-function seam the module docstring already names.
+# Needs Postgres AND Redis (inside compose: `docker compose exec backend
+# python test_auth.py`).
+# =============================================================================
+
+
+def password_accounts(run_id: str) -> None:
+    import re
+    import statistics
+    import time as _time
+
+    import redis
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from slowapi.errors import RateLimitExceeded
+
+    import emails
+    import password_auth as pa
+    import ratelimit
+    from config import REDIS_URL
+    from models import AuthToken
+
+    # A private app with exactly the production auth wiring (api.py's lines),
+    # without importing api.py - which would load the embedding model.
+    app = FastAPI()
+    app.state.limiter = ratelimit.limiter
+    app.add_exception_handler(RateLimitExceeded, ratelimit.rate_limit_handler)
+    app.add_exception_handler(ratelimit.KeyedRateLimitExceeded, ratelimit.keyed_rate_limit_handler)
+    app.include_router(auth.router)
+    app.include_router(pa.router)
+    client = TestClient(app)
+
+    # TestClient always presents as host "testclient", so every run shares one
+    # per-IP bucket. Clear it before and after, or a few runs in an hour would
+    # trip the signup limit and fail for a reason that is not a bug.
+    r = redis.Redis.from_url(REDIS_URL)
+
+    def clear_test_limits() -> None:
+        for key in r.scan_iter("*testclient*"):
+            r.delete(key)
+
+    clear_test_limits()
+
+    sent: list[tuple[str, emails.Email]] = []
+    real_send = emails.send_quietly
+    emails.send_quietly = lambda email, kind: sent.append((kind, email))
+
+    def token_from(email: emails.Email) -> str:
+        m = re.search(r"token=([A-Za-z0-9_\-]+)", email.text)
+        return m.group(1) if m else ""
+
+    def addr(tag: str) -> str:
+        # example.com, not example.test: EmailStr (email-validator) rejects
+        # RFC 6761 special-use domains like .test as undeliverable - correctly,
+        # for real signups. example.com is reserved for documentation and never
+        # receives mail, and nothing here sends anyway (send_quietly is stubbed).
+        return f"pw-{tag}-{run_id}@example.com"
+
+    password = "correct horse battery staple"
+    created: list[uuid.UUID] = []
+
+    def signup(email: str, pw: str = password, name: str = "Élève <Test>"):
+        client.cookies.clear()
+        return client.post(
+            "/auth/signup", json={"email": email, "password": pw, "display_name": name}
+        )
+
+    def login(email: str, pw: str):
+        client.cookies.clear()
+        return client.post("/auth/login", json={"email": email, "password": pw})
+
+    try:
+        # --- signup ------------------------------------------------------------
+        print()
+        print("--- password signup ---")
+        a = addr("a")
+        resp = signup(a.upper())  # stored normalised
+        check("signup -> 201", resp.status_code == 201, str(resp.status_code))
+        body = resp.json()
+        user_a = uuid.UUID(body["id"])
+        created.append(user_a)
+        check("signup returns the normalised email", body["email"] == a, body["email"])
+        check("signup sets the session cookie", auth.SESSION_COOKIE_NAME in resp.cookies)
+        signup_cookie = resp.cookies[auth.SESSION_COOKIE_NAME]
+
+        with session_scope() as s:
+            row = s.get(User, user_a)
+            stored_hash, verified, gsub = row.password_hash, row.email_verified, row.google_sub
+        check(
+            "password stored as an Argon2id PHC string",
+            stored_hash.startswith("$argon2id$"),
+            stored_hash[:30],
+        )
+        check("plaintext password appears nowhere in the hash", password not in stored_hash)
+        check("email_verified starts false", verified is False)
+        check("password account has no google_sub", gsub is None)
+
+        verify_mails = [e for k, e in sent if k == pa.PURPOSE_VERIFY and e.to == a]
+        check("one verification email queued", len(verify_mails) == 1, f"{len(verify_mails)}")
+        vtoken = token_from(verify_mails[0]) if verify_mails else ""
+        check("verification link carries a token", len(vtoken) >= 40, f"{len(vtoken)} chars")
+        check(
+            "display name is HTML-escaped in the email",
+            "&lt;Test&gt;" in verify_mails[0].html and "<Test>" not in verify_mails[0].html,
+        )
+
+        with session_scope() as s:
+            tok_rows = s.query(AuthToken).filter(AuthToken.user_id == user_a).all()
+            token_columns = [(t.token_hash, t.purpose) for t in tok_rows]
+        check(
+            "token stored only as its SHA-256",
+            token_columns == [(pa._hash_token(vtoken), pa.PURPOSE_VERIFY)],
+        )
+        check(
+            "raw token appears in no stored column", all(vtoken not in h for h, _ in token_columns)
+        )
+
+        resp = signup(a)
+        check("duplicate email -> 409", resp.status_code == 409, str(resp.status_code))
+        resp = signup(a.replace("pw-a", "PW-A"))
+        check(
+            "duplicate differing only in case -> 409",
+            resp.status_code == 409,
+            str(resp.status_code),
+        )
+        resp = signup(addr("short"), pw="elevenchars")
+        check("11-character password -> 422", resp.status_code == 422, str(resp.status_code))
+        resp = signup(addr("exact"), pw="twelve chars")
+        check(
+            "12-character password (with a space) accepted",
+            resp.status_code == 201,
+            str(resp.status_code),
+        )
+        if resp.status_code == 201:
+            created.append(uuid.UUID(resp.json()["id"]))
+        resp = signup("not-an-email")
+        check("malformed email -> 422", resp.status_code == 422, str(resp.status_code))
+
+        # --- email verification ------------------------------------------------
+        print()
+        print("--- email verification ---")
+        resp = client.get("/auth/verify-email", params={"token": vtoken}, follow_redirects=False)
+        check(
+            "verify link -> 303 to the app, outcome 1",
+            resp.status_code == 303 and resp.headers["location"].endswith("?email_verifie=1"),
+            f"{resp.status_code} {resp.headers.get('location')}",
+        )
+        with session_scope() as s:
+            check("email_verified now true", s.get(User, user_a).email_verified is True)
+        resp = client.get("/auth/verify-email", params={"token": vtoken}, follow_redirects=False)
+        check(
+            "verify link cannot be reused (outcome 0)",
+            resp.headers.get("location", "").endswith("?email_verifie=0"),
+        )
+
+        # --- login ---------------------------------------------------------------
+        print()
+        print("--- password login ---")
+        resp = login(a, password)
+        check("correct password -> 200", resp.status_code == 200, str(resp.status_code))
+        check("login sets the session cookie", auth.SESSION_COOKIE_NAME in resp.cookies)
+        login_set_cookie = resp.headers.get("set-cookie", "")
+        login_cookie = resp.cookies.get(auth.SESSION_COOKIE_NAME)
+        check(
+            "login cookie resolves to the right user",
+            auth.get_current_user(login_cookie).id == user_a,
+        )
+
+        # A Google-only account with a known address, for the generic-error and
+        # forgot-password checks below. Separate identity, same kind of address.
+        g_email = addr("google")
+        g_user = auth.upsert_user(
+            {
+                "sub": f"test-g-{run_id}",
+                "email": g_email,
+                "name": "G",
+                "iss": "https://accounts.google.com",
+            }
+        )
+        created.append(g_user.id)
+
+        wrong = login(a, "definitely the wrong one")
+        unknown = login(addr("nobody"), "definitely the wrong one")
+        google_only = login(g_email, "definitely the wrong one")
+        check("wrong password -> 401", wrong.status_code == 401, str(wrong.status_code))
+        check(
+            "unknown email / Google-only email / wrong password: byte-identical bodies",
+            wrong.content == unknown.content == google_only.content,
+            wrong.text,
+        )
+        check(
+            "...and identical statuses",
+            wrong.status_code == unknown.status_code == google_only.status_code == 401,
+        )
+
+        # Timing: 'no such account' must cost an Argon2 verification too.
+        c = addr("timing")
+        created.append(uuid.UUID(signup(c).json()["id"]))
+        t_unknown, t_wrong = [], []
+        for i in range(3):
+            t0 = _time.perf_counter()
+            login(addr(f"ghost{i}"), "some wrong password")
+            t_unknown.append(_time.perf_counter() - t0)
+            t0 = _time.perf_counter()
+            login(c, "some wrong password")
+            t_wrong.append(_time.perf_counter() - t0)
+        mu, mw = statistics.median(t_unknown), statistics.median(t_wrong)
+        check(
+            "unknown email costs about the same as a wrong password",
+            0.5 < mu / mw < 2.0,
+            f"median {mu * 1000:.0f}ms vs {mw * 1000:.0f}ms",
+        )
+
+        # --- brute force ---------------------------------------------------------
+        print()
+        print("--- brute force on one account ---")
+        d = addr("target")
+        created.append(uuid.UUID(signup(d).json()["id"]))
+        codes = [login(d, f"guess number {i}").status_code for i in range(5)]
+        check("first 5 wrong guesses in a minute -> 401", codes == [401] * 5, str(codes))
+        sixth = login(d, "guess number 6")
+        check(
+            "6th guess in the minute -> 429 (per-email limit)",
+            sixth.status_code == 429,
+            str(sixth.status_code),
+        )
+        check(
+            "429 carries Retry-After",
+            sixth.headers.get("retry-after", "").isdigit(),
+            sixth.headers.get("retry-after"),
+        )
+        check(
+            "429 body has the shared shape",
+            set(sixth.json()) == {"detail", "limit", "retry_after"},
+            sixth.text,
+        )
+        right = login(d, password)
+        check(
+            "even the correct password is refused while limited",
+            right.status_code == 429,
+            str(right.status_code),
+        )
+        ok_other = login(a, password)
+        check(
+            "another account from the same IP is unaffected",
+            ok_other.status_code == 200,
+            str(ok_other.status_code),
+        )
+        ghost = addr("ghost-brute")
+        ghost_codes = [login(ghost, "x" * 12).status_code for _ in range(6)]
+        check(
+            "a nonexistent address is limited identically (no existence leak)",
+            ghost_codes == [401] * 5 + [429],
+            str(ghost_codes),
+        )
+
+        # --- forgot password -----------------------------------------------------
+        print()
+        print("--- forgot password ---")
+        sent.clear()
+        f_pw = client.post("/auth/forgot-password", json={"email": a})
+        f_google = client.post("/auth/forgot-password", json={"email": g_email})
+        f_none = client.post("/auth/forgot-password", json={"email": addr("never-registered")})
+        check(
+            "password / Google-only / unknown: byte-identical bodies",
+            f_pw.content == f_google.content == f_none.content,
+            f_pw.text,
+        )
+        check(
+            "...and identical statuses (202)",
+            f_pw.status_code == f_google.status_code == f_none.status_code == 202,
+        )
+        kinds = {e.to: k for k, e in sent}
+        check("password account gets a reset link", kinds.get(a) == pa.PURPOSE_RESET, str(kinds))
+        check(
+            "Google-only account gets the 'use Google' email",
+            kinds.get(g_email) == "google_account",
+        )
+        g_mail = next((e for k, e in sent if e.to == g_email), None)
+        check(
+            "'use Google' email contains no token",
+            g_mail is not None and "token=" not in g_mail.text + g_mail.html,
+        )
+        check("unknown address gets nothing", addr("never-registered") not in kinds)
+        first_reset = token_from(next(e for k, e in sent if e.to == a))
+        check(
+            "reset link carries its token in the URL fragment",
+            "#token=" in next(e for k, e in sent if e.to == a).text,
+        )
+
+        # --- reset password ------------------------------------------------------
+        print()
+        print("--- reset password ---")
+        sent.clear()
+        client.post("/auth/forgot-password", json={"email": a})
+        second_reset = token_from(sent[-1][1])
+        new_password = "a brand new passphrase"
+
+        bad = client.post(
+            "/auth/reset-password", json={"token": first_reset, "new_password": new_password}
+        )
+        check(
+            "an older link is dead once a newer one is issued",
+            bad.status_code == 400,
+            str(bad.status_code),
+        )
+        tampered = second_reset[:-1] + ("A" if second_reset[-1] != "A" else "B")
+        bad = client.post(
+            "/auth/reset-password", json={"token": tampered, "new_password": new_password}
+        )
+        check("tampered token -> 400", bad.status_code == 400, str(bad.status_code))
+        bad = client.post(
+            "/auth/reset-password",
+            json={"token": pa.secrets.token_urlsafe(32), "new_password": new_password},
+        )
+        check("guessed token -> 400", bad.status_code == 400, str(bad.status_code))
+        bad = client.post(
+            "/auth/reset-password", json={"token": vtoken, "new_password": new_password}
+        )
+        check(
+            "a verification token cannot reset a password",
+            bad.status_code == 400,
+            str(bad.status_code),
+        )
+        with session_scope() as s:
+            expired_raw = pa.issue_token(s, user_a, pa.PURPOSE_RESET, ttl_seconds=-1)
+        bad = client.post(
+            "/auth/reset-password", json={"token": expired_raw, "new_password": new_password}
+        )
+        check("expired token -> 400", bad.status_code == 400, str(bad.status_code))
+        # issuing that expired one retired second_reset - issue a fresh one directly
+        with session_scope() as s:
+            good_raw = pa.issue_token(s, user_a, pa.PURPOSE_RESET, ttl_seconds=3600)
+        weak = client.post(
+            "/auth/reset-password", json={"token": good_raw, "new_password": "short"}
+        )
+        check(
+            "reset with a too-short password -> 422, token not burned",
+            weak.status_code == 422,
+            str(weak.status_code),
+        )
+
+        _time.sleep(1.1)  # so the old session's iat is strictly before the cut-off second
+        client.cookies.clear()
+        ok = client.post(
+            "/auth/reset-password", json={"token": good_raw, "new_password": new_password}
+        )
+        check(
+            "valid token -> 200 and a session",
+            ok.status_code == 200 and auth.SESSION_COOKIE_NAME in ok.cookies,
+            str(ok.status_code),
+        )
+        again = client.post(
+            "/auth/reset-password",
+            json={"token": good_raw, "new_password": "yet another passphrase"},
+        )
+        check(
+            "the same token cannot be used twice", again.status_code == 400, str(again.status_code)
+        )
+        check("old password no longer works", login(a, password).status_code == 401)
+        check("new password works", login(a, new_password).status_code == 200)
+        expect_401("a session from before the reset is ended", signup_cookie)
+        expect_401("...including the login from before the reset", login_cookie)
+        check(
+            "the session issued by the reset works",
+            auth.get_current_user(ok.cookies[auth.SESSION_COOKIE_NAME]).id == user_a,
+        )
+
+        # --- same session mechanism as Google ------------------------------------
+        print()
+        print("--- same session mechanism as Google ---")
+        real_verify = auth.verify_google_id_token
+        auth.verify_google_id_token = lambda token: {
+            "sub": f"test-parity-{run_id}",
+            "email": addr("parity"),
+            "name": "Parity",
+            "iss": "https://accounts.google.com",
+        }
+        try:
+            client.cookies.clear()
+            g_resp = client.post("/auth/google", json={"id_token": "stubbed"})
+        finally:
+            auth.verify_google_id_token = real_verify
+        check(
+            "stubbed-verification /auth/google -> 200",
+            g_resp.status_code == 200,
+            str(g_resp.status_code),
+        )
+        created.append(uuid.UUID(g_resp.json()["id"]))
+        g_set_cookie = g_resp.headers.get("set-cookie", "")
+
+        def cookie_shape(header: str) -> tuple:
+            parts = [p.strip() for p in header.split(";")]
+            name = parts[0].split("=", 1)[0]
+            attrs = sorted(
+                p.split("=", 1)[0].lower()
+                + (
+                    "=" + p.split("=", 1)[1].lower()
+                    if "=" in p and not p.lower().startswith("expires")
+                    else ""
+                )
+                for p in parts[1:]
+            )
+            return name, tuple(attrs)
+
+        check(
+            "Set-Cookie: same name and attributes (HttpOnly, Max-Age, Path, SameSite)",
+            cookie_shape(g_set_cookie) == cookie_shape(login_set_cookie),
+            f"\n         google: {cookie_shape(g_set_cookie)}\n         password: {cookie_shape(login_set_cookie)}",
+        )
+        g_claims = jwt.decode(
+            g_resp.cookies[auth.SESSION_COOKIE_NAME],
+            auth.SESSION_SECRET_KEY,
+            algorithms=[auth.JWT_ALGORITHM],
+        )
+        p_claims = jwt.decode(
+            login_cookie, auth.SESSION_SECRET_KEY, algorithms=[auth.JWT_ALGORITHM]
+        )
+        check(
+            "JWT claims: same keys",
+            set(g_claims) == set(p_claims) == {"sub", "iat", "exp"},
+            f"{sorted(g_claims)} / {sorted(p_claims)}",
+        )
+        check(
+            "JWT: same TTL", g_claims["exp"] - g_claims["iat"] == p_claims["exp"] - p_claims["iat"]
+        )
+        check(
+            "JWT header: same algorithm",
+            jwt.get_unverified_header(g_resp.cookies[auth.SESSION_COOKIE_NAME])
+            == jwt.get_unverified_header(login_cookie),
+        )
+        me = client.get("/auth/me")
+        check(
+            "Google session still resolves through /auth/me",
+            me.status_code == 200 and me.json()["email"] == addr("parity"),
+        )
+
+        # --- schema guarantees ---------------------------------------------------
+        print()
+        print("--- schema guarantees ---")
+        from sqlalchemy.exc import IntegrityError
+
+        try:
+            with session_scope() as s:
+                s.add(User(email=addr("nocred"), display_name="x"))
+            check("CHECK rejects a user with neither google_sub nor password", False, "inserted")
+        except IntegrityError:
+            check("CHECK rejects a user with neither google_sub nor password", True)
+        try:
+            with session_scope() as s:
+                s.add(User(email=a.upper(), password_hash="$argon2id$dummy"))
+            check("unique index rejects a second password account, any case", False, "inserted")
+        except IntegrityError:
+            check("unique index rejects a second password account, any case", True)
+        both = signup(g_email)
+        check(
+            "a Google address can still get a separate password account (no linking)",
+            both.status_code == 201,
+            str(both.status_code),
+        )
+        if both.status_code == 201:
+            created.append(uuid.UUID(both.json()["id"]))
+            with session_scope() as s:
+                rows = s.query(User).filter(func_lower(User.email) == g_email).all()
+                ids = {row.id for row in rows}
+            check(
+                "...as two separate rows",
+                ids == {g_user.id, uuid.UUID(both.json()["id"])},
+                str(len(ids)),
+            )
+
+    finally:
+        emails.send_quietly = real_send
+        with session_scope() as s:
+            for uid in created:
+                row = s.get(User, uid)
+                if row is not None:
+                    s.delete(row)
+        clear_test_limits()
+        with session_scope() as s:
+            left = s.query(User).filter(User.email.like(f"%{run_id}@example.com")).count()
+        check("password-test users cleaned up (tokens cascade)", left == 0, f"{left} left")
+
+
+def func_lower(column):
+    from sqlalchemy import func
+
+    return func.lower(column)
 
 
 if __name__ == "__main__":

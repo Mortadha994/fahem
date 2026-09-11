@@ -156,6 +156,35 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
 
+# --- password accounts + transactional email (Phase 4) ----------------------
+
+# Where links in emails point. The verification link lands on the API (a
+# one-click GET that marks the address and bounces to the app). The reset link
+# lands on the app, carrying its token in the URL *fragment*: a fragment is
+# never sent to any server, so it cannot end up in nginx's access log or a
+# Referer header, and the app POSTs it to /auth/reset-password itself.
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5173").rstrip("/")
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "http://localhost:8000").rstrip("/")
+
+# Length is the only rule (NIST SP 800-63B, OWASP ASVS V2.1): no forced
+# digits or symbols, which mostly produce "Password1!" and annoyed users. The
+# maximum is not a security rule - it bounds how much work a single request can
+# make Argon2 do, and 128 characters is far past any passphrase anyone types.
+PASSWORD_MIN_LENGTH = int(os.environ.get("PASSWORD_MIN_LENGTH", "12"))
+PASSWORD_MAX_LENGTH = int(os.environ.get("PASSWORD_MAX_LENGTH", "128"))
+
+RESET_TOKEN_TTL_SECONDS = int(os.environ.get("RESET_TOKEN_TTL_SECONDS", str(60 * 60)))
+VERIFY_TOKEN_TTL_SECONDS = int(os.environ.get("VERIFY_TOKEN_TTL_SECONDS", str(24 * 60 * 60)))
+
+# Resend (https://resend.com). An empty key means email is not configured:
+# sends are refused and logged as not sent, never faked. EMAIL_FROM must be on a
+# domain verified in Resend - the onboarding@resend.dev default only delivers
+# to the Resend account owner's own address, which is enough for local testing
+# and nothing else.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Fahem <onboarding@resend.dev>")
+
+
 # --- chapter content --------------------------------------------------------
 
 # The exercise catalogue. Same file the retrieval and context build checks
@@ -230,6 +259,26 @@ RATE_LIMIT_SOLVE = os.environ.get("RATE_LIMIT_SOLVE", "10/minute;100/hour")
 # guessing one is not a rate-limitable attack. It exists to stop hammering,
 # not to stop credential stuffing.
 RATE_LIMIT_AUTH = os.environ.get("RATE_LIMIT_AUTH", "30/minute")
+
+# The password routes (Phase 4) DO accept a secret, so the per-IP reasoning
+# above would make them the weak control it describes. The real brute-force
+# control is per *email*: credential stuffing spreads one account's guesses
+# across many IPs, and a per-IP limit loose enough for a classroom NAT never
+# sees them. The email is hashed before it becomes a Redis key.
+#
+#   signup   per IP    - sized for a class creating accounts together
+#   login    per IP    - same classroom reasoning as RATE_LIMIT_AUTH
+#   login    per email - the limit that actually stops password guessing
+#   forgot   per IP, and per email so nobody can use Fahem to flood someone
+#            else's inbox with reset mails
+#   token    per IP    - reset/verify tokens are 256-bit, so this is
+#            protection against hammering, not against guessing
+RATE_LIMIT_SIGNUP = os.environ.get("RATE_LIMIT_SIGNUP", "30/hour")
+RATE_LIMIT_LOGIN = os.environ.get("RATE_LIMIT_LOGIN", "30/minute")
+RATE_LIMIT_LOGIN_EMAIL = os.environ.get("RATE_LIMIT_LOGIN_EMAIL", "5/minute;20/hour")
+RATE_LIMIT_FORGOT = os.environ.get("RATE_LIMIT_FORGOT", "10/hour")
+RATE_LIMIT_FORGOT_EMAIL = os.environ.get("RATE_LIMIT_FORGOT_EMAIL", "3/hour")
+RATE_LIMIT_TOKEN = os.environ.get("RATE_LIMIT_TOKEN", "20/minute")
 
 # Sent as Retry-After on a 429. slowapi knows the true window reset, and the
 # handler prefers it; this is only the fallback when it cannot be derived.
