@@ -227,8 +227,10 @@ def get_current_user(session_cookie: str | None = Cookie(None, alias=SESSION_COO
         raise unauthorized
 
     try:
-        user_id = decode_session_token(session_cookie)
-    except (jwt.InvalidTokenError, ValueError, KeyError):
+        claims = jwt.decode(session_cookie, SESSION_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = uuid.UUID(claims["sub"])
+        issued_at = int(claims["iat"])
+    except (jwt.InvalidTokenError, ValueError, KeyError, TypeError):
         raise unauthorized
 
     with session_scope() as session:
@@ -237,6 +239,14 @@ def get_current_user(session_cookie: str | None = Cookie(None, alias=SESSION_COO
     if user is None:
         # Valid signature, but the row is gone - a deleted account whose
         # cookie has not expired yet.
+        raise unauthorized
+
+    # Phase 4: a password reset sets sessions_valid_after, which ends every
+    # session issued before it. Null (every Google account, and any password
+    # account that has never reset) means no cut-off, so this changes nothing
+    # for them. Compared in whole seconds because `iat` is an integer.
+    cutoff = user.sessions_valid_after
+    if cutoff is not None and issued_at < int(cutoff.timestamp()):
         raise unauthorized
     return user
 

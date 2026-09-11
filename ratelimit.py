@@ -27,10 +27,12 @@ resolved identity where the key function can see it.
 
 from __future__ import annotations
 
+import hashlib
 import time
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from limits import parse_many
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -120,13 +122,53 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse
         # beats a 500 raised from inside an error handler.
         pass
 
+    return _too_many(str(exc.limit.limit), retry_after)
+
+
+def _too_many(limit: str, retry_after: int) -> JSONResponse:
+    """The one 429 shape, shared by the decorator limits and hit_keyed()."""
     response = JSONResponse(
         status_code=429,
         content={
             "detail": "rate limit exceeded",
-            "limit": str(exc.limit.limit),
+            "limit": limit,
             "retry_after": retry_after,
         },
     )
     response.headers["Retry-After"] = str(retry_after)
     return response
+
+
+# --- limits keyed on something inside the request body -------------------------
+#
+# slowapi's key functions run before the body is parsed, so they cannot key on
+# an email address. hit_keyed() is the same `limits` storage and window
+# arithmetic, called from inside a handler once the body is known.
+
+
+class KeyedRateLimitExceeded(Exception):
+    def __init__(self, limit: str, retry_after: int) -> None:
+        super().__init__(limit)
+        self.limit = limit
+        self.retry_after = retry_after
+
+
+def email_key(email: str) -> str:
+    """A rate-limit key for an address, without putting the address in Redis."""
+    digest = hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
+    return f"email:{digest[:32]}"
+
+
+def hit_keyed(limits_spec: str, scope: str, key: str) -> None:
+    """Count one hit against every window in `limits_spec`; raise on the first
+    exceeded. Uses slowapi's own strategy object, so it shares storage and
+    configuration with the decorator limits."""
+    strategy = limiter.limiter
+    for item in parse_many(limits_spec):
+        if not strategy.hit(item, scope, key):
+            reset_at, _remaining = strategy.get_window_stats(item, scope, key)
+            raise KeyedRateLimitExceeded(str(item), max(1, int(reset_at - time.time())))
+
+
+def keyed_rate_limit_handler(request: Request, exc: KeyedRateLimitExceeded) -> JSONResponse:
+    return _too_many(exc.limit, exc.retry_after)

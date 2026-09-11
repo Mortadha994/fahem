@@ -35,6 +35,7 @@ import auth
 import chapters
 import gatekeeper
 import models
+import password_auth
 import ratelimit
 from checker import check_constraints
 from config import CORS_ORIGINS, RATE_LIMIT_SOLVE
@@ -108,10 +109,17 @@ app.add_middleware(
 # raises at request time.
 app.state.limiter = ratelimit.limiter
 app.add_exception_handler(RateLimitExceeded, ratelimit.rate_limit_handler)
+# Limits keyed on the request body (per-email on login and forgot-password,
+# Phase 4). Same 429 shape as the one above.
+app.add_exception_handler(ratelimit.KeyedRateLimitExceeded, ratelimit.keyed_rate_limit_handler)
 
 # Sign-in, session read and sign-out. Included after app.state.limiter is set
 # because auth.py's /auth/google carries its own IP-based limit.
 app.include_router(auth.router)
+
+# Email + password accounts (Phase 4): same /auth prefix, same session
+# functions, separate identity check - see password_auth.py.
+app.include_router(password_auth.router)
 
 # Chapter catalogue, exercises and the lesson PDF (Phase 3a). Every route
 # behind get_current_user; none rate-limited, since none of them reach a

@@ -28,3 +28,10 @@ PyJWT>=2.8.0
 # redis is slowapi's storage driver, not a direct dependency of our code.
 slowapi>=0.1.9
 redis>=5.0.0
+
+# Password accounts (Phase 4). argon2-cffi is the reference binding for
+# Argon2id, the current OWASP-recommended password hash (memory-hard, unlike
+# bcrypt). email-validator is what pydantic's EmailStr needs to validate an
+# address at all; without it EmailStr raises ImportError at model definition.
+argon2-cffi>=23.1.0
+email-validator>=2.1.0
