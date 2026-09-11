@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { GOOGLE_CLIENT_ID } from "../config.js";
+import Alert from "./ui/Alert.jsx";
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 
@@ -85,11 +86,11 @@ export default function GoogleSignIn({ onCredential, disabled }) {
 
   if (failed) {
     return (
-      <p className="signin-error" role="alert">
+      <Alert>
         {misconfigured
           ? "La connexion Google n'est pas configurée sur ce serveur."
           : "Impossible de charger la connexion Google. Vérifie ta connexion internet et recharge la page."}
-      </p>
+      </Alert>
     );
   }
 

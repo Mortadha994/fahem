@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   fetchChapterPdf,
@@ -7,6 +7,9 @@ import {
   UnauthorizedError,
 } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
+import Alert from "../components/ui/Alert.jsx";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import Skeleton from "../components/ui/Skeleton.jsx";
 
 const DOC = "doc";
 const EXOS = "exos";
@@ -113,6 +116,35 @@ function ChapterView({ id }) {
   }, [id, onUnauthorized]);
 
   /**
+   * WAI-ARIA tabs keyboard behaviour.
+   *
+   * The pattern is not optional decoration: a tablist announces itself as one
+   * widget, so a screen-reader user expects Left/Right to move between tabs
+   * and Home/End to jump to the ends, the same way they would in any other
+   * tablist. Before this, the tabs announced as tabs and then behaved like
+   * two unrelated buttons.
+   *
+   * Selection follows focus, which is the right choice here because both
+   * panels are already mounted - switching is instant and costs no fetch, so
+   * there is nothing to protect the user from arrowing through.
+   */
+  const tabRefs = useRef({});
+  const onTabKeyDown = (event) => {
+    const order = [DOC, EXOS];
+    const current = order.indexOf(tab);
+    let next = null;
+    if (event.key === "ArrowRight") next = order[(current + 1) % order.length];
+    else if (event.key === "ArrowLeft")
+      next = order[(current - 1 + order.length) % order.length];
+    else if (event.key === "Home") next = order[0];
+    else if (event.key === "End") next = order[order.length - 1];
+    if (next === null) return;
+    event.preventDefault();
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  };
+
+  /**
    * Hand the exercise to the chat route, which sends it through the same
    * streamSolve path a typed question uses. The problem travels as router
    * state rather than a query string: an énoncé is a paragraph of French, and
@@ -129,22 +161,35 @@ function ChapterView({ id }) {
         <h1>{chapter?.title ?? `Chapitre ${id}`}</h1>
       </header>
 
-      <div className="tabs" role="tablist">
+      <div className="tabs" role="tablist" aria-label="Contenu du chapitre">
         <button
           type="button"
           role="tab"
+          id="tab-doc"
+          aria-controls="panel-doc"
           aria-selected={tab === DOC}
+          /* Roving tabindex: one stop for the whole tablist, then arrows move
+             within it. Leaving both tabs at 0 would make Tab walk through
+             every tab before reaching the panel. */
+          tabIndex={tab === DOC ? 0 : -1}
+          ref={(el) => (tabRefs.current[DOC] = el)}
           className={`tab${tab === DOC ? " tab-on" : ""}`}
           onClick={() => setTab(DOC)}
+          onKeyDown={onTabKeyDown}
         >
           Documentation
         </button>
         <button
           type="button"
           role="tab"
+          id="tab-exos"
+          aria-controls="panel-exos"
           aria-selected={tab === EXOS}
+          tabIndex={tab === EXOS ? 0 : -1}
+          ref={(el) => (tabRefs.current[EXOS] = el)}
           className={`tab${tab === EXOS ? " tab-on" : ""}`}
           onClick={() => setTab(EXOS)}
+          onKeyDown={onTabKeyDown}
         >
           Exercices{exercises ? ` (${exercises.length})` : ""}
         </button>
@@ -157,18 +202,23 @@ function ChapterView({ id }) {
           their place in the cours, on the most common move this screen has.
           The exercise list is a handful of buttons and costs nothing to keep
           around. */}
+      {/* tabIndex 0 so the panel itself is a tab stop: with no focusable
+          child - the Documentation panel is a single <object> - a keyboard
+          user would otherwise have no way to reach or scroll it. */}
       <section
         className="tabpanel"
         role="tabpanel"
-        aria-label="Documentation"
+        id="panel-doc"
+        aria-labelledby="tab-doc"
+        tabIndex={0}
         hidden={tab !== DOC}
       >
         {pdfFailed ? (
-          <p className="page-error" role="alert">
+          <Alert className="page-alert">
             Impossible d'afficher le cours. Recharge la page pour réessayer.
-          </p>
+          </Alert>
         ) : pdfUrl ? (
-          <object className="pdf-frame" data={pdfUrl} type="application/pdf">
+          <object className="pdf-frame surface" data={pdfUrl} type="application/pdf">
             {/* Shown only if the browser has no built-in PDF viewer. */}
             <p className="page-muted">
               Ton navigateur ne peut pas afficher le PDF directement.{" "}
@@ -179,38 +229,52 @@ function ChapterView({ id }) {
             </p>
           </object>
         ) : (
-          <p className="page-muted" role="status">
-            Chargement du cours…
-          </p>
+          <>
+            <p className="sr-only" role="status">
+              Chargement du cours…
+            </p>
+            <Skeleton radius="lg" className="pdf-skeleton" />
+          </>
         )}
       </section>
 
       <section
         className="tabpanel"
         role="tabpanel"
-        aria-label="Exercices"
+        id="panel-exos"
+        aria-labelledby="tab-exos"
+        tabIndex={0}
         hidden={tab !== EXOS}
       >
         {exosFailed && (
-          <p className="page-error" role="alert">
+          <Alert className="page-alert">
             Impossible de charger les exercices. Recharge la page pour réessayer.
-          </p>
+          </Alert>
         )}
         {exercises === null && !exosFailed && (
-          <p className="page-muted" role="status">
+          <p className="sr-only" role="status">
             Chargement…
           </p>
         )}
         {exercises?.length === 0 && (
-          <p className="page-muted">Aucun exercice pour ce chapitre.</p>
+          <EmptyState size="sm">Aucun exercice pour ce chapitre.</EmptyState>
         )}
 
         <ul className="exo-list">
+          {/* One-line-row placeholders, the height of the shortest real
+              exercise, so the list has a shape before the énoncés arrive. */}
+          {exercises === null &&
+            !exosFailed &&
+            [0, 1, 2].map((i) => (
+              <li key={`skeleton-${i}`} aria-hidden="true">
+                <Skeleton height="3rem" radius="lg" />
+              </li>
+            ))}
           {(exercises ?? []).map((e) => (
             <li key={e.id}>
               <button
                 type="button"
-                className="exo"
+                className="exo surface surface-interactive"
                 onClick={() => solve(e.question)}
                 title="Résoudre avec Fahem"
               >

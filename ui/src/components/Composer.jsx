@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import Button from "./ui/Button.jsx";
 
 /** Auto-resizing textarea. Enter sends, Shift+Enter breaks the line. */
 export default function Composer({ value, onChange, onSend, onStop, streaming }) {
@@ -21,7 +22,7 @@ export default function Composer({ value, onChange, onSend, onStop, streaming })
 
   return (
     <div className="composer">
-      <div className="composer-inner">
+      <div className="composer-inner surface">
         <textarea
           ref={ref}
           value={value}
@@ -32,24 +33,24 @@ export default function Composer({ value, onChange, onSend, onStop, streaming })
           aria-label="Énoncé de l'exercice"
         />
         {streaming ? (
-          <button
-            type="button"
-            className="btn-stop"
+          <Button
+            variant="secondary"
+            className="btn-composer"
             onClick={onStop}
             aria-label="Arrêter"
           >
             <span className="stop-square" aria-hidden="true" /> Arrêter
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            className="btn-send"
+          <Button
+            variant="primary"
+            className="btn-composer"
             onClick={onSend}
             disabled={!value.trim()}
             aria-label="Envoyer"
           >
             Envoyer
-          </button>
+          </Button>
         )}
       </div>
       <p className="composer-hint">

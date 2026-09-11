@@ -1,4 +1,5 @@
 import GoogleSignIn from "./GoogleSignIn.jsx";
+import Alert from "./ui/Alert.jsx";
 import { SCOPE_LABEL } from "../config.js";
 
 /**
@@ -11,7 +12,7 @@ import { SCOPE_LABEL } from "../config.js";
 export default function SignInScreen({ onCredential, busy, error }) {
   return (
     <div className="signin">
-      <div className="signin-card">
+      <div className="signin-card surface">
         <span className="brand signin-brand">Fahem</span>
 
         <h1 className="signin-title">Ton tuteur d'algorithmique</h1>
@@ -23,11 +24,7 @@ export default function SignInScreen({ onCredential, busy, error }) {
         <div className="signin-action">
           <GoogleSignIn onCredential={onCredential} disabled={busy} />
           {busy && <p className="signin-busy">Connexion en cours…</p>}
-          {error && (
-            <p className="signin-error" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
         </div>
 
         <p className="signin-foot">{SCOPE_LABEL}</p>

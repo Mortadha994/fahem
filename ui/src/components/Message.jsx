@@ -1,5 +1,7 @@
 import Markdown from "./Markdown.jsx";
 import GroundingStrip from "./GroundingStrip.jsx";
+import Alert from "./ui/Alert.jsx";
+import Badge from "./ui/Badge.jsx";
 
 /**
  * Student messages are shaded and constrained in width; assistant messages are
@@ -21,9 +23,7 @@ export default function Message({ message, streaming }) {
   return (
     <div className="msg msg-assistant">
       {error ? (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <Alert className="msg-error">{error}</Alert>
       ) : (
         <>
           {content ? (
@@ -44,19 +44,24 @@ export default function Message({ message, streaming }) {
               correctness guarantee, and the label says "syntaxe" for that
               reason rather than something like "vérifié" alone. */}
           {status === "checking" && (
-            <span className="badge badge-pending">Vérification de la syntaxe…</span>
+            <Badge tone="neutral" className="msg-verdict">
+              Vérification de la syntaxe…
+            </Badge>
           )}
           {status === "clean" && (
-            <span
-              className="badge badge-ok"
+            <Badge
+              tone="success"
+              className="msg-verdict"
               title="Aucune syntaxe hors chapitre détectée"
             >
               ✓ Syntaxe du chapitre respectée
-            </span>
+            </Badge>
           )}
           {status === "warned" && (
             <div className="badge-warn-wrap">
-              <span className="badge badge-warn">⚠ Syntaxe à vérifier</span>
+              <Badge tone="warning" className="msg-verdict">
+                ⚠ Syntaxe à vérifier
+              </Badge>
               <ul className="warn-list">
                 {warnings.map((w, i) => (
                   <li key={i}>{w}</li>
