@@ -80,6 +80,11 @@
   /* Layout constants that were repeated as literals. */
   --content-max: 62rem;
   --sidebar-w: 264px;
+
+  /* Minimum comfortable hit target. Expressed as a floor with centring rather
+     than a fixed size, so a control still grows with its content and is only
+     ever padded up to the minimum. */
+  --tap: 44px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -181,6 +186,7 @@ body {
   margin-bottom: 0.6rem;
 }
 .btn-new {
+  min-height: var(--tap);
   width: 100%;
   padding: var(--space-2) 0.7rem;
   font: inherit;
@@ -239,6 +245,10 @@ body {
   color: var(--fg-dim);
 }
 .session-del {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  align-items: center;
+  justify-content: center;
   background: none;
   border: 0;
   cursor: pointer;
@@ -247,8 +257,23 @@ body {
   padding: 0 var(--space-2);
   opacity: 0;
 }
-.session:hover .session-del {
+/* Revealed on hover, on keyboard focus, and whenever it is mid-confirm.
+   Focus matters: the button is in the tab order, and opacity:0 alone left it
+   reachable but invisible. */
+.session:hover .session-del,
+.session:focus-within .session-del,
+.session-del-confirm {
   opacity: 1;
+}
+/* The confirm state is wider than the bare glyph and reads as destructive. */
+.session-del-confirm {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .sidebar-foot {
   margin: 0;
@@ -272,6 +297,10 @@ body {
   color: var(--fg-dim);
 }
 .btn-burger {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  align-items: center;
+  justify-content: center;
   display: none;
   background: none;
   border: 0;
@@ -391,6 +420,7 @@ body {
   background: var(--bg-alt);
 }
 .grounding-toggle {
+  min-height: var(--tap);
   width: 100%;
   text-align: left;
   background: none;
@@ -552,6 +582,11 @@ body {
   letter-spacing: 0.02em;
 }
 .algo-copy-btn {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  align-items: center;
+  justify-content: center;
+  display: inline-flex;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -603,6 +638,7 @@ body {
   border-color: var(--accent);
 }
 .composer textarea {
+  min-height: var(--tap);
   flex: 1;
   border: 0;
   outline: 0;
@@ -616,6 +652,7 @@ body {
 }
 .btn-send,
 .btn-stop {
+  min-height: var(--tap);
   flex-shrink: 0;
   padding: var(--space-2) 0.9rem;
   font: inherit;
@@ -660,7 +697,9 @@ body {
 }
 @media (max-width: 760px) {
   .btn-burger {
-    display: block;
+    /* inline-flex, not block: the base rule sets the 44px floor and the
+       centring, and both need a flex context to take effect. */
+    display: inline-flex;
   }
   .sidebar {
     position: fixed;
@@ -855,6 +894,7 @@ body {
   color: var(--fg-dim);
 }
 .btn-logout {
+  min-height: var(--tap);
   margin-left: auto;
   flex-shrink: 0;
   background: none;
@@ -898,6 +938,9 @@ body {
   border-bottom: 1px solid var(--line);
 }
 .appbar-brand {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--accent);
@@ -909,6 +952,9 @@ body {
   gap: 0.4rem;
 }
 .appbar-link {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
   padding: 0.32rem 0.6rem;
   border-radius: 7px;
   font-size: 0.85rem;
@@ -923,6 +969,9 @@ body {
   background: var(--bg-alt);
 }
 .appbar-cta {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
   padding: 0.32rem 0.7rem;
   border-radius: var(--radius-full);
   border: 1px solid var(--accent);
@@ -974,6 +1023,9 @@ body {
   max-width: 44rem;
 }
 .page-back {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
   font-size: 0.82rem;
   color: var(--fg-dim);
   text-decoration: none;
@@ -1059,6 +1111,7 @@ body {
   margin-bottom: var(--space-4);
 }
 .tab {
+  min-height: var(--tap);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
