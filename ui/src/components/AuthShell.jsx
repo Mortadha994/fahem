@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
 import Badge from "./ui/Badge.jsx";
 import { SCOPE_LABEL } from "../config.js";
@@ -100,14 +101,16 @@ export default function AuthShell({ title, subtitle, children }) {
         onPointerLeave={handlePointerLeave}
       >
         <aside ref={panelRef} className="auth-panel" aria-label="Fahem en bref">
-          <span className="auth-brand">
+          {/* The brand is the way back out. Every screen wearing this shell is
+              signed out, so "/" is the landing page, never the app. */}
+          <Link className="auth-brand" to="/">
             {/* ← is the assignment arrow - the one symbol every Fahem answer
                 is built around, and the one generic AI gets wrong. */}
             <span className="auth-mark" aria-hidden="true">
               <span className="auth-mark-arrow">←</span>
             </span>
             Fahem
-          </span>
+          </Link>
 
           <div className="auth-panel-body">
             <p className="auth-panel-title">

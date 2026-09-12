@@ -47,9 +47,14 @@ export default function SignInScreen({
   verifyOutcome,
 }) {
   const location = useLocation();
-  // A dead reset link sends the student back here already in "forgot" mode.
+  // Which tab to open on. A dead reset link arrives asking for "forgot"; the
+  // landing page's "Créer un compte" arrives asking for "signup", so the
+  // student lands on the form they pressed a button for rather than on the
+  // login tab with a toggle to find. Anything else opens on login.
   const [mode, setMode] = useState(() =>
-    location.state?.authMode === "forgot" ? "forgot" : "login"
+    location.state?.authMode === "forgot" || location.state?.authMode === "signup"
+      ? location.state.authMode
+      : "login"
   );
   const { title, subtitle } = HEADINGS[mode];
 

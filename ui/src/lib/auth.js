@@ -66,8 +66,13 @@ export async function logout() {
 
 // --- email + password (Phase 5) -----------------------------------------------
 
-/** Where the reset email's link lands. The one route reachable signed out. */
+/** Where the reset email's link lands. Reachable without a session. */
 export const RESET_PASSWORD_PATH = "/reinitialiser-mot-de-passe";
+
+/** Where the sign-in and sign-up forms live, for a visitor who came from the
+ *  landing page. A signed-out visitor on any other path gets the landing page
+ *  instead; see the gate in App.jsx. */
+export const SIGNIN_PATH = "/connexion";
 
 /** Mirrors the backend's PASSWORD_MIN_LENGTH. The backend stays the authority;
  * this only lets the form say so before a round trip. */
