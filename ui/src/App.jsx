@@ -5,7 +5,11 @@ import Landing from "./components/Landing.jsx";
 import SignInScreen from "./components/SignInScreen.jsx";
 import Home from "./routes/Home.jsx";
 import ChapterPage from "./routes/ChapterPage.jsx";
-import Admin from "./routes/Admin.jsx";
+import AdminLayout from "./components/admin/AdminLayout.jsx";
+import AdminDashboard from "./routes/admin/AdminDashboard.jsx";
+import AdminUserCreate from "./routes/admin/AdminUserCreate.jsx";
+import AdminUserDetail from "./routes/admin/AdminUserDetail.jsx";
+import AdminUsers from "./routes/admin/AdminUsers.jsx";
 import Chat from "./routes/Chat.jsx";
 import ResetPassword from "./routes/ResetPassword.jsx";
 import {
@@ -262,16 +266,29 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/chapitre/:id" element={<ChapterPage />} />
           <Route path="/chat" element={<Chat />} />
-          {/* Phase 7. Registered only for an admin, not registered-and-
-              guarded: for anyone else /admin is simply an unknown path and
-              the catch-all below sends it to "/", so the admin page never
-              mounts for a student at all. The page then re-checks with the
-              server, which is the check that actually holds. */}
-          {isAdmin(user) && <Route path="/admin" element={<Admin />} />}
           {/* An unknown path is a mistyped URL or a stale bookmark, not an
               error worth a screen of its own at this size. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
+
+        {/* The admin console (Phase 8): a sibling of AppLayout, not a child,
+            so it gets its own shell and none of the student sidebar.
+
+            Registered only for an admin, not registered-and-guarded: for
+            anyone else every /admin/* path is simply unknown and the
+            catch-all above sends it to "/", so no console component mounts
+            for a student at all. AdminLayout then re-checks with the server,
+            and every API call behind it is checked again - those are the
+            checks that actually hold. */}
+        {isAdmin(user) && (
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="utilisateurs" element={<AdminUsers />} />
+            <Route path="utilisateurs/nouveau" element={<AdminUserCreate />} />
+            <Route path="utilisateurs/:id" element={<AdminUserDetail />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Route>
+        )}
       </Routes>
     </AuthContext.Provider>
   );

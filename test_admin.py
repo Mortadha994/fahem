@@ -317,10 +317,128 @@ def http_section(run_id: str, created: list[uuid.UUID], *, student: uuid.UUID, a
         ]
         check("every /admin route inherits the gate (non-vacuous)",
               bool(admin_routes) and not ungated, f"routes={len(admin_routes)} ungated={ungated}")
+
+        crud_section(client, as_user, run_id, created, student=student, admin=admin)
     finally:
         emails.send_quietly = real_send
         for key in r.scan_iter("*testclient*"):
             r.delete(key)
+
+
+def crud_section(client, as_user, run_id: str, created: list[uuid.UUID], *,
+                 student: uuid.UUID, admin: uuid.UUID) -> None:
+    """Phase 8: user management through the real admin router."""
+    good_pw = "correct horse battery staple"
+
+    # --- every CRUD route refuses a student -------------------------------
+    as_user(student)
+    probes = [
+        ("GET", "/admin/stats"), ("GET", "/admin/users"), ("GET", f"/admin/users/{admin}"),
+        ("POST", "/admin/users"), ("PATCH", f"/admin/users/{admin}"),
+        ("POST", f"/admin/users/{admin}/revoke-sessions"), ("DELETE", f"/admin/users/{admin}"),
+    ]
+    codes = {f"{m} {p.split(str(admin))[0]}": client.request(m, p, json={}).status_code for m, p in probes}
+    check("CRUD: every admin route -> 403 for a student", set(codes.values()) == {403}, str(codes))
+    check("...and the admin they targeted is untouched", role_of(admin) == ROLE_ADMIN)
+
+    as_user(admin)
+
+    # --- stats / list / read ------------------------------------------------
+    st = client.get("/admin/stats")
+    body = st.json()
+    check("stats -> 200 with consistent totals",
+          st.status_code == 200 and body["users"] == body["admins"] + body["students"]
+          and body["users"] == body["password_accounts"] + body["google_accounts"], st.text)
+
+    page = client.get("/admin/users", params={"q": run_id})
+    emails_found = {u["email"] for u in page.json().get("items", [])}
+    check("list: search by text finds this run's accounts",
+          page.status_code == 200 and f"adm-student-{run_id}@example.com" in emails_found, page.text[:200])
+    check("list: total matches items when under the limit", page.json()["total"] == len(page.json()["items"]))
+    check("list: no password_hash or google_sub in the payload",
+          "password_hash" not in page.text and "google_sub" not in page.text)
+
+    only_admins = client.get("/admin/users", params={"q": run_id, "role": "admin"}).json()["items"]
+    check("list: role filter", only_admins and all(u["role"] == "admin" for u in only_admins))
+    check("list: an invalid role filter -> 422",
+          client.get("/admin/users", params={"role": "root"}).status_code == 422)
+    check("list: '%' in the search is literal, not a wildcard",
+          client.get("/admin/users", params={"q": "%"}).json()["total"] == 0)
+    p2 = client.get("/admin/users", params={"q": run_id, "limit": 1, "offset": 1}).json()
+    check("list: limit/offset paginate", len(p2["items"]) == 1 and p2["offset"] == 1, str(p2)[:200])
+
+    check("read: an unknown id -> 404", client.get(f"/admin/users/{uuid.uuid4()}").status_code == 404)
+    check("read: a real id -> 200", client.get(f"/admin/users/{student}").json().get("id") == str(student))
+
+    # --- create ---------------------------------------------------------------
+    new_email = f"adm-created-{run_id}@example.com"
+    resp = client.post("/admin/users", json={
+        "email": new_email.upper(), "display_name": "  Créé par admin ", "password": good_pw,
+        "email_verified": True, "role": "admin",
+    })
+    if resp.status_code == 201:
+        created.append(uuid.UUID(resp.json()["id"]))
+    made = resp.json()
+    check("create: 201", resp.status_code == 201, resp.text)
+    check("create: role=admin in the body is ignored -> student", made.get("role") == ROLE_STUDENT, str(made))
+    check("create: email normalised, name trimmed, flag applied",
+          made.get("email") == new_email and made.get("display_name") == "Créé par admin"
+          and made.get("email_verified") is True, str(made))
+    check("create: did not switch the admin's session to the new account",
+          client.get("/admin/whoami").json().get("email") == f"adm-target-{run_id}@example.com")
+    check("create: duplicate email -> 409",
+          client.post("/admin/users", json={"email": new_email, "display_name": "x", "password": good_pw}).status_code == 409)
+    check("create: a weak password -> 422",
+          client.post("/admin/users", json={"email": f"weak-{run_id}@example.com", "display_name": "x", "password": "short"}).status_code == 422)
+    login = client.post("/auth/login", json={"email": new_email, "password": good_pw})
+    check("create: the account can actually sign in", login.status_code == 200, str(login.status_code))
+    as_user(admin)  # the login above replaced the cookie
+
+    # --- update ---------------------------------------------------------------
+    new_id = created[-1]
+    resp = client.patch(f"/admin/users/{new_id}", json={
+        "display_name": "Renommé", "email_verified": False, "role": "admin", "email": "hijack@example.com",
+    })
+    got = resp.json()
+    check("update: 200 with name and flag changed",
+          resp.status_code == 200 and got["display_name"] == "Renommé" and got["email_verified"] is False, resp.text)
+    check("update: role and email in the body are ignored",
+          got["role"] == ROLE_STUDENT and got["email"] == new_email and role_of(new_id) == ROLE_STUDENT)
+    check("update: a blank name -> 422",
+          client.patch(f"/admin/users/{new_id}", json={"display_name": "   "}).status_code == 422)
+    check("update: unknown id -> 404",
+          client.patch(f"/admin/users/{uuid.uuid4()}", json={"display_name": "x"}).status_code == 404)
+
+    # --- revoke sessions --------------------------------------------------------
+    victim_cookie = auth.create_session_token(new_id)
+    # The cut-off is compared in whole seconds (auth.get_current_user), so the
+    # token must be issued in an earlier second than the revoke.
+    time.sleep(1.1)
+    resp = client.post(f"/admin/users/{new_id}/revoke-sessions")
+    check("revoke: 200 and sets sessions_valid_after",
+          resp.status_code == 200 and resp.json()["sessions_valid_after"], resp.text)
+    client.cookies.clear()
+    client.cookies.set(auth.SESSION_COOKIE_NAME, victim_cookie)
+    check("revoke: the account's existing session is now rejected",
+          client.get("/auth/me").status_code == 401)
+    as_user(admin)
+
+    # --- delete -------------------------------------------------------------------
+    check("delete: your own account -> 400",
+          client.delete(f"/admin/users/{admin}").status_code == 400)
+    other_admin = uuid.UUID(client.post("/admin/users", json={
+        "email": f"adm-other-{run_id}@example.com", "display_name": "Other", "password": good_pw}).json()["id"])
+    created.append(other_admin)
+    with session_scope() as s:
+        s.get(User, other_admin).role = ROLE_ADMIN
+    resp = client.delete(f"/admin/users/{other_admin}")
+    check("delete: another admin -> 409, still exists and still admin",
+          resp.status_code == 409 and role_of(other_admin) == ROLE_ADMIN, resp.text)
+
+    resp = client.delete(f"/admin/users/{new_id}")
+    check("delete: a student -> 204", resp.status_code == 204, resp.text)
+    check("delete: the row is gone", role_of(new_id) is None)
+    check("delete: again -> 404", client.delete(f"/admin/users/{new_id}").status_code == 404)
 
 
 if __name__ == "__main__":
