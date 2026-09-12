@@ -280,6 +280,12 @@ RATE_LIMIT_FORGOT = os.environ.get("RATE_LIMIT_FORGOT", "10/hour")
 RATE_LIMIT_FORGOT_EMAIL = os.environ.get("RATE_LIMIT_FORGOT_EMAIL", "3/hour")
 RATE_LIMIT_TOKEN = os.environ.get("RATE_LIMIT_TOKEN", "20/minute")
 
+# "Resend the confirmation email" (Phase 5). Signed-in only, so keyed per
+# user like /solve rather than per IP. Each call sends a real email, so this is
+# about not letting one account turn Fahem into a mail cannon - three an hour
+# is more than anyone waiting on a slow inbox needs.
+RATE_LIMIT_RESEND_VERIFY = os.environ.get("RATE_LIMIT_RESEND_VERIFY", "3/hour")
+
 # Sent as Retry-After on a 429. slowapi knows the true window reset, and the
 # handler prefers it; this is only the fallback when it cannot be derived.
 RATE_LIMIT_RETRY_AFTER_FALLBACK = int(os.environ.get("RATE_LIMIT_RETRY_AFTER_FALLBACK", "60"))

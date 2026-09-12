@@ -956,35 +956,18 @@ body {
   border: 0;
 }
 
+/* min-height, not height, and the card centres itself with margin:auto rather
+   than the container using align-items:center. Flex centring pushes an
+   overflowing child out through the TOP as well as the bottom, and the part
+   above the viewport cannot be scrolled to - on a 700px-tall laptop the
+   login card's wordmark was 32px off-screen. Auto margins collapse to zero
+   instead, so a tall card starts at the top and the page scrolls normally. */
 .signin {
-  height: 100%;
+  min-height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
+  padding-block: var(--space-5);
+  padding-inline: var(--space-4);
   background: var(--bg-alt);
-}
-/* Border, fill and radius from .surface; the roomier padding is its own. */
-.signin-card {
-  width: 100%;
-  max-width: 27rem;
-  padding: var(--space-6) 1.75rem var(--space-5);
-  text-align: center;
-}
-.signin-brand {
-  font-size: 1.25rem;
-  color: var(--accent);
-}
-.signin-title {
-  margin: 0.2rem 0 0.6rem;
-  font-size: 1.3rem;
-  line-height: 1.25;
-}
-.signin-lead {
-  margin: 0 0 1.6rem;
-  color: var(--fg-dim);
-  font-size: 0.9rem;
-  line-height: 1.55;
 }
 .signin-action {
   display: flex;
@@ -1002,13 +985,6 @@ body {
 .signin-busy {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--fg-dim);
-}
-.signin-foot {
-  margin: 1.6rem 0 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
-  font-size: 0.72rem;
   color: var(--fg-dim);
 }
 
@@ -1300,10 +1276,71 @@ body {
   text-align: left;
   cursor: pointer;
 }
-.exo-q {
+/* A row is: number, then title + énoncé, then the action. Aligned to the top
+   so the number sits beside the title rather than floating in the middle of a
+   three-line statement. */
+.exo-num {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.exo:hover .exo-num {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.exo-body {
   flex: 1;
-  font-size: 0.88rem;
-  line-height: 1.5;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.exo-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.exo-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+.exo-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.exo-len,
+.exo-started {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.exo-started {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-weight: 600;
+}
+/* Two lines of the statement, with the rest still in the DOM for screen
+   readers and find-in-page. Seven rows then fit one screen. */
+.exo-q {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
 }
 .exo-go {
   flex-shrink: 0;
@@ -1312,6 +1349,41 @@ body {
   font-weight: 600;
   color: var(--accent);
   white-space: nowrap;
+}
+
+/* Phones: the "Résoudre →" label goes. The whole row is the button, so the
+   affordance is not lost - and at 390px that label plus the number and the
+   gaps leave a title barely 200px wide, which wraps a subject like "Saisir le
+   nom et prénom d'un élève…" onto three lines. */
+@media (max-width: 480px) {
+  .exo-go {
+    display: none;
+  }
+  .exo {
+    gap: var(--space-3);
+  }
+}
+
+/* Header: back link and chapter number on one row above a tighter title. */
+.chapter-head {
+  margin-bottom: var(--space-3);
+}
+.chapter-head-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chapter-head-id {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.chapter-head h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
 }
 
 @media (max-width: 720px) {
@@ -1329,4 +1401,1135 @@ body {
    a display value later cannot silently un-hide the inactive panel. */
 .tabpanel[hidden] {
   display: none;
+}
+
+/* ---------- email + password sign-in (Phase 5) ----------
+   Form fields are the only genuinely new element; everything else here is
+   placement for the Button/Alert/Surface primitives. */
+
+.signin-notice {
+  margin-bottom: var(--space-4);
+  text-align: left;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.auth-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+  text-align: left;
+}
+.auth-toggle {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.auth-toggle .btn {
+  flex: 1;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  text-align: left;
+}
+.auth-form-title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.auth-submit {
+  width: 100%;
+}
+.auth-link {
+  align-self: center;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.field-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.field-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+/* The one new control. Same height floor, radius and focus ring as Button,
+   so a form reads as part of the same system rather than browser default. */
+/* Filled with --bg-alt rather than the card's own --bg: on the same colour as
+   the card, a field was only a hairline and read as a divider rather than as
+   something to type into, especially in dark mode. It returns to --bg while
+   focused, so the one being typed in is also the one that stands out.
+   font-size stays at the 16px body size on purpose - anything smaller makes
+   iOS Safari zoom the page on focus. */
+.field-input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-alt);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.field-input:hover {
+  border-color: var(--fg-dim);
+}
+.field-input:focus-visible {
+  outline: 2px solid transparent;
+  background: var(--bg);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-input {
+    transition: none;
+  }
+}
+.password-field {
+  position: relative;
+}
+/* Room on the right for the toggle, so typed text never runs underneath it. */
+.password-field .field-input {
+  padding-right: 6.5rem;
+}
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+/* Under the app bar: the email-link outcome and the verification reminder. */
+.verify-banner {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0.9rem;
+  background: var(--side);
+  border-bottom: 1px solid var(--line);
+}
+.verify-banner-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: var(--content-max);
+  width: 100%;
+  margin: 0 auto;
+}
+.verify-banner-row .alert {
+  flex: 1;
+}
+
+/* ---------- signed-out shell (AuthShell) ----------
+   Layout after 21st.dev's "Sign In Split Screen": one card, brand panel
+   beside the form, the panel's headline anchored low. Its gradient, glow and
+   avatars are left out on purpose - the audit's direction rejects decorative
+   surfaces - and the panel shows a real Fahem answer instead, drawn in the
+   same visual language as the chat's Algorithme column (tinted, accent
+   stripe on the left edge). */
+
+.auth-shell {
+  width: 100%;
+  max-width: 60rem;
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  padding: 0;
+  /* The panel's fill has to follow the card's rounded corners. */
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-7) var(--space-6);
+  background: var(--side);
+  border-right: 1px solid var(--line);
+}
+.auth-brand {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--accent);
+}
+/* margin-top:auto anchors the pitch to the bottom of the panel, so the brand
+   sits alone at the top and the eye lands on the example. */
+.auth-panel-body {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.auth-panel-title {
+  margin: 0;
+  max-width: 22ch;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.auth-panel-lead {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+
+.auth-sample {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.auth-sample-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.auth-sample-col + .auth-sample-col {
+  border-left: 1px solid var(--line);
+}
+/* inset box-shadow rather than border-left, so the stripe does not shift the
+   column's content relative to its neighbour. */
+.auth-sample-algo {
+  background: var(--bg-alt);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.auth-sample-label {
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+/* Wraps rather than scrolls: a scrollbar inside the one element meant to look
+   finished reads as broken. The sample is short enough not to wrap today;
+   this only keeps a longer one from ever showing a scrollbar. */
+.auth-sample pre {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  line-height: 1.6;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.auth-panel-foot {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+/* Shown only in the phone strip, where the demo that ends on this verdict
+   is hidden. */
+.auth-mobile-badge {
+  display: none;
+}
+
+.auth-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-7) var(--space-6);
+}
+.auth-head {
+  margin-bottom: var(--space-5);
+}
+.auth-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+}
+.auth-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+
+/* The Google iframe is sized to this box when it is drawn (GoogleSignIn). */
+.google-btn {
+  width: 100%;
+}
+
+/* "Mot de passe oublié ?" on the password label row. The Button keeps its
+   44px hit area, but negative margins pull that area into the gaps above and
+   below, so the row itself stays label-height instead of growing to 44px. */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.field-label-action {
+  margin-block: -0.75rem -0.25rem;
+  margin-right: calc(var(--space-2) * -1);
+  font-weight: 500;
+}
+
+/* Tablets and phones: one column. The panel shrinks to a strip that still
+   says what Fahem is - name, pitch, badge - and drops the example, which
+   would push the form below the fold on the device most students use. */
+@media (max-width: 820px) {
+  .auth-shell {
+    max-width: 28rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .auth-panel {
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-5);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .auth-panel-body {
+    margin-top: 0;
+    gap: var(--space-2);
+  }
+  .auth-panel-title {
+    max-width: none;
+    font-size: var(--text-md);
+  }
+  .auth-panel-lead,
+  .auth-panel-foot {
+    display: none;
+  }
+  /* .auth-demo is hidden in the showcase section's own phone block further
+     down - its `display: flex` is declared after this one and would win. */
+  .auth-mobile-badge {
+    display: inline-flex;
+    align-self: flex-start;
+  }
+  .auth-main {
+    padding: var(--space-5);
+  }
+}
+@media (max-width: 480px) {
+  .signin {
+    padding-block: var(--space-3);
+    padding-inline: var(--space-3);
+  }
+  .auth-main {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* =========================================================================
+   Signed-out screens: the "showcase" treatment.
+
+   Owner-requested, and deliberately beyond the audit's restraint (colour,
+   gradients, motion) - so it is scoped to .signin and nothing inside the app
+   changes. Three things are held regardless of how it looks:
+   - every loop and entrance stops under prefers-reduced-motion;
+   - text stays at AA contrast on the glass, in light and dark;
+   - no library: plain CSS plus two small React components (AuthDemo,
+     PasswordStrength).
+   Background after 21st.dev "LiquidAurora" (drifting blurred shapes), border
+   after the "Shine Border" conic-gradient technique.
+   ========================================================================= */
+
+/* Registered so the border's angle can be animated (a plain custom property
+   would jump rather than rotate). Browsers without @property simply show a
+   still border. */
+@property --auth-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.signin {
+  --brand-blue: #3f6fb5;
+  --brand-violet: #6a4fe0;
+  --brand-teal: #0f9f8f;
+  --auth-ground: #eef1fb;
+  --glass: rgb(255 255 255 / 0.8);
+  --glass-line: rgb(255 255 255 / 0.95);
+  --glass-panel: rgb(255 255 255 / 0.4);
+  --field-fill: rgb(120 120 160 / 0.08);
+  --field-line: rgb(120 120 160 / 0.3);
+  /* Four stops ending on the first, so the shimmer loops without a seam.
+     Light-mode stops are dark enough for AA on the glass. */
+  --grad-text: linear-gradient(100deg, #2f5fb3, #6a4fe0 35%, #0f766e 70%, #2f5fb3);
+  --blob-opacity: 0.5;
+  --card-shadow: 0 30px 80px -24px rgb(40 40 100 / 0.35);
+  /* The app's light --fg-dim (#6b7280) measured 4.15:1 against the glass
+     where the violet blob tints it - under AA for the small text it colours
+     here (subtitles, hints, the panel lead). One step darker, scoped to these
+     screens, gives ~6.6:1 at that worst point. */
+  --fg-dim: #4b5563;
+
+  position: relative;
+  isolation: isolate;
+  background: var(--auth-ground);
+}
+@media (prefers-color-scheme: dark) {
+  .signin {
+    --auth-ground: #090b12;
+    --glass: rgb(20 22 32 / 0.74);
+    --glass-line: rgb(255 255 255 / 0.08);
+    --glass-panel: rgb(255 255 255 / 0.025);
+    --field-fill: rgb(255 255 255 / 0.04);
+    --field-line: rgb(255 255 255 / 0.12);
+    --grad-text: linear-gradient(100deg, #8fb4ff, #b9a2ff 35%, #5eead4 70%, #8fb4ff);
+    --blob-opacity: 0.42;
+    --card-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
+    /* Restated: the light override above would otherwise win here too,
+       since .signin outranks :root. Dark's own value passes at 6.35:1. */
+    --fg-dim: #9ca3af;
+  }
+}
+
+/* --- aurora background --------------------------------------------------- */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora-blob {
+  position: absolute;
+  width: 55vmax;
+  height: 55vmax;
+  border-radius: 42% 58% 60% 40% / 45% 45% 55% 55%;
+  filter: blur(72px);
+  opacity: var(--blob-opacity);
+  will-change: transform;
+}
+.aurora-blob-1 {
+  top: -22vmax;
+  left: -16vmax;
+  background: radial-gradient(circle at 35% 35%, var(--brand-blue), transparent 68%);
+  animation: aurora-drift-1 22s var(--ease) infinite alternate;
+}
+.aurora-blob-2 {
+  right: -14vmax;
+  bottom: -26vmax;
+  background: radial-gradient(circle at 60% 40%, var(--brand-violet), transparent 66%);
+  animation: aurora-drift-2 27s var(--ease) infinite alternate;
+}
+.aurora-blob-3 {
+  top: 28%;
+  left: 38%;
+  width: 38vmax;
+  height: 38vmax;
+  background: radial-gradient(circle, var(--brand-teal), transparent 62%);
+  opacity: calc(var(--blob-opacity) * 0.75);
+  animation: aurora-drift-3 31s var(--ease) infinite alternate;
+}
+@keyframes aurora-drift-1 {
+  to {
+    transform: translate(18vmax, 12vmax) rotate(38deg) scale(1.15);
+    border-radius: 60% 40% 45% 55% / 55% 60% 40% 45%;
+  }
+}
+@keyframes aurora-drift-2 {
+  to {
+    transform: translate(-16vmax, -10vmax) rotate(-32deg) scale(1.1);
+    border-radius: 48% 52% 38% 62% / 60% 40% 60% 40%;
+  }
+}
+@keyframes aurora-drift-3 {
+  to {
+    transform: translate(-22vmax, 8vmax) scale(0.85);
+    border-radius: 55% 45% 60% 40% / 40% 55% 45% 60%;
+  }
+}
+/* A faint grid that fades out towards the edges - gives the blur something
+   crisp to sit against. */
+.aurora-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgb(120 120 170 / 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(120 120 170 / 0.09) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 25%, transparent 78%);
+}
+
+/* --- glass card with a rotating gradient edge ------------------------------ */
+
+.signin .auth-shell {
+  position: relative;
+  background: var(--glass);
+  border-color: var(--glass-line);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: var(--card-shadow);
+  animation: auth-rise 750ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* The edge: a conic gradient masked down to a 1.5px ring, spun by
+   animating the registered angle. */
+.signin .auth-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--auth-angle),
+    transparent 0deg,
+    var(--brand-blue) 70deg,
+    var(--brand-violet) 130deg,
+    var(--brand-teal) 190deg,
+    transparent 260deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: auth-spin 8s linear infinite;
+}
+@keyframes auth-spin {
+  to {
+    --auth-angle: 360deg;
+  }
+}
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- panel ------------------------------------------------------------------ */
+
+.signin .auth-panel {
+  background:
+    linear-gradient(
+      160deg,
+      rgb(63 111 181 / 0.16),
+      rgb(106 79 224 / 0.1) 55%,
+      rgb(15 159 143 / 0.08)
+    ),
+    var(--glass-panel);
+  border-right-color: var(--glass-line);
+}
+.signin .auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg);
+}
+.auth-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  box-shadow: 0 8px 20px -8px var(--brand-violet);
+}
+.auth-gradient-text {
+  background: var(--grad-text);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: auth-shimmer 9s linear infinite;
+}
+@keyframes auth-shimmer {
+  to {
+    background-position: 300% center;
+  }
+}
+/* Transparent text would vanish when Windows forces its own colours. */
+@media (forced-colors: active) {
+  .auth-gradient-text {
+    background: none;
+    color: CanvasText;
+  }
+}
+
+/* The example, as a small editor window. */
+.signin .auth-sample {
+  background: var(--bg);
+  border-color: var(--glass-line);
+  box-shadow:
+    0 18px 40px -22px rgb(40 40 100 / 0.45),
+    0 0 0 1px rgb(120 120 170 / 0.12);
+}
+.type-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: -0.2em;
+  border-radius: 1px;
+  background: var(--brand-violet);
+  animation: caret-blink 1s steps(1) infinite;
+}
+.type-ghost {
+  visibility: hidden;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* --- the live demo (AuthDemo) --------------------------------------------------
+   question -> Algorithme + Python -> verdict and grounding chips -> next.
+   Tilts a few degrees toward the cursor (AuthShell sets --tilt-x/--tilt-y on
+   the panel; custom properties inherit down to here). */
+
+.signin {
+  /* Highlight colours, AA on both code backgrounds (--bg and --bg-alt). */
+  --tk-kw: #2f5fb3;
+  --tk-op: #6a4fe0;
+  --tk-str: #0f766e;
+  --tk-fn: #b45309;
+  --tk-num: #be185d;
+  --glyph-rgb: 100 110 210;
+}
+@media (prefers-color-scheme: dark) {
+  .signin {
+    --tk-kw: #8fb4ff;
+    --tk-op: #c4b5fd;
+    --tk-str: #5eead4;
+    --tk-fn: #fbbf24;
+    --tk-num: #f9a8d4;
+    --glyph-rgb: 150 170 255;
+  }
+}
+
+.auth-demo {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* The tilt lives on the code window, not on .auth-demo: the panel-body
+   entrance animation (auth-rise, fill both) ends on `transform: none`, and a
+   filled animation outranks a declaration - so a tilt set on the demo itself
+   could never show. .auth-sample is not a direct child of .auth-panel-body,
+   so nothing animates it. */
+.auth-demo .auth-sample {
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg))
+    rotateY(var(--tilt-y, 0deg));
+  transition:
+    opacity 420ms var(--ease),
+    transform 260ms var(--ease);
+}
+.demo-question,
+.auth-demo .auth-sample,
+.demo-verdict {
+  transition:
+    opacity 420ms var(--ease),
+    transform 420ms var(--ease);
+}
+/* Between exercises everything lifts away together. */
+.auth-demo.phase-out .demo-question,
+.auth-demo.phase-out .auth-sample,
+.auth-demo.phase-out .demo-verdict {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.demo-question {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: 2.6rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  box-shadow: 0 10px 28px -18px rgb(40 40 100 / 0.5);
+  font-size: var(--text-sm);
+}
+/* White on the blue-violet gradient: 5.1:1 at its lightest end. */
+.demo-question-label {
+  flex: none;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+/* Room for the longest answer (four lines), so the verdict below never
+   jumps when a shorter exercise plays. */
+.auth-demo .auth-sample pre {
+  min-height: 7.6em;
+}
+
+.tk-kw {
+  color: var(--tk-kw);
+  font-weight: 700;
+}
+.tk-op {
+  color: var(--tk-op);
+  font-weight: 700;
+}
+.tk-str {
+  color: var(--tk-str);
+}
+.tk-fn {
+  color: var(--tk-fn);
+}
+.tk-num {
+  color: var(--tk-num);
+}
+
+/* The verdict waits for the code, then springs in with one pulse of green -
+   the checker's verdict arriving, as it does in the chat - and the parts of
+   the course it relied on follow one by one. */
+.demo-verdict {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 4.4rem;
+  opacity: 0;
+  transform: translateY(8px);
+}
+.auth-demo.phase-verdict .demo-verdict {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 400ms var(--ease),
+    transform 560ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.auth-demo.phase-verdict .demo-verdict .badge {
+  animation: badge-pulse 1.4s ease-out 1;
+}
+.demo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+.demo-chip {
+  padding: 3px var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-full);
+  background: var(--field-fill);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  opacity: 0;
+  transform: translateY(6px);
+}
+.auth-demo.phase-verdict .demo-chip {
+  animation: chip-in 460ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(260ms + var(--i) * 110ms);
+}
+/* Chips stay put while the whole verdict fades out. */
+.auth-demo.phase-out .demo-chip {
+  opacity: 1;
+  transform: none;
+}
+@keyframes chip-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.demo-dots {
+  display: flex;
+  gap: 6px;
+}
+.demo-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--field-line);
+  transition:
+    width 320ms var(--ease),
+    background-color 320ms var(--ease);
+}
+.demo-dots span.is-on {
+  width: 20px;
+  background: var(--brand-violet);
+}
+
+/* --- brand mark, syntax glyphs, grain, cursor glow ------------------------ */
+
+.auth-mark-arrow {
+  display: inline-block;
+  animation: mark-in 900ms cubic-bezier(0.34, 1.56, 0.64, 1) 300ms both;
+}
+@keyframes mark-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.aurora-glyphs span {
+  position: absolute;
+  top: var(--y);
+  left: var(--x);
+  font-family: var(--font-mono);
+  font-size: var(--s);
+  font-weight: 700;
+  color: rgb(var(--glyph-rgb) / var(--o));
+  filter: blur(var(--b));
+  user-select: none;
+  animation: glyph-float var(--d) ease-in-out var(--delay) infinite alternate;
+}
+@keyframes glyph-float {
+  from {
+    transform: translateY(0) rotate(-4deg);
+  }
+  to {
+    transform: translateY(-30px) rotate(5deg);
+  }
+}
+
+/* Film grain: a still SVG noise tile over the aurora, so large gradients
+   read as a surface instead of banding into flat steps. */
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Cursor glow: a soft violet light that follows the pointer inside the card
+   (AuthShell writes --mx/--my). Sits under the content, over the glass. */
+.signin .auth-panel,
+.signin .auth-main {
+  position: relative;
+  z-index: 1;
+}
+.signin .auth-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    520px circle at var(--mx, 50%) var(--my, 0%),
+    rgb(106 79 224 / 0.15),
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity 420ms var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .signin .auth-shell:hover::after {
+    opacity: 1;
+  }
+}
+
+/* --- password strength, shake, alerts ------------------------------------- */
+
+.pw-meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: calc(var(--space-2) * -1);
+}
+.pw-bars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.pw-bars span {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--field-line, var(--line));
+  transition: background-color 260ms var(--ease);
+}
+.pw-short .is-on {
+  background: var(--err);
+}
+.pw-fair .is-on {
+  background: var(--warn);
+}
+.pw-good .is-on,
+.pw-great .is-on {
+  background: var(--ok);
+}
+.pw-label {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.pw-short .pw-label {
+  color: var(--err);
+}
+.pw-fair .pw-label {
+  color: var(--warn);
+}
+.pw-good .pw-label,
+.pw-great .pw-label {
+  color: var(--ok);
+}
+
+.auth-form.is-shaking {
+  animation: form-shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+@keyframes form-shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+.signin .alert {
+  animation: auth-rise 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes badge-pulse {
+  from {
+    box-shadow: 0 0 0 0 rgb(34 160 90 / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 14px rgb(34 160 90 / 0);
+  }
+}
+
+/* --- form side ----------------------------------------------------------------- */
+
+/* Staggered entrance: heading, Google, divider, form arrive one after another. */
+.signin .auth-main > *,
+.signin .auth-panel-body > * {
+  animation: auth-rise 650ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.signin .auth-main > :nth-child(1) {
+  animation-delay: 120ms;
+}
+.signin .auth-main > :nth-child(2) {
+  animation-delay: 190ms;
+}
+.signin .auth-main > :nth-child(3) {
+  animation-delay: 260ms;
+}
+.signin .auth-main > :nth-child(4) {
+  animation-delay: 330ms;
+}
+.signin .auth-panel-body > :nth-child(1) {
+  animation-delay: 160ms;
+}
+.signin .auth-panel-body > :nth-child(2) {
+  animation-delay: 240ms;
+}
+.signin .auth-panel-body > :nth-child(3) {
+  animation-delay: 320ms;
+}
+
+.signin .auth-title {
+  font-size: var(--text-2xl);
+  letter-spacing: -0.015em;
+}
+
+.signin .auth-divider::before,
+.signin .auth-divider::after {
+  height: 1px;
+  border-top: 0;
+  background: linear-gradient(to right, transparent, var(--field-line));
+}
+.signin .auth-divider::after {
+  background: linear-gradient(to left, transparent, var(--field-line));
+}
+
+/* Toggle with a sliding highlight. Four-pixel inset and gap, so each half is
+   50% minus 6px and the highlight moves by its own width plus the gap. */
+.signin .auth-toggle {
+  position: relative;
+  isolation: isolate;
+  background: var(--field-fill);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+}
+.auth-toggle-indicator {
+  position: absolute;
+  z-index: -1;
+  top: var(--space-1);
+  bottom: var(--space-1);
+  left: var(--space-1);
+  width: calc(50% - 6px);
+  border-radius: calc(var(--radius-md) - 2px);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  transition: transform 380ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+.auth-toggle[data-active="signup"] .auth-toggle-indicator {
+  transform: translateX(calc(100% + 4px));
+}
+.signin .auth-toggle .btn {
+  background: transparent;
+}
+.signin .auth-toggle .btn.is-active {
+  color: var(--fg);
+}
+
+/* Fields: a soft fill and a violet glow on focus, on top of the standard
+   focus ring - the ring is what keyboard users rely on, the glow is extra. */
+.signin .field-input {
+  background: var(--field-fill);
+  border-color: var(--field-line);
+}
+.signin .field-input:hover {
+  border-color: var(--fg-dim);
+}
+.signin .field-input:focus-visible {
+  background: var(--bg);
+  border-color: var(--brand-violet);
+  box-shadow:
+    var(--focus-ring),
+    0 0 0 8px rgb(106 79 224 / 0.16);
+}
+
+/* Primary action: blue-to-violet, white ink (5.1:1 at the blue end, 5.5:1 at
+   the violet end), and a sweep of light on hover. */
+.signin .btn-primary {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(120deg, var(--brand-blue), var(--brand-violet));
+  box-shadow: 0 12px 26px -12px var(--brand-violet);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+}
+.signin .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(120deg, #36609e, #5a3fcc);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px -12px var(--brand-violet);
+}
+.signin .btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.32) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 750ms var(--ease);
+}
+.signin .btn-primary:hover:not(:disabled)::after {
+  transform: translateX(120%);
+}
+.signin .btn-primary:disabled {
+  background: var(--line);
+  color: var(--fg-dim);
+  box-shadow: none;
+}
+
+/* Phones: lighter effects (blur is the expensive part on older GPUs), and
+   the badge shows at once, since the typed example is hidden there. */
+@media (max-width: 820px) {
+  .aurora-blob {
+    filter: blur(48px);
+  }
+  .aurora-blob-3 {
+    display: none;
+  }
+  .signin .auth-shell {
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  .aurora-glyphs {
+    display: none;
+  }
+  /* The demo goes: the form matters more than the pitch on a phone, and the
+     code columns are too narrow to read there. The static badge in the strip
+     (.auth-mobile-badge) carries the verdict instead. */
+  .auth-demo {
+    display: none;
+  }
+  .signin .auth-title {
+    font-size: var(--text-xl);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .signin .auth-shell,
+  .signin .auth-shell::before,
+  .auth-gradient-text,
+  .signin .auth-main > *,
+  .signin .auth-panel-body > *,
+  .type-caret,
+  .auth-demo.phase-verdict .badge,
+  .auth-demo.phase-verdict .demo-chip,
+  .aurora-glyphs span,
+  .auth-mark-arrow,
+  .auth-form.is-shaking,
+  .signin .alert {
+    animation: none;
+  }
+  /* The demo sits on its finished first exercise; the chips' entrance never
+     runs, so they have to be shown outright. No tilt either - named on
+     .auth-sample, since that is where the tilt now lives. */
+  .demo-chip {
+    opacity: 1;
+    transform: none;
+  }
+  .auth-demo .auth-sample {
+    transform: none;
+  }
+  .auth-toggle-indicator,
+  .auth-demo,
+  .demo-question,
+  .auth-demo .auth-sample,
+  .demo-verdict,
+  .auth-demo.phase-verdict .demo-verdict,
+  .demo-dots span,
+  .pw-bars span,
+  .signin .auth-shell::after,
+  .signin .btn-primary {
+    transition: none;
+  }
+  .signin .btn-primary::after {
+    display: none;
+  }
 }

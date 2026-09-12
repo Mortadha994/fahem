@@ -9,6 +9,12 @@ import {
 import { useAuth } from "../lib/authContext.js";
 import Alert from "../components/ui/Alert.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
+import {
+  exerciseLength,
+  exerciseTitle,
+  isStarted,
+  startedExerciseTexts,
+} from "../lib/exercises.js";
 import Skeleton from "../components/ui/Skeleton.jsx";
 
 const DOC = "doc";
@@ -53,6 +59,11 @@ function ChapterView({ id }) {
   const [pdfFailed, setPdfFailed] = useState(false);
   const [exercises, setExercises] = useState(null);
   const [exosFailed, setExosFailed] = useState(false);
+
+  // Which énoncés this browser has already sent to the chat. Read once on
+  // mount: the history only changes from the chat screen, and coming back
+  // here remounts this component (see the key in ChapterRoute).
+  const [startedTexts] = useState(startedExerciseTexts);
 
   // Title for the header.
   //
@@ -154,10 +165,16 @@ function ChapterView({ id }) {
 
   return (
     <main className="page">
-      <header className="page-head">
-        <Link to="/" className="page-back">
-          ← Chapitres
-        </Link>
+      {/* Compact on purpose: the back link and the chapter number share one
+          row with the title, which gives the cours viewer below roughly 80px
+          more height on a laptop screen. */}
+      <header className="page-head chapter-head">
+        <div className="chapter-head-row">
+          <Link to="/" className="page-back">
+            ← Chapitres
+          </Link>
+          <span className="chapter-head-id">Chapitre {id}</span>
+        </div>
         <h1>{chapter?.title ?? `Chapitre ${id}`}</h1>
       </header>
 
@@ -267,24 +284,44 @@ function ChapterView({ id }) {
             !exosFailed &&
             [0, 1, 2].map((i) => (
               <li key={`skeleton-${i}`} aria-hidden="true">
-                <Skeleton height="3rem" radius="lg" />
+                <Skeleton height="4.5rem" radius="lg" />
               </li>
             ))}
-          {(exercises ?? []).map((e) => (
-            <li key={e.id}>
-              <button
-                type="button"
-                className="exo surface surface-interactive"
-                onClick={() => solve(e.question)}
-                title="Résoudre avec Fahem"
-              >
-                <span className="exo-q">{e.question}</span>
-                <span className="exo-go" aria-hidden="true">
-                  Résoudre →
-                </span>
-              </button>
-            </li>
-          ))}
+          {(exercises ?? []).map((e, index) => {
+            const started = isStarted(e.question, startedTexts);
+            return (
+              <li key={e.id}>
+                <button
+                  type="button"
+                  className="exo surface surface-interactive"
+                  onClick={() => solve(e.question)}
+                >
+                  {/* The number is what a student and a teacher say out loud
+                      ("exercice 3"), so it leads the row. */}
+                  <span className="exo-num" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <span className="exo-body">
+                    <span className="exo-head">
+                      <span className="exo-title">{exerciseTitle(e.question)}</span>
+                      <span className="exo-meta">
+                        <span className="exo-len">{exerciseLength(e.question)}</span>
+                        {started && <span className="exo-started">à finir</span>}
+                      </span>
+                    </span>
+                    {/* The full énoncé stays on the page - clamped to two
+                        lines so seven rows still fit a screen, and never
+                        truncated in the DOM, so a screen reader and a
+                        find-in-page both get all of it. */}
+                    <span className="exo-q">{e.question}</span>
+                  </span>
+                  <span className="exo-go" aria-hidden="true">
+                    Résoudre →
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </main>

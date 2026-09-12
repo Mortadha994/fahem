@@ -10,6 +10,7 @@ import { loadSessions, saveSessions, newSession, titleFrom } from "../lib/sessio
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
+import { rateLimitMessage } from "../lib/rateLimit.js";
 
 /**
  * The chat screen.
@@ -20,25 +21,6 @@ import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
  * verified, unchanged. The only additions are the auth values now coming from
  * context instead of props, and the prefill handling below.
  */
-
-/**
- * Rate-limit message. Retry-After is turned into something a student can read
- * rather than a raw seconds count - "réessaie dans 47 secondes" is actionable,
- * "retry_after: 47" is not. Falls back to a vague-but-honest wording when the
- * header is missing, rather than inventing a number.
- */
-function rateLimitMessage(retryAfterSeconds) {
-  if (!retryAfterSeconds) {
-    return "Tu as atteint la limite de requêtes. Réessaie dans quelques instants.";
-  }
-  if (retryAfterSeconds < 60) {
-    return `Tu as atteint la limite de requêtes. Réessaie dans ${retryAfterSeconds} secondes.`;
-  }
-  const minutes = Math.ceil(retryAfterSeconds / 60);
-  return `Tu as atteint la limite de requêtes. Réessaie dans ${minutes} minute${
-    minutes > 1 ? "s" : ""
-  }.`;
-}
 
 export default function Chat() {
   const { onUnauthorized } = useAuth();

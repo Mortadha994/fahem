@@ -43,7 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, select, update
@@ -51,7 +51,12 @@ from sqlalchemy.exc import IntegrityError
 
 import emails
 import ratelimit as _ratelimit
-from auth import UserOut, create_session_token, set_session_cookie  # the shared mechanism
+from auth import (  # the shared mechanism
+    UserOut,
+    bind_user,
+    create_session_token,
+    set_session_cookie,
+)
 from config import (
     APP_BASE_URL,
     PASSWORD_MAX_LENGTH,
@@ -61,6 +66,7 @@ from config import (
     RATE_LIMIT_FORGOT_EMAIL,
     RATE_LIMIT_LOGIN,
     RATE_LIMIT_LOGIN_EMAIL,
+    RATE_LIMIT_RESEND_VERIFY,
     RATE_LIMIT_SIGNUP,
     RATE_LIMIT_TOKEN,
     RESET_TOKEN_TTL_SECONDS,
@@ -450,6 +456,44 @@ def reset_password(request: Request, payload: ResetPasswordRequest, response: Re
 
     set_session_cookie(response, create_session_token(user_id))
     return UserOut.of(user)
+
+
+VERIFY_RESENT = "Un nouvel e-mail de confirmation vient d'être envoyé."
+VERIFY_ALREADY = "Ton adresse e-mail est déjà confirmée."
+VERIFY_NOT_APPLICABLE = "Ce compte se connecte avec Google : il n'y a pas d'adresse à confirmer."
+
+
+@router.post("/resend-verification", response_model=Ack, status_code=status.HTTP_202_ACCEPTED)
+@_ratelimit.limiter.limit(RATE_LIMIT_RESEND_VERIFY)
+def resend_verification(
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    user: User = Depends(bind_user),
+) -> Ack:
+    """Send a fresh confirmation link to the signed-in user (Phase 5).
+
+    Signed-in only, so there is nothing to enumerate: the caller can only ask
+    about their own account. Rate-limited per user (bind_user publishes the id
+    the default key function reads, exactly as for /solve).
+
+    A new link retires the previous one (issue_token), so after a resend only
+    the newest email in the inbox works.
+    """
+    if user.password_hash is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=VERIFY_NOT_APPLICABLE)
+    if user.email_verified:
+        response.status_code = status.HTTP_200_OK
+        return Ack(detail=VERIFY_ALREADY)
+
+    with session_scope() as s:
+        raw = issue_token(s, user.id, PURPOSE_VERIFY, VERIFY_TOKEN_TTL_SECONDS)
+    background.add_task(
+        emails.send_quietly,
+        emails.verification_email(user.email, user.display_name or "", verify_url(raw)),
+        PURPOSE_VERIFY,
+    )
+    return Ack(detail=VERIFY_RESENT)
 
 
 @router.get("/verify-email")
