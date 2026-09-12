@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import SessionHistory from "./SessionHistory.jsx";
 import Button from "./ui/Button.jsx";
 import { useAuth } from "../lib/authContext.js";
+import { isAdmin } from "../lib/auth.js";
 import { SCOPE_LABEL } from "../config.js";
 
 /**
@@ -48,6 +49,17 @@ export default function AppSidebar({ onNavigate }) {
               Poser une question
             </NavLink>
           </li>
+          {/* Phase 7. Not rendered at all for a student - absent from the DOM,
+              not disabled - so there is nothing to find, inspect or re-enable.
+              It is still only a convenience: the route and the server both
+              refuse a non-admin independently of whether this link exists. */}
+          {isAdmin(user) && (
+            <li>
+              <NavLink to="/admin" className={linkClass} onClick={onNavigate}>
+                Administration
+              </NavLink>
+            </li>
+          )}
         </ul>
       </nav>
 

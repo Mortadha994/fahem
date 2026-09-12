@@ -69,6 +69,18 @@ export async function logout() {
 /** Where the reset email's link lands. Reachable without a session. */
 export const RESET_PASSWORD_PATH = "/reinitialiser-mot-de-passe";
 
+/**
+ * Whether the signed-in user holds the admin role (Phase 7).
+ *
+ * One comparison, in one place, so the sidebar and the router cannot disagree
+ * about who is an admin. This only decides what the UI *shows*: every admin
+ * request is checked again by the backend's get_current_admin, and a student
+ * who edits this in devtools gets a 403 from the server, not an admin panel.
+ */
+export function isAdmin(user) {
+  return user?.role === "admin";
+}
+
 /** Where the sign-in and sign-up forms live, for a visitor who came from the
  *  landing page. A signed-out visitor on any other path gets the landing page
  *  instead; see the gate in App.jsx. */

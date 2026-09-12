@@ -45,6 +45,18 @@ class Base(DeclarativeBase):
     pass
 
 
+# --- roles (Phase 7) ----------------------------------------------------------
+#
+# The closed set of values users.role may hold. Named constants rather than
+# bare strings at each call site so that a typo is an ImportError here instead
+# of a comparison that is silently always false - which, for an authorisation
+# check, is the difference between a crash and a wrong answer.
+
+ROLE_STUDENT = "student"
+ROLE_ADMIN = "admin"
+ROLES = (ROLE_STUDENT, ROLE_ADMIN)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -69,6 +81,21 @@ class User(Base):
     # Argon2id PHC string (algorithm, parameters and salt are inside it). Null
     # for a Google account.
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Phase 7. A text role, not an is_admin boolean, and the reason is that a
+    # third tier is genuinely plausible for this product: a teacher who can see
+    # a class's exercises but must not touch accounts or spend. With a boolean
+    # that arrives as a second column and every check becomes "which of the two
+    # flags", with an ordering question nobody wrote down. One column with a
+    # closed set answers it in the schema, and reads correctly in a bare
+    # `SELECT id, email, role FROM users` during an incident.
+    #
+    # The CHECK is what makes the set closed: a typo'd 'admln' would otherwise
+    # be stored happily and would simply never match, i.e. fail open into a
+    # locked-out user rather than loudly.
+    role: Mapped[str] = mapped_column(
+        Text, nullable=False, default=ROLE_STUDENT, server_default=ROLE_STUDENT
+    )
 
     # Set when the address owner clicks Fahem's verification link, or completes
     # a password reset (which proves the same thing). Tracked, deliberately not
@@ -106,6 +133,12 @@ class User(Base):
         CheckConstraint(
             "google_sub IS NOT NULL OR password_hash IS NOT NULL",
             name="ck_users_has_credential",
+        ),
+        # The role set, closed in the database as well as in the constants
+        # above. See the column's comment for why this is not a boolean.
+        CheckConstraint(
+            "role IN ('student', 'admin')",
+            name="ck_users_role",
         ),
         # Case-insensitive, and only among password accounts - the one place an
         # email is used to find an account.

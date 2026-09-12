@@ -31,6 +31,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from slowapi.errors import RateLimitExceeded
 
+import admin
 import auth
 import chapters
 import gatekeeper
@@ -125,6 +126,10 @@ app.include_router(password_auth.router)
 # behind get_current_user; none rate-limited, since none of them reach a
 # model - see chapters.py's module docstring.
 app.include_router(chapters.router)
+
+# Admin-only routes (Phase 7). get_current_admin is a router-level dependency,
+# so nothing mounted there can be reached by a student - see admin.py.
+app.include_router(admin.router)
 
 
 # Store keys are normalised and unaccented ("2eme"); a student should not see

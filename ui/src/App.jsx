@@ -5,12 +5,14 @@ import Landing from "./components/Landing.jsx";
 import SignInScreen from "./components/SignInScreen.jsx";
 import Home from "./routes/Home.jsx";
 import ChapterPage from "./routes/ChapterPage.jsx";
+import Admin from "./routes/Admin.jsx";
 import Chat from "./routes/Chat.jsx";
 import ResetPassword from "./routes/ResetPassword.jsx";
 import {
   fetchMe,
   signInWithGoogle,
   logout,
+  isAdmin,
   RESET_PASSWORD_PATH,
   SIGNIN_PATH,
 } from "./lib/auth.js";
@@ -260,6 +262,12 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/chapitre/:id" element={<ChapterPage />} />
           <Route path="/chat" element={<Chat />} />
+          {/* Phase 7. Registered only for an admin, not registered-and-
+              guarded: for anyone else /admin is simply an unknown path and
+              the catch-all below sends it to "/", so the admin page never
+              mounts for a student at all. The page then re-checks with the
+              server, which is the check that actually holds. */}
+          {isAdmin(user) && <Route path="/admin" element={<Admin />} />}
           {/* An unknown path is a mistyped URL or a stale bookmark, not an
               error worth a screen of its own at this size. */}
           <Route path="*" element={<Navigate to="/" replace />} />

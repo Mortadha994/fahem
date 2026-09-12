@@ -51,7 +51,7 @@ from config import (
     SESSION_TTL_SECONDS,
 )
 from db import session_scope
-from models import User
+from models import ROLE_ADMIN, User
 
 # HS256, not RS256: the only party that signs these tokens is also the only
 # party that verifies them, so an asymmetric key pair would add key management
@@ -85,6 +85,11 @@ class UserOut(BaseModel):
     # The method, not google_sub - that stays an internal join key.
     email_verified: bool
     auth_method: Literal["google", "password"]
+    # Phase 7. The client needs this to decide whether the admin entry exists
+    # in the sidebar at all. It is a display decision only: the role is checked
+    # again on the server for every admin-gated request (get_current_admin),
+    # because anything the browser is told is something the browser can edit.
+    role: str
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
@@ -94,6 +99,7 @@ class UserOut(BaseModel):
             display_name=user.display_name,
             email_verified=user.email_verified,
             auth_method="password" if user.password_hash else "google",
+            role=user.role,
         )
 
 
@@ -261,6 +267,43 @@ def get_current_user(session_cookie: str | None = Cookie(None, alias=SESSION_COO
     cutoff = user.sessions_valid_after
     if cutoff is not None and issued_at < int(cutoff.timestamp()):
         raise unauthorized
+    return user
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Resolve the signed-in user and require the admin role, or raise 403.
+
+    Built on get_current_user rather than beside it, so there is exactly one
+    implementation of "who is this" and this function only answers "may they".
+    A second, parallel token check is how the two drift apart.
+
+    401 vs 403 is a real distinction here, unlike the deliberately uniform 401s
+    in get_current_user: a signed-out visitor gets 401 (from the dependency
+    above) and should sign in, while a signed-in student gets 403 and signing
+    in again will never help. Neither leaks anything an attacker does not
+    already know - they know whether they have a session, and whether their own
+    account is an admin.
+
+    The lockout guard goes on the write side of this check, not here.
+    Reading the role can never lock anyone out; *writing* it can, and there is
+    no write path in this phase - promote_admin.py is the only way in or out of
+    the role, and it refuses to demote the last admin (see its
+    _count_admins/refusal). When a later phase adds admin user management, the
+    same rule has to be enforced at each of these three places, because each
+    can reduce the admin count:
+      - demote/change-role: refuse if the target is the last admin;
+      - delete user: refuse if the target is the last admin;
+      - deactivate/suspend user, if such a state is added: same.
+    Enforce it inside the transaction that performs the write (a SELECT
+    count(*) ... FOR UPDATE, or a re-check after the UPDATE with a rollback),
+    not as a read-then-write in application code: two admins demoting each
+    other concurrently is exactly the interleaving that leaves zero.
+    """
+    if user.role != ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin role required",
+        )
     return user
 
 
