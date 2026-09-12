@@ -395,13 +395,10 @@ body {
 /* 100% not 100vh since Phase 3b: .app is now nested inside .shell-body,
    under the app bar, so a viewport-height child would overflow by exactly
    the bar's height and push the composer off-screen. */
-.app {
-  display: flex;
+/* The chat is a column inside the shell body; only .messages scrolls. Its own
+   sidebar and topbar went to the app shell in Phase 6. */
+.chat {
   height: 100%;
-  overflow: hidden;
-}
-.main {
-  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -413,18 +410,31 @@ body {
   padding: 1.25rem var(--space-4) var(--space-6);
 }
 
-/* ---------- sidebar ---------- */
-.sidebar {
-  width: var(--sidebar-w);
-  flex-shrink: 0;
-  background: var(--side);
-  border-right: 1px solid var(--line);
+/* ---------- session history, a section of the app sidebar ---------- */
+.session-section {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+  /* min-height:0 is what lets .session-list scroll inside the sidebar
+     column instead of pushing the account block off the bottom. */
+  min-height: 0;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
 }
-.sidebar-head {
-  padding: 0.85rem;
-  border-bottom: 1px solid var(--line);
+.appnav-heading {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.session-empty {
+  margin: 0;
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
 }
 .brand {
   display: block;
@@ -496,27 +506,6 @@ body {
   font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
-}
-.sidebar-foot {
-  margin: 0;
-  padding: 0.7rem 0.85rem;
-  border-top: 1px solid var(--line);
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
-}
-
-/* ---------- topbar ---------- */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem var(--space-4);
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
-}
-.scope {
-  font-size: 0.85rem;
-  color: var(--fg-dim);
 }
 /* Placement only - the look is .btn-ghost. Hidden until the drawer
    breakpoint below turns it back on. */
@@ -866,21 +855,17 @@ body {
 .scrim {
   display: none;
 }
-@media (max-width: 760px) {
+/* The drawer's own rules are NOT here: .shell, .mobilebar, .appnav-holder and
+   .appnav are all declared further down (the app-shell section), and at equal
+   specificity the later declaration wins - a media query does not outrank it.
+   Putting them here cost a real bug once: the mobile bar stayed hidden, so a
+   390px screen had no visible way to open the navigation at all. They live in
+   the matching block after those rules instead. */
+@media (max-width: 900px) {
   .btn-burger {
     /* inline-flex, not block: the base rule sets the 44px floor and the
        centring, and both need a flex context to take effect. */
     display: inline-flex;
-  }
-  .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 20;
-    transform: translateX(-100%);
-    transition: transform 0.18s ease;
-  }
-  .sidebar-open {
-    transform: translateX(0);
   }
   .scrim {
     display: block;
@@ -1036,11 +1021,18 @@ body {
 
 /* --- app shell + routing (Phase 3b) -------------------------------------- */
 
+/* A row since Phase 6: the sidebar beside the content, with no horizontal bar
+   above either of them on a wide screen. */
 .shell {
   height: 100vh;
   display: flex;
-  flex-direction: column;
   overflow: hidden;
+}
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 /* min-height:0 is what lets the chat's own scroll container work inside a
    flex column - without it the body grows to fit its content instead of
@@ -1051,16 +1043,16 @@ body {
   overflow: hidden;
 }
 
-.appbar {
-  flex-shrink: 0;
-  display: flex;
+/* The bar that exists only on narrow screens, to hold the drawer toggle. */
+.mobilebar {
+  display: none;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) 0.9rem;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   background: var(--side);
   border-bottom: 1px solid var(--line);
 }
-.appbar-brand {
+.mobilebar-brand {
   min-height: var(--tap);
   display: inline-flex;
   align-items: center;
@@ -1069,58 +1061,121 @@ body {
   color: var(--accent);
   text-decoration: none;
 }
-.appbar-nav {
+
+/* ---------- the app sidebar (Phase 6) ----------
+   One sidebar for the whole app: brand, the real destinations, the session
+   history on /chat, and the account. It replaced the top appbar, which is
+   also what removed the second bar the chat used to carry (audit P2-5). */
+
+.appnav-holder {
+  flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  min-height: 0;
 }
-.appbar-link {
+.appnav {
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.appnav-brand {
   min-height: var(--tap);
   display: inline-flex;
   align-items: center;
-  padding: 0.32rem 0.6rem;
-  border-radius: 7px;
-  font-size: 0.85rem;
-  color: var(--fg-dim);
-  text-decoration: none;
-}
-.appbar-link:hover {
-  color: var(--fg);
-}
-.appbar-link-on {
-  color: var(--fg);
-  background: var(--bg-alt);
-}
-.appbar-cta {
-  min-height: var(--tap);
-  display: inline-flex;
-  align-items: center;
-  padding: 0.32rem 0.7rem;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--accent);
-  font-size: 0.85rem;
+  padding-inline: var(--space-2);
+  font-weight: 700;
+  font-size: 1.05rem;
   color: var(--accent);
   text-decoration: none;
 }
-.appbar-cta:hover,
-.appbar-cta-on {
-  background: var(--accent);
-  color: var(--accent-fg);
+.appnav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
-.appbar-account {
-  margin-left: auto;
+.appnav-link {
+  min-height: var(--tap);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.appbar-name {
-  max-width: 11rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
   color: var(--fg-dim);
+  text-decoration: none;
+}
+.appnav-link:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+/* Current page: filled, not merely coloured - on a list of two items a
+   colour change alone is easy to miss. */
+.appnav-link-on {
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.appnav-link:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+
+/* Pinned to the bottom: identity is reference, not navigation. */
+.appnav-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.appnav-scope {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+.appnav-logout {
+  width: 100%;
+}
+
+/* The sidebar as a drawer, declared *after* the rules above so it actually
+   wins. 900px rather than 760: at tablet-portrait width a 264px sidebar would
+   leave the chapter content about 480px wide, too cramped to read a cours PDF
+   or an exercise list in, so tablets get the drawer too. */
+@media (max-width: 900px) {
+  .shell {
+    flex-direction: column;
+  }
+  .mobilebar {
+    display: flex;
+  }
+  .appnav-holder {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+  }
+  .shell-nav-open .appnav-holder {
+    transform: translateX(0);
+  }
+  .appnav {
+    width: min(19rem, 86vw);
+    box-shadow: var(--shadow-md);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appnav-holder {
+    transition: none;
+  }
 }
 
 /* ---------- pages (home, chapter) ---------- */
@@ -1387,11 +1442,184 @@ body {
 }
 
 @media (max-width: 720px) {
-  .appbar-name {
-    display: none;
-  }
   .page {
     padding: var(--space-4) 0.85rem 2.5rem;
+  }
+}
+
+/* ---------- home: chapters beside progress (Phase 6) ---------- */
+
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: var(--space-5);
+  align-items: start;
+}
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+/* The widgets go under the chapters rather than beside them once the grid
+   would squeeze a chapter card below its 16rem minimum. */
+@media (max-width: 1000px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .home-side > * {
+    flex: 1 1 15rem;
+  }
+}
+
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.widget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.widget-label {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+/* Negative inline margin so the 44px control does not push the label row
+   taller than the label. */
+.widget-action {
+  margin-block: -0.6rem;
+  margin-right: calc(var(--space-2) * -1);
+  font-weight: 500;
+}
+.widget-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+
+.streak-value {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.streak-number {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.streak-unit {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+.streak-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--space-1);
+}
+.streak-day {
+  flex: 1;
+  aspect-ratio: 1;
+  max-width: 2.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--fg-dim);
+  background: var(--bg-alt);
+}
+/* A day with real practice on it. */
+.streak-day.is-done {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+/* Today, not yet practised: an open ring, an invitation rather than a gap. */
+.streak-day.is-today {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--accent);
+}
+.streak-day.is-future {
+  opacity: 0.5;
+}
+
+.goal-ring {
+  position: relative;
+  align-self: center;
+  width: 7.5rem;
+  height: 7.5rem;
+}
+.goal-ring svg {
+  width: 100%;
+  height: 100%;
+  /* Start the arc at twelve o'clock rather than three. */
+  transform: rotate(-90deg);
+}
+.goal-ring-track,
+.goal-ring-arc {
+  fill: none;
+  stroke-width: 8;
+}
+.goal-ring-track {
+  stroke: var(--line);
+}
+.goal-ring-arc {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur-base) var(--ease);
+}
+.goal-ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.goal-count {
+  display: block;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.goal-unit {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.goal-form-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.goal-input {
+  width: 5rem;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-ring-arc {
+    transition: none;
   }
 }
 

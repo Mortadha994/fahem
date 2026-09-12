@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Sidebar from "../components/Sidebar.jsx";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
-import Button from "../components/ui/Button.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
-import { loadSessions, saveSessions, newSession, titleFrom } from "../lib/sessions.js";
+import { titleFrom } from "../lib/sessions.js";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
+import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
 import { rateLimitMessage } from "../lib/rateLimit.js";
 
@@ -16,22 +15,24 @@ import { rateLimitMessage } from "../lib/rateLimit.js";
  * The chat screen.
  *
  * Lifted out of App.jsx in Phase 3b so App can be the auth + router shell.
- * This is a move, not a rewrite: the session state, the streaming call, the
- * badge logic and the autoscroll behaviour are the code that was already
- * verified, unchanged. The only additions are the auth values now coming from
- * context instead of props, and the prefill handling below.
+ * Phase 6 took two more things out of it: the session-history sidebar, which
+ * is now a section of the one app sidebar (AppSidebar), and the topbar that
+ * held the burger and the scope label, which the sidebar carries instead -
+ * the audit's "two stacked bars" (P2-5). The session list itself moved to
+ * ChatSessionsProvider, because the sidebar reads it too.
+ *
+ * What stayed here is what belongs to the conversation: the streaming call,
+ * the draft, the autoscroll, the live region, and the abort on unmount.
  */
-
 export default function Chat() {
   const { onUnauthorized } = useAuth();
+  const { sessions, setSessions, activeId, createSession, patchLast } =
+    useChatSessions();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [sessions, setSessions] = useState(() => loadSessions());
-  const [activeId, setActiveId] = useState(() => loadSessions()[0]?.id ?? null);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   /* One short line, replaced once per finished answer. See the live region in
      the markup for why this is not driven off the streaming text. */
@@ -40,8 +41,6 @@ export default function Chat() {
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const pinnedToBottom = useRef(true);
-
-  useEffect(() => saveSessions(sessions), [sessions]);
 
   // Abort any stream still running when this screen goes away.
   //
@@ -54,12 +53,6 @@ export default function Chat() {
   // SSE and the backend keeps generating against Groq for a conversation
   // nobody is watching - burning exactly the budget Phase 2's limiter exists
   // to cap, just through a different door.
-  //
-  // Written as an unmount cleanup rather than a logout-specific call because
-  // it covers every cause at once - route change, logout, or anything added
-  // later - instead of one that has to be remembered per exit path. Logging
-  // out reaches it too: App stops rendering <Routes> when the session goes,
-  // which unmounts this subtree.
   //
   // Empty deps so it runs only on unmount; the ref is read at cleanup time,
   // so it always sees the current controller.
@@ -89,40 +82,6 @@ export default function Chat() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   });
-
-  /** Patch the last assistant message of a session. */
-  const patchLast = useCallback((sessionId, patch) => {
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== sessionId) return s;
-        const msgs = s.messages.slice();
-        const i = msgs.length - 1;
-        if (i < 0 || msgs[i].role !== "assistant") return s;
-        msgs[i] =
-          typeof patch === "function" ? patch(msgs[i]) : { ...msgs[i], ...patch };
-        return { ...s, messages: msgs, updatedAt: Date.now() };
-      })
-    );
-  }, []);
-
-  const handleNew = useCallback(() => {
-    const s = newSession({ niveau: NIVEAU, chapitre: CHAPITRE });
-    setSessions((prev) => [s, ...prev]);
-    setActiveId(s.id);
-    setSidebarOpen(false);
-    return s;
-  }, []);
-
-  const handleDelete = useCallback(
-    (id) => {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== id);
-        if (id === activeId) setActiveId(next[0]?.id ?? null);
-        return next;
-      });
-    },
-    [activeId]
-  );
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -252,16 +211,16 @@ export default function Chat() {
           );
         });
     },
-    [patchLast, onUnauthorized]
+    [patchLast, setSessions, onUnauthorized]
   );
 
   const handleSend = useCallback(() => {
     const problem = draft.trim();
     if (!problem || streaming) return;
-    const session = active ?? handleNew();
+    const session = active ?? createSession();
     setDraft("");
     send(problem, session);
-  }, [draft, streaming, active, handleNew, send]);
+  }, [draft, streaming, active, createSession, send]);
 
   /**
    * An exercise clicked on a chapter page arrives as router state and is sent
@@ -285,85 +244,51 @@ export default function Chat() {
     if (!problem || prefillSent.current) return;
     prefillSent.current = true;
     navigate("/chat", { replace: true, state: null });
-    send(problem, handleNew());
-  }, [location.state, navigate, send, handleNew]);
+    send(problem, createSession());
+  }, [location.state, navigate, send, createSession]);
 
   return (
-    <div className="app">
-      <Sidebar
-        sessions={sessions}
-        activeId={activeId}
-        onSelect={(id) => {
-          setActiveId(id);
-          setSidebarOpen(false);
-        }}
-        onNew={handleNew}
-        onDelete={handleDelete}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        scopeLabel={SCOPE_LABEL}
-      />
+    <div className="chat">
+      {/* The page's only <h1>. Visually hidden: the sidebar already says what
+          this screen is, and a second visible title would be noise. */}
+      <h1 className="sr-only">Discussion — {SCOPE_LABEL}</h1>
 
-      <main className="main">
-        {/* The page's only <h1>, and it is here rather than inside the empty
-            state because the empty state disappears the moment a conversation
-            starts - which left this screen with no headings at all once it
-            was actually in use. Visually hidden: the topbar already says what
-            this is on screen, and a second visible title would be noise. */}
-        <h1 className="sr-only">Discussion — {SCOPE_LABEL}</h1>
+      {/* Announces one short line per finished answer. Deliberately NOT
+          aria-live on the message list itself: that streams token by token,
+          and a live region there makes a screen reader restart on every
+          fragment, which is worse than saying nothing. The full answer is
+          long technical markdown, so this reports that it is ready and what
+          the checker concluded, and leaves the reading to the user. The
+          "searching" half is already covered - Message.jsx's thinking
+          indicator carries role="status". */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
 
-        {/* Announces one short line per finished answer. Deliberately NOT
-            aria-live on the message list itself: that streams token by token,
-            and a live region there makes a screen reader restart on every
-            fragment, which is worse than saying nothing. The full answer is
-            long technical markdown, so this reports that it is ready and what
-            the checker concluded, and leaves the reading to the user. The
-            "searching" half is already covered - Message.jsx's thinking
-            indicator carries role="status". */}
-        <p className="sr-only" role="status" aria-live="polite">
-          {announcement}
-        </p>
-
-        <header className="topbar">
-          <Button
-            variant="ghost"
-            className="btn-burger"
-            onClick={() => setSidebarOpen((v) => !v)}
-            aria-label="Afficher les discussions"
+      <div className="messages" ref={listRef} onScroll={onScroll}>
+        {messages.length === 0 ? (
+          /* h2, not h1: the page-level h1 above is persistent, and this
+             prompt only exists while the thread is empty. */
+          <EmptyState
+            titleAs="h2"
+            title="Pose ta question sur le chapitre"
+            className="chat-empty"
           >
-            ☰
-          </Button>
-          <span className="scope">{SCOPE_LABEL}</span>
-        </header>
+            Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+            chapitre — et te montre exactement sur quelles parties du cours il s'appuie.
+          </EmptyState>
+        ) : (
+          messages.map((m) => <Message key={m.id} message={m} streaming={streaming} />)
+        )}
+      </div>
 
-        <div className="messages" ref={listRef} onScroll={onScroll}>
-          {messages.length === 0 ? (
-            /* h2, not h1: the page-level h1 above is persistent, and this
-               prompt only exists while the thread is empty. */
-            <EmptyState
-              titleAs="h2"
-              title="Pose ta question sur le chapitre"
-              className="chat-empty"
-            >
-              Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-              chapitre — et te montre exactement sur quelles parties du cours il
-              s'appuie.
-            </EmptyState>
-          ) : (
-            messages.map((m) => (
-              <Message key={m.id} message={m} streaming={streaming} />
-            ))
-          )}
-        </div>
-
-        <Composer
-          value={draft}
-          onChange={setDraft}
-          onSend={handleSend}
-          onStop={handleStop}
-          streaming={streaming}
-        />
-      </main>
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={handleSend}
+        onStop={handleStop}
+        streaming={streaming}
+      />
     </div>
   );
 }
