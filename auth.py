@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import jwt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
@@ -78,10 +79,22 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str | None
     display_name: str | None
+    # Phase 5. email_verified alone cannot drive a "confirm your address"
+    # reminder: Google accounts are always false (Fahem never mails them a
+    # link), so the client also needs to know which kind of account this is.
+    # The method, not google_sub - that stays an internal join key.
+    email_verified: bool
+    auth_method: Literal["google", "password"]
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
-        return cls(id=user.id, email=user.email, display_name=user.display_name)
+        return cls(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            email_verified=user.email_verified,
+            auth_method="password" if user.password_hash else "google",
+        )
 
 
 # --- Google ID token verification -------------------------------------------

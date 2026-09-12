@@ -699,6 +699,123 @@ def password_accounts(run_id: str) -> None:
                 str(len(ids)),
             )
 
+        # --- Phase 5: /auth/me reports verification + method ------------------
+        print()
+        print("--- /auth/me: email_verified and auth_method ---")
+
+        def me_with(user_id: uuid.UUID) -> dict:
+            client.cookies.clear()
+            client.cookies.set(auth.SESSION_COOKIE_NAME, auth.create_session_token(user_id))
+            resp = client.get("/auth/me")
+            return resp.json() if resp.status_code == 200 else {"status": resp.status_code}
+
+        e = addr("verify5")
+        resp = signup(e)
+        user_e = uuid.UUID(resp.json()["id"])
+        created.append(user_e)
+        check(
+            "signup response already reports unverified + password",
+            (resp.json().get("email_verified"), resp.json().get("auth_method"))
+            == (False, "password"),
+            str(resp.json()),
+        )
+        m = me_with(user_e)
+        check(
+            "/auth/me: unverified password account -> email_verified false",
+            m.get("email_verified") is False,
+            str(m),
+        )
+        check("/auth/me: auth_method is 'password'", m.get("auth_method") == "password", str(m))
+        check(
+            "/auth/me does not leak google_sub or password_hash",
+            not ({"google_sub", "password_hash"} & set(m)),
+            str(sorted(m)),
+        )
+
+        first_link = token_from([em for k, em in sent if k == pa.PURPOSE_VERIFY and em.to == e][-1])
+        client.get("/auth/verify-email", params={"token": first_link}, follow_redirects=False)
+        m = me_with(user_e)
+        check(
+            "/auth/me after clicking the link -> email_verified true",
+            m.get("email_verified") is True,
+            str(m),
+        )
+
+        m = me_with(g_user.id)
+        check(
+            "/auth/me: Google account -> auth_method 'google', email_verified false",
+            (m.get("auth_method"), m.get("email_verified")) == ("google", False),
+            str(m),
+        )
+
+        # --- Phase 5: resend verification -------------------------------------
+        print()
+        print("--- resend verification ---")
+        client.cookies.clear()
+        check(
+            "resend without a session -> 401",
+            client.post("/auth/resend-verification").status_code == 401,
+        )
+
+        h = addr("resend5")
+        resp = signup(h)  # leaves h's session cookie on the client
+        user_h = uuid.UUID(resp.json()["id"])
+        created.append(user_h)
+        original = token_from([em for k, em in sent if k == pa.PURPOSE_VERIFY and em.to == h][-1])
+
+        sent.clear()
+        r1 = client.post("/auth/resend-verification")
+        check("resend -> 202", r1.status_code == 202, f"{r1.status_code} {r1.text}")
+        resent = [em for k, em in sent if k == pa.PURPOSE_VERIFY and em.to == h]
+        check(
+            "resend queues exactly one real verification email", len(resent) == 1, str(len(resent))
+        )
+        new_link = token_from(resent[0]) if resent else ""
+        check("the resent link is a different token", bool(new_link) and new_link != original)
+
+        dead = client.get("/auth/verify-email", params={"token": original}, follow_redirects=False)
+        check(
+            "the original link is dead after a resend",
+            dead.headers.get("location", "").endswith("?email_verifie=0"),
+        )
+        live = client.get("/auth/verify-email", params={"token": new_link}, follow_redirects=False)
+        check(
+            "the resent link works", live.headers.get("location", "").endswith("?email_verifie=1")
+        )
+
+        sent.clear()
+        r2 = client.post("/auth/resend-verification")
+        check(
+            "resend once verified -> 200 'déjà confirmée', nothing sent",
+            r2.status_code == 200 and not sent,
+            f"{r2.status_code} {r2.text}",
+        )
+        r3 = client.post("/auth/resend-verification")
+        check("3 calls within the hour are allowed", r3.status_code == 200, str(r3.status_code))
+        r4 = client.post("/auth/resend-verification")
+        check(
+            "4th call within the hour -> 429 (per user)", r4.status_code == 429, str(r4.status_code)
+        )
+        check("...with Retry-After", r4.headers.get("retry-after", "").isdigit())
+
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE_NAME, auth.create_session_token(user_e))
+        other = client.post("/auth/resend-verification")
+        check(
+            "the limit is per user: another account is unaffected",
+            other.status_code == 200,
+            str(other.status_code),
+        )
+
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE_NAME, auth.create_session_token(g_user.id))
+        g_resend = client.post("/auth/resend-verification")
+        check(
+            "resend for a Google account -> 400",
+            g_resend.status_code == 400,
+            f"{g_resend.status_code} {g_resend.text}",
+        )
+
     finally:
         emails.send_quietly = real_send
         with session_scope() as s:

@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../lib/authContext.js";
 import Button from "./ui/Button.jsx";
+import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
 
 /**
  * The header every authenticated route sits under.
@@ -59,6 +60,8 @@ export default function AppLayout() {
           </Button>
         </div>
       </header>
+
+      <VerifyEmailBanner />
 
       <div className="shell-body">
         <Outlet />
