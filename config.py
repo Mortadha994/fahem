@@ -222,6 +222,17 @@ LESSON_PDF_PATH = Path(
     os.environ.get("LESSON_PDF_PATH", "data/Chap1_Structures_donnees_simples.pdf")
 )
 
+# Phase 9. Where uploaded chapter PDFs are written. Not under data/, which is
+# mounted read-only on purpose; compose gives this its own named volume so an
+# upload survives a container rebuild. Files are named by chapter id only
+# (`<id>.pdf`) - the uploaded filename is kept in the database for display and
+# never used as a path.
+CHAPTER_UPLOAD_DIR = Path(os.environ.get("CHAPTER_UPLOAD_DIR", "uploads/chapters"))
+
+# A chapter PDF is a few MB; this is a guard against a mistaken upload, not a
+# tuned limit.
+MAX_CHAPTER_PDF_BYTES = int(os.environ.get("MAX_CHAPTER_PDF_BYTES", str(40 * 1024 * 1024)))
+
 
 # --- rate limiting (Redis) --------------------------------------------------
 

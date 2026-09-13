@@ -5,6 +5,7 @@ import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
 import { titleFrom } from "../lib/sessions.js";
+import { fetchChapters } from "../lib/chapters.js";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
@@ -68,6 +69,37 @@ export default function Chat() {
     [sessions, activeId]
   );
   const messages = active?.messages ?? [];
+
+  // Phase 9: the chapters a new discussion can be about. Fetched once; a
+  // failure just leaves the picker hidden and the default chapter in place.
+  const [chapterList, setChapterList] = useState([]);
+  const [chapterChoice, setChapterChoice] = useState(CHAPITRE);
+  useEffect(() => {
+    let cancelled = false;
+    fetchChapters()
+      .then(
+        (list) =>
+          !cancelled && setChapterList(list.filter((c) => c.status === "active"))
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // In an empty discussion the picker changes that discussion's chapter; once
+  // a message is sent the chapter is fixed, so the answers in one thread never
+  // mix two chapters' syntax.
+  const currentChapter = active?.chapitre ?? chapterChoice;
+  function chooseChapter(id) {
+    setChapterChoice(id);
+    if (active && active.messages.length === 0) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === active.id ? { ...s, chapitre: id } : s))
+      );
+    }
+  }
+  const currentTitle = chapterList.find((c) => c.id === currentChapter)?.title;
 
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
@@ -135,7 +167,13 @@ export default function Chat() {
       abortRef.current = controller;
 
       streamSolve(
-        { problem, niveau: NIVEAU, chapitre: CHAPITRE },
+        // The session's own chapter, not a global: an older discussion keeps
+        // answering in the chapter it was started in.
+        {
+          problem,
+          niveau: session.niveau ?? NIVEAU,
+          chapitre: session.chapitre ?? CHAPITRE,
+        },
         {
           signal: controller.signal,
           onMeta: (meta) =>
@@ -217,10 +255,10 @@ export default function Chat() {
   const handleSend = useCallback(() => {
     const problem = draft.trim();
     if (!problem || streaming) return;
-    const session = active ?? createSession();
+    const session = active ?? createSession(chapterChoice);
     setDraft("");
     send(problem, session);
-  }, [draft, streaming, active, createSession, send]);
+  }, [draft, streaming, active, createSession, send, chapterChoice]);
 
   /**
    * An exercise clicked on a chapter page arrives as router state and is sent
@@ -243,8 +281,9 @@ export default function Chat() {
     const problem = location.state?.problem;
     if (!problem || prefillSent.current) return;
     prefillSent.current = true;
+    const chapitre = location.state?.chapitre ?? CHAPITRE;
     navigate("/chat", { replace: true, state: null });
-    send(problem, createSession());
+    send(problem, createSession(chapitre));
   }, [location.state, navigate, send, createSession]);
 
   return (
@@ -277,8 +316,33 @@ export default function Chat() {
             Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
             chapitre — et te montre exactement sur quelles parties du cours il s'appuie.
           </EmptyState>
-        ) : (
-          messages.map((m) => <Message key={m.id} message={m} streaming={streaming} />)
+        ) : null}
+        {messages.length === 0 && chapterList.length > 1 ? (
+          <label className="chat-chapter-pick">
+            <span>Chapitre</span>
+            <select
+              value={currentChapter}
+              onChange={(e) => chooseChapter(e.target.value)}
+            >
+              {chapterList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.id} — {c.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {messages.length === 0 ? null : (
+          <>
+            {chapterList.length > 1 && currentTitle && (
+              <p className="chat-chapter-tag">
+                Chapitre {currentChapter} — {currentTitle}
+              </p>
+            )}
+            {messages.map((m) => (
+              <Message key={m.id} message={m} streaming={streaming} />
+            ))}
+          </>
         )}
       </div>
 

@@ -37,6 +37,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import auth
+import chapter_store
 import models
 from config import DEFAULT_PROBLEMS, LESSON_PDF_PATH
 
@@ -147,10 +148,28 @@ def load_exercises(chapter_id: str) -> list[Exercise]:
 router = APIRouter(prefix="/chapters", tags=["chapters"])
 
 
+def catalogue() -> list[Chapter]:
+    """The built-in list merged with published uploads (Phase 9).
+
+    A published upload replaces the built-in placeholder with the same id (the
+    "à venir" chapter 2 becomes the real chapter 2), and any other published
+    upload is added. Drafts never appear: students see the publish snapshot's
+    title, not the one being edited.
+    """
+    merged = {c.id: c for c in CHAPTERS}
+    for row in chapter_store.published_chapters():
+        if row.id in merged and merged[row.id].status == ACTIVE:
+            continue  # never let an upload shadow a built-in active chapter
+        merged[row.id] = Chapter(
+            id=row.id, title=row.published_title, niveau=row.niveau, status=ACTIVE
+        )
+    return sorted(merged.values(), key=lambda c: (len(c.id), c.id))
+
+
 @router.get("", response_model=list[Chapter])
 def list_chapters(user: models.User = Depends(auth.get_current_user)) -> list[Chapter]:
     """Every chapter, real and planned, with its status."""
-    return list(CHAPTERS)
+    return catalogue()
 
 
 @router.get("/{chapter_id}/exercises", response_model=list[Exercise])
@@ -159,8 +178,21 @@ def list_exercises(
     user: models.User = Depends(auth.get_current_user),
 ) -> list[Exercise]:
     """Exercises for one active chapter."""
+    uploaded = _published_upload(chapter_id)
+    if uploaded is not None:
+        return [
+            Exercise(id=e["id"], question=e["question"]) for e in uploaded.published_exercises or []
+        ]
     _active_or_404(chapter_id)
     return load_exercises(chapter_id)
+
+
+def _published_upload(chapter_id: str):
+    """The published upload for this id, unless a built-in active chapter owns it."""
+    builtin = _BY_ID.get(chapter_id)
+    if builtin is not None and builtin.status == ACTIVE:
+        return None
+    return chapter_store.published_chapter(chapter_id)
 
 
 @router.get("/{chapter_id}/pdf")
@@ -175,6 +207,18 @@ def chapter_pdf(
     defaults to attachment once a filename is set, so the disposition is
     stated explicitly.
     """
+    uploaded = _published_upload(chapter_id)
+    if uploaded is not None:
+        path = chapter_store.pdf_path(chapter_id)
+        if not path.exists():
+            raise HTTPException(status_code=503, detail="lesson document is unavailable")
+        return FileResponse(
+            path,
+            media_type="application/pdf",
+            filename=f"fahem-chapitre-{chapter_id}.pdf",
+            content_disposition_type="inline",
+        )
+
     _active_or_404(chapter_id)
 
     if not LESSON_PDF_PATH.exists():

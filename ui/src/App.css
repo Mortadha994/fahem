@@ -3607,3 +3607,36 @@ body {
     translate: none;
   }
 }
+
+/* --- chat chapter picker (Phase 9) ------------------------------------------
+   Shown only in an empty discussion, and only when more than one chapter is
+   published: with one chapter there is nothing to choose. Once a message is
+   sent the thread's chapter is fixed and shown as a quiet tag instead. */
+.chat-chapter-pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: calc(var(--space-4) * -1) auto var(--space-5);
+  max-width: 100%;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+.chat-chapter-pick select {
+  min-height: var(--tap);
+  max-width: min(28rem, 100%);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.chat-chapter-tag {
+  margin: 0 auto var(--space-3);
+  max-width: var(--content-max);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-align: center;
+}

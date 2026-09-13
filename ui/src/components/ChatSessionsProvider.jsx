@@ -23,8 +23,12 @@ export default function ChatSessionsProvider({ children }) {
 
   useEffect(() => saveSessions(sessions), [sessions]);
 
-  const createSession = useCallback(() => {
-    const session = newSession({ niveau: NIVEAU, chapitre: CHAPITRE });
+  // Phase 9: a discussion belongs to one chapter, chosen when it starts (the
+  // chapter page an exercise came from, or the picker in an empty chat).
+  // Sessions saved before this carry chapitre "1" already, so nothing needs
+  // migrating; the default keeps every older call site on chapter 1.
+  const createSession = useCallback((chapitre = CHAPITRE) => {
+    const session = newSession({ niveau: NIVEAU, chapitre: String(chapitre) });
     setSessions((prev) => [session, ...prev]);
     setActiveId(session.id);
     return session;

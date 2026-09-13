@@ -161,7 +161,8 @@ function ChapterView({ id }) {
    * state rather than a query string: an énoncé is a paragraph of French, and
    * putting it in the URL would be both ugly and length-limited.
    */
-  const solve = (question) => navigate("/chat", { state: { problem: question } });
+  const solve = (question) =>
+    navigate("/chat", { state: { problem: question, chapitre: id } });
 
   return (
     <main className="page">

@@ -30,6 +30,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     Index,
     String,
     Text,
@@ -293,3 +294,144 @@ class ChatMessage(Base):
 
     def __repr__(self) -> str:
         return f"<ChatMessage {self.id} {self.role}>"
+
+
+# --- uploaded chapters (Phase 9) ----------------------------------------------
+#
+# Chapter 1 is NOT in these tables. It stays on its original, hand-verified
+# path (chapters.py's constant, the bind-mounted PDF, sample_problems.json,
+# context.PINS and patch_chunks.py), because re-extracting it would throw away
+# corrections checked by eye against the source. These tables hold chapters an
+# admin uploads through the console.
+#
+# The draft/published split is the point of the design. Everything a student
+# reads comes from a snapshot taken at publish time - the chunks and pins in
+# Qdrant, and the published_* columns below - while the admin edits the draft
+# rows freely. So fixing a chunk in a live chapter changes nothing for
+# students until "Republier", and a half-reviewed edit never reaches a chat.
+
+CHAPTER_PROCESSING = "processing"  # PDF stored, extraction running
+CHAPTER_FAILED = "failed"  # extraction raised; `error` says why
+CHAPTER_DRAFT = "draft"  # extracted, under review, invisible to students
+CHAPTER_PUBLISHING = "publishing"  # embedding into Qdrant
+CHAPTER_PUBLISHED = "published"  # live for students
+CHAPTER_STATUSES = (
+    CHAPTER_PROCESSING,
+    CHAPTER_FAILED,
+    CHAPTER_DRAFT,
+    CHAPTER_PUBLISHING,
+    CHAPTER_PUBLISHED,
+)
+
+
+class UploadedChapter(Base):
+    __tablename__ = "chapters"
+
+    # The chapter number as the student sees it ("2"), which is also the
+    # `chapitre` key every Qdrant point and /solve request is scoped by.
+    id: Mapped[str] = mapped_column(String(8), primary_key=True)
+    niveau: Mapped[str] = mapped_column(String(32), nullable=False, default="2eme")
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    # The gatekeeper's "what this chapter covers" list, as a sentence of topics.
+    topics: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_filename: Mapped[str] = mapped_column(Text, nullable=False)
+    # Phase 9b: "pdf" (extracted by extract_chapter.py, then reviewed) or
+    # "markdown" (a course written to docs/modele-cours.md, read exactly by
+    # course_markdown.py). For a markdown chapter the student-facing PDF is a
+    # separate, optional upload.
+    source_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pdf", server_default="pdf"
+    )
+
+    # The publish snapshot. Null until first published.
+    published_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_topics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_exercises: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set by any draft edit after a publish, cleared by the next publish - so
+    # the console can say "modifications non publiées".
+    has_unpublished_changes: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    chunks: Mapped[list[ChapterChunk]] = relationship(
+        back_populates="chapter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ChapterChunk.position",
+    )
+    exercises: Mapped[list[ChapterExercise]] = relationship(
+        back_populates="chapter",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ChapterExercise.position",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'failed', 'draft', 'publishing', 'published')",
+            name="ck_chapters_status",
+        ),
+        # "1" is the built-in chapter; an upload must never shadow it.
+        CheckConstraint("id <> '1'", name="ck_chapters_not_builtin"),
+        CheckConstraint("source_kind IN ('pdf', 'markdown')", name="ck_chapters_source_kind"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<UploadedChapter {self.id} {self.status}>"
+
+
+class ChapterChunk(Base):
+    """One extracted chunk, as the admin reviews and edits it."""
+
+    __tablename__ = "chapter_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chapter_id: Mapped[str] = mapped_column(
+        String(8), ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    section: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Same vocabulary extract_chapter.py emits: prose | table | exercice.
+    type: Mapped[str] = mapped_column(String(16), nullable=False)
+    format: Mapped[str] = mapped_column(String(16), nullable=False, default="prose")
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Part of the chapter's reference sheet: included in every prompt for this
+    # chapter, the way context.PINS works for chapter 1.
+    pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    pin_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    chapter: Mapped[UploadedChapter] = relationship(back_populates="chunks")
+
+    __table_args__ = (
+        CheckConstraint("type IN ('prose', 'table', 'exercice')", name="ck_chapter_chunks_type"),
+        Index("ix_chapter_chunks_chapter_position", "chapter_id", "position"),
+    )
+
+
+class ChapterExercise(Base):
+    __tablename__ = "chapter_exercises"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chapter_id: Mapped[str] = mapped_column(
+        String(8), ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+
+    chapter: Mapped[UploadedChapter] = relationship(back_populates="exercises")
+
+    __table_args__ = (Index("ix_chapter_exercises_chapter_position", "chapter_id", "position"),)

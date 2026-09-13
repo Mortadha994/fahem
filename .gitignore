@@ -10,6 +10,11 @@
 # redistribute. Users supply their own — see the README.
 data/*.pdf
 *.pdf
+# Course folders (data/<niveau>/<matière>/<chapitre>/...) hold the same
+# material in other forms too - a Markdown transcription of a chapter is still
+# the author's content. Anything under a data/ subfolder stays local; only
+# top-level project notes like data/mvp-roadmap.md are tracked.
+data/*/
 
 # chunks.json is extracted text from those PDFs, so it inherits the same
 # restriction. Regenerate it with extract_chapter.py.

@@ -124,6 +124,12 @@ export default function AdminLayout() {
             </span>
             Utilisateurs
           </NavLink>
+          <NavLink to="/admin/chapitres" className={navClass} onClick={close}>
+            <span className="adm-ico" aria-hidden="true">
+              ▤
+            </span>
+            Chapitres
+          </NavLink>
           {/* Also here, not only in the bar: the bar's copy is hidden on a
               phone, and the console must never be a dead end. */}
           <p className="adm-rail-title">Fahem</p>

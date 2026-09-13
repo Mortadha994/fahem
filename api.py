@@ -32,7 +32,9 @@ from pydantic import BaseModel, Field
 from slowapi.errors import RateLimitExceeded
 
 import admin
+import admin_chapters
 import auth
+import chapter_store
 import chapters
 import gatekeeper
 import models
@@ -56,6 +58,9 @@ async def lifespan(app: FastAPI):
     the first caller saw 9.3s against 3.5s for everyone after.
     """
     get_model()
+    # Phase 9: background extraction/publish tasks die with the process; put
+    # any chapter a restart interrupted into a state the console can act on.
+    chapter_store.recover_interrupted()
     yield
 
 
@@ -95,7 +100,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["POST", "GET"],
+    # PATCH/PUT/DELETE since the admin console (Phases 8-9): without them the
+    # browser's preflight rejects every edit and delete from localhost:5173,
+    # while curl - which does not preflight - reports the same routes working.
+    allow_methods=["POST", "GET", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
     expose_headers=[
         "Retry-After",
@@ -130,6 +138,28 @@ app.include_router(chapters.router)
 # Admin-only routes (Phase 7). get_current_admin is a router-level dependency,
 # so nothing mounted there can be reached by a student - see admin.py.
 app.include_router(admin.router)
+
+# Uploaded chapters (Phase 9): upload, review, publish. Same router-level gate.
+app.include_router(admin_chapters.router)
+
+
+def _meta_scope(payload) -> tuple[str, str]:
+    """(chapitre, topics) for the gatekeeper's META answer, or 404.
+
+    Phase 9. Checked before gatekeeper.classify, which is a paid Groq call: a
+    request for a chapter that does not exist or is not published cannot
+    succeed, so it should not spend anything finding that out. Chapter 1 keeps
+    gatekeeper's built-in topic list; an uploaded chapter uses the topics
+    frozen in its publish snapshot.
+    """
+    chapitre = str(payload.chapitre).strip()
+    available = {c.id for c in chapters.catalogue() if c.status == chapters.ACTIVE}
+    if chapitre not in available:
+        raise HTTPException(status_code=404, detail=f"chapitre {chapitre!r} is not available")
+    uploaded = chapters._published_upload(chapitre)
+    if uploaded is not None:
+        return chapitre, uploaded.published_topics or ""
+    return chapitre, gatekeeper.CHAPTER_1_TOPICS
 
 
 # Store keys are normalised and unaccented ("2eme"); a student should not see
@@ -247,6 +277,7 @@ def solve(
             elapsed_ms=int((time.monotonic() - started) * 1000),
         )
 
+    meta_chapitre, meta_topics = _meta_scope(payload)
     route = gatekeeper.classify(payload.problem)
 
     if route == "OFF_TOPIC":
@@ -262,7 +293,7 @@ def solve(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(payload.problem)
+        answer = gatekeeper.respond_meta(payload.problem, meta_chapitre, meta_topics)
         return SolveResponse(
             solution=answer,
             niveau=payload.niveau,
@@ -424,6 +455,7 @@ def solve_stream(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    meta_chapitre, meta_topics = _meta_scope(payload)
     route = gatekeeper.classify(payload.problem)
 
     if route == "OFF_TOPIC":
@@ -434,7 +466,7 @@ def solve_stream(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(payload.problem)
+        answer = gatekeeper.respond_meta(payload.problem, meta_chapitre, meta_topics)
         return StreamingResponse(
             _gatekeeper_stream(answer, GROQ_MODEL, payload, started),
             media_type="text/event-stream",
