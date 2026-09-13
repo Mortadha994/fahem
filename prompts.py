@@ -77,12 +77,29 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
 6. Présente la solution en deux colonnes, Algorithme puis Python, avec les
    mêmes conventions de nommage et de présentation que les exemples du
    contexte (noms de variables significatifs, messages avant chaque Lire).
+   Le tableau se lit LIGNE PAR LIGNE : chaque ligne contient UNE instruction
+   algorithmique et, dans la même ligne, sa traduction Python exacte. Ne
+   regroupe jamais les lignes Python en haut du tableau. Les lignes
+   `Algorithme ...`, `Début` et `Fin` ont une cellule Python vide. Un
+   `Ecrire ("message")` qui sert d'invite au `Lire` suivant a une cellule
+   Python vide, et le message passe dans le `input("message")` de la ligne
+   du `Lire`. Exemple de disposition :
+   | Algorithme | Python |
+   |---|---|
+   | Début | |
+   | Ecrire ("Donner a : ") | |
+   | Lire (a) | a = int(input("Donner a : ")) |
+   | double ← a * 2 | double = a * 2 |
+   | Ecrire ("Le double est ", double) | print("Le double est ", double) |
+   | Fin | |
 
 7. Avant de présenter la solution finale, trace-la mentalement sur un
    exemple concret avec des valeurs plausibles, étape par étape. Vérifie
    que le résultat de la trace est correct. Si tu détectes une erreur,
    corrige la solution avant de répondre. Montre cette trace à l'élève
-   après la solution, comme vérification."""
+   après la solution, comme vérification. Dans la trace, une variable garde
+   sa valeur d'une étape à l'autre dès qu'elle a été lue ou affectée : ne
+   la remets pas à « – » aux étapes suivantes."""
 
 
 USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
