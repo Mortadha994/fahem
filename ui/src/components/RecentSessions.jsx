@@ -57,10 +57,15 @@ export default function RecentSessions() {
   if (recent.length === 0) return null;
 
   return (
-    <section className="recent" aria-labelledby="recent-title">
-      <h2 id="recent-title" className="home-h2">
-        Tes dernières discussions
-      </h2>
+    <section className="home-section" aria-labelledby="recent-title">
+      <header className="section-head">
+        <h2 id="recent-title" className="section-title">
+          Tes dernières discussions
+        </h2>
+      </header>
+      {/* One panel with dividers rather than a bordered box per row: three
+          stacked outlines read as three separate things competing for
+          attention, when this is one short list. */}
       <ul className="recent-list">
         {recent.map((s, i) => {
           const last = [...s.messages].reverse().find((m) => m.role === "assistant");
@@ -70,7 +75,7 @@ export default function RecentSessions() {
             <li key={s.id} style={{ "--i": i }}>
               <button
                 type="button"
-                className="recent-item surface surface-interactive"
+                className="recent-item"
                 onClick={() => {
                   setActiveId(s.id);
                   navigate("/chat");

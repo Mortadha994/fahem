@@ -40,9 +40,13 @@ export default function StreakCard() {
 
   return (
     <section className="widget surface" aria-labelledby="streak-title">
-      <h2 id="streak-title" className="widget-label">
-        Série actuelle
-      </h2>
+      {/* In a head row like the goal card's, so both labels sit at the same
+          height when the widgets are side by side. */}
+      <div className="widget-head">
+        <h2 id="streak-title" className="widget-label">
+          Série actuelle
+        </h2>
+      </div>
 
       <p className="streak-value">
         <span className="streak-number">{streak}</span>

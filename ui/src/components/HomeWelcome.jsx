@@ -16,12 +16,22 @@ import { solvedByDay, solvedTimestamps, weeklySolved } from "../lib/progress.js"
  * The greeting uses the first word of the Google display name only. A
  * password account has no display name, and an e-mail address is not a name:
  * those students get "Bonjour" on its own rather than "Bonjour, eleve2008".
+ *
+ * Laid out as a grid - the copy, and a decorative tile beside it - rather than
+ * text over an absolutely positioned watermark, so nothing can ever sit under
+ * the greeting and the card's height is always its content's.
  */
 
 function greeting(now = new Date()) {
   const h = now.getHours();
   return h >= 18 || h < 5 ? "Bonsoir" : "Bonjour";
 }
+
+const DATE = new Intl.DateTimeFormat("fr", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
 
 /** The discussion to resume: the most recently touched one that has content. */
 function lastDiscussion(sessions) {
@@ -53,52 +63,45 @@ export default function HomeWelcome() {
   };
 
   return (
-    <section className="welcome" aria-labelledby="welcome-title">
-      {/* Decoration: the same drifting shapes as the public pages, contained
-          to this card so the rest of the app stays calm. */}
-      <span className="welcome-glow welcome-glow-1" aria-hidden="true" />
-      <span className="welcome-glow welcome-glow-2" aria-hidden="true" />
-      <span className="welcome-arrow" aria-hidden="true">
-        ←
-      </span>
+    <section className="hero" aria-labelledby="welcome-title">
+      {/* Soft light, clipped to the card, so the rest of the app stays calm. */}
+      <span className="hero-glow hero-glow-1" aria-hidden="true" />
+      <span className="hero-glow hero-glow-2" aria-hidden="true" />
 
-      <div className="welcome-copy">
-        <h1 id="welcome-title" className="welcome-title">
+      <div className="hero-copy">
+        <p className="hero-eyebrow">{DATE.format(new Date())}</p>
+        <h1 id="welcome-title" className="hero-title">
           {greeting()}
           {firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="welcome-lead">
+        <p className="hero-lead">
           {weekDone > 0
             ? `Tu as résolu ${weekDone} exercice${weekDone > 1 ? "s" : ""} cette semaine. Continue sur ta lancée.`
             : "Choisis un chapitre ou pose ta question : ton premier exercice de la semaine t'attend."}
         </p>
 
-        <div className="welcome-actions">
+        <div className="hero-actions">
           {resume ? (
             <button
               type="button"
-              className="btn btn-md welcome-primary"
+              className="btn btn-md hero-primary"
               onClick={() => {
                 setActiveId(resume.id);
                 navigate("/chat");
               }}
             >
-              <span className="welcome-primary-label">Reprendre</span>
-              <span className="welcome-primary-sub">{resume.title}</span>
+              <span className="hero-primary-label">Reprendre</span>
+              <span className="hero-primary-sub">{resume.title}</span>
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn btn-md welcome-primary"
-              onClick={askNew}
-            >
-              <span className="welcome-primary-label">Poser ma première question</span>
+            <button type="button" className="btn btn-md hero-primary" onClick={askNew}>
+              <span className="hero-primary-label">Poser ma première question</span>
             </button>
           )}
           {resume ? (
             <button
               type="button"
-              className="btn btn-md btn-secondary welcome-secondary"
+              className="btn btn-md btn-secondary hero-secondary"
               onClick={askNew}
             >
               Nouvelle question
@@ -106,12 +109,21 @@ export default function HomeWelcome() {
           ) : (
             <Link
               to={`/chapitre/${CHAPITRE}`}
-              className="btn btn-md btn-secondary welcome-secondary"
+              className="btn btn-md btn-secondary hero-secondary"
             >
               Ouvrir le chapitre {CHAPITRE}
             </Link>
           )}
         </div>
+      </div>
+
+      {/* The course's assignment arrow, the mark the whole product is named
+          around. Pure decoration, and dropped when the card is narrow. */}
+      <div className="hero-art" aria-hidden="true">
+        <span className="hero-art-arrow">←</span>
+        <code className="hero-art-code">
+          x <b>←</b> x + 1
+        </code>
       </div>
     </section>
   );
