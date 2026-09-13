@@ -10,6 +10,7 @@ import {
   updateUser,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
 
 /**
  * One account: what it is, what can be edited, and the two consequential
@@ -143,11 +144,9 @@ export default function AdminUserDetail() {
       </Link>
 
       <header className="adm-profile">
-        <span className="adm-avatar adm-avatar-lg" aria-hidden="true">
-          {name.charAt(0).toUpperCase()}
-        </span>
+        <AdminAvatar seed={account.id} label={name} size="lg" />
         <div>
-          <h1 className="adm-h1">{account.display_name || "—"}</h1>
+          <h1 className="adm-h1">{account.display_name || "Sans nom"}</h1>
           <p className="adm-sub">
             {account.email}
             <span className={`adm-tag adm-tag-${account.role}`}>

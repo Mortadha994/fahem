@@ -167,7 +167,7 @@ export default function AdminChapters() {
       {failed && <p className="adm-alert">Impossible de charger les chapitres.</p>}
 
       <div className="adm-table-wrap">
-        <table className="adm-table">
+        <table className="adm-table adm-table-cards">
           <thead>
             <tr>
               <th>N°</th>
@@ -192,29 +192,33 @@ export default function AdminChapters() {
                     e.key === "Enter" && navigate(`/admin/chapitres/${c.id}`)
                   }
                 >
-                  <td className="adm-strong">{c.id}</td>
-                  <td>
+                  <td data-label="N°" className="adm-strong adm-cell-num">
+                    {c.id}
+                  </td>
+                  <td data-label="Titre">
                     <span className="adm-list-main">
                       <span className="adm-strong">{c.title}</span>
                       <span className="adm-muted">{c.source_filename}</span>
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Statut">
                     <span className={`adm-tag adm-tag-${st.tone}`}>{st.label}</span>
                     {c.has_unpublished_changes && (
                       <span className="adm-tag adm-tag-warn">Modifié</span>
                     )}
                   </td>
-                  <td>
+                  <td data-label="À relire">
                     {c.flagged_count ? (
                       <span className="adm-tag adm-tag-warn">{c.flagged_count}</span>
                     ) : (
                       <span className="adm-muted">—</span>
                     )}
                   </td>
-                  <td>{c.chunk_count}</td>
-                  <td>{c.exercise_count}</td>
-                  <td className="adm-muted">{relativeTime(c.updated_at)}</td>
+                  <td data-label="Extraits">{c.chunk_count}</td>
+                  <td data-label="Exercices">{c.exercise_count}</td>
+                  <td data-label="Modifié" className="adm-muted">
+                    {relativeTime(c.updated_at)}
+                  </td>
                 </tr>
               );
             })}
@@ -235,11 +239,17 @@ export default function AdminChapters() {
           </tbody>
         </table>
       </div>
-      <p className="adm-muted adm-small">
-        <Link to="/chat" className="adm-link">
-          Tester dans le chat
-        </Link>{" "}
-        une fois un chapitre publié.
+      {/* A tip, set apart as one, instead of a stray sentence under the table. */}
+      <p className="adm-tip">
+        <span className="adm-tip-ico" aria-hidden="true">
+          ↗
+        </span>
+        <span>
+          Un chapitre publié apparaît tout de suite dans le chat des élèves.{" "}
+          <Link to="/chat" className="adm-link">
+            Le tester dans le chat
+          </Link>
+        </span>
       </p>
     </div>
   );

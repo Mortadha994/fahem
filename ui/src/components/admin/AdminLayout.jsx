@@ -6,6 +6,8 @@ import {
   UnauthorizedError,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import MotionProvider from "../MotionProvider.jsx";
+import AdminAvatar from "./AdminAvatar.jsx";
 import "./admin.css";
 
 /**
@@ -72,83 +74,88 @@ export default function AdminLayout() {
   const label = user?.display_name || user?.email || "Admin";
 
   return (
-    <div className={`adm${navOpen ? " adm-nav-open" : ""}`}>
-      <header className="adm-bar">
-        <button
-          className="adm-burger"
-          aria-label="Menu"
-          aria-expanded={navOpen}
-          onClick={() => setNavOpen((v) => !v)}
-        >
-          <span />
-        </button>
-        <Link to="/admin" className="adm-brand" onClick={close}>
-          <span className="adm-brand-mark" aria-hidden="true">
-            F
-          </span>
-          <span>
-            Fahem <strong>Console</strong>
-          </span>
-        </Link>
-        <span className="adm-env">Administration</span>
-
-        <div className="adm-bar-right">
-          <Link to="/" className="adm-bar-link">
-            ↩ Retour à l'app
-          </Link>
-          <span className="adm-who" title={user?.email}>
-            <span className="adm-avatar" aria-hidden="true">
-              {label.charAt(0).toUpperCase()}
-            </span>
-            <span className="adm-who-name">{label}</span>
-          </span>
-          <button className="adm-bar-link" onClick={logout}>
-            Déconnexion
+    // The student app's MotionProvider lives in AppLayout, which the console
+    // is deliberately not inside - so it gets its own, with the same
+    // LazyMotion features and reduced-motion rule.
+    <MotionProvider>
+      <div className={`adm${navOpen ? " adm-nav-open" : ""}`}>
+        <header className="adm-bar">
+          <button
+            className="adm-burger"
+            aria-label="Menu"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            <span />
           </button>
-        </div>
-      </header>
-
-      <div className="adm-body">
-        <aside className="adm-rail" aria-label="Navigation administration">
-          <p className="adm-rail-title">Général</p>
-          <NavLink to="/admin" end className={navClass} onClick={close}>
-            <span className="adm-ico" aria-hidden="true">
-              ◧
+          <Link to="/admin" className="adm-brand" onClick={close}>
+            {/* The same gradient ← as the student app and the public pages:
+              the console is a different frame, not a different product. */}
+            <span className="adm-brand-mark" aria-hidden="true">
+              ←
             </span>
-            Tableau de bord
-          </NavLink>
-          <p className="adm-rail-title">Gestion</p>
-          <NavLink to="/admin/utilisateurs" className={navClass} onClick={close}>
-            <span className="adm-ico" aria-hidden="true">
-              ◉
+            <span>
+              Fahem <strong>Console</strong>
             </span>
-            Utilisateurs
-          </NavLink>
-          <NavLink to="/admin/chapitres" className={navClass} onClick={close}>
-            <span className="adm-ico" aria-hidden="true">
-              ▤
-            </span>
-            Chapitres
-          </NavLink>
-          {/* Also here, not only in the bar: the bar's copy is hidden on a
-              phone, and the console must never be a dead end. */}
-          <p className="adm-rail-title">Fahem</p>
-          <Link to="/" className="adm-nav-link">
-            <span className="adm-ico" aria-hidden="true">
-              ↩
-            </span>
-            Retour à l'app
           </Link>
-          <p className="adm-rail-foot">
-            Les rôles se gèrent en ligne de commande :<code>promote_admin.py</code>
-          </p>
-        </aside>
-        {navOpen && <div className="adm-scrim" onClick={close} aria-hidden="true" />}
+          <span className="adm-env">Administration</span>
 
-        <main className="adm-main">
-          <Outlet />
-        </main>
+          <div className="adm-bar-right">
+            <Link to="/" className="adm-bar-link">
+              ↩ Retour à l'app
+            </Link>
+            <span className="adm-who" title={user?.email}>
+              <AdminAvatar seed={user?.id} label={label} />
+              <span className="adm-who-name">{label}</span>
+            </span>
+            <button className="adm-bar-link" onClick={logout}>
+              Déconnexion
+            </button>
+          </div>
+        </header>
+
+        <div className="adm-body">
+          <aside className="adm-rail" aria-label="Navigation administration">
+            <p className="adm-rail-title">Général</p>
+            <NavLink to="/admin" end className={navClass} onClick={close}>
+              <span className="adm-ico" aria-hidden="true">
+                ◧
+              </span>
+              Tableau de bord
+            </NavLink>
+            <p className="adm-rail-title">Gestion</p>
+            <NavLink to="/admin/utilisateurs" className={navClass} onClick={close}>
+              <span className="adm-ico" aria-hidden="true">
+                ◉
+              </span>
+              Utilisateurs
+            </NavLink>
+            <NavLink to="/admin/chapitres" className={navClass} onClick={close}>
+              <span className="adm-ico" aria-hidden="true">
+                ▤
+              </span>
+              Chapitres
+            </NavLink>
+            {/* Also here, not only in the bar: the bar's copy is hidden on a
+              phone, and the console must never be a dead end. */}
+            <p className="adm-rail-title">Fahem</p>
+            <Link to="/" className="adm-nav-link">
+              <span className="adm-ico" aria-hidden="true">
+                ↩
+              </span>
+              Retour à l'app
+            </Link>
+            <p className="adm-rail-foot">
+              Les rôles se gèrent en ligne de commande :<code>promote_admin.py</code>
+            </p>
+          </aside>
+          {navOpen && <div className="adm-scrim" onClick={close} aria-hidden="true" />}
+
+          <main className="adm-main">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </MotionProvider>
   );
 }

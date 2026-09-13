@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchUsers, relativeTime, UnauthorizedError } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import * as m from "motion/react-m";
+import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
+import { rise, stagger } from "../../lib/motion.js";
 
 const PAGE_SIZE = 20;
 
@@ -104,7 +107,7 @@ export default function AdminUsers() {
       {failed && <p className="adm-alert">Impossible de charger les comptes.</p>}
 
       <div className="adm-table-wrap">
-        <table className="adm-table">
+        <table className="adm-table adm-table-cards">
           <thead>
             <tr>
               <th>Utilisateur</th>
@@ -115,44 +118,65 @@ export default function AdminUsers() {
               <th>Dernière activité</th>
             </tr>
           </thead>
-          <tbody>
+          {/* Keyed by the page's query so each new result set staggers in. */}
+          <m.tbody
+            key={`${q}|${role}|${method}|${page}|${data ? "ok" : "loading"}`}
+            variants={stagger(0.03)}
+            initial="hidden"
+            animate="show"
+          >
             {data?.items.map((u) => (
-              <tr
+              <m.tr
                 key={u.id}
                 className="adm-row-link"
                 tabIndex={0}
+                variants={rise}
                 onClick={() => navigate(`/admin/utilisateurs/${u.id}`)}
                 onKeyDown={(e) =>
                   e.key === "Enter" && navigate(`/admin/utilisateurs/${u.id}`)
                 }
               >
-                <td>
+                {/* data-label: on a phone the table becomes one card per
+                    account, and each cell shows its column name beside it. */}
+                <td data-label="Utilisateur">
                   <span className="adm-cell-user">
-                    <span className="adm-avatar adm-avatar-sm" aria-hidden="true">
-                      {(u.display_name || u.email).charAt(0).toUpperCase()}
-                    </span>
+                    <AdminAvatar
+                      seed={u.id}
+                      label={u.display_name || u.email}
+                      size="sm"
+                    />
                     <span className="adm-list-main">
-                      <span className="adm-strong">{u.display_name || "—"}</span>
+                      {u.display_name ? (
+                        <span className="adm-strong">{u.display_name}</span>
+                      ) : (
+                        <span className="adm-noname">Sans nom</span>
+                      )}
                       <span className="adm-muted">{u.email}</span>
                     </span>
                   </span>
                 </td>
-                <td>
+                <td data-label="Rôle">
                   <span className={`adm-tag adm-tag-${u.role}`}>
                     {u.role === "admin" ? "Admin" : "Élève"}
                   </span>
                 </td>
-                <td>{u.auth_method === "google" ? "Google" : "E-mail"}</td>
-                <td>
+                <td data-label="Connexion">
+                  {u.auth_method === "google" ? "Google" : "E-mail"}
+                </td>
+                <td data-label="E-mail">
                   <span
                     className={`adm-tag ${u.email_verified ? "adm-tag-ok" : "adm-tag-dim"}`}
                   >
                     {u.email_verified ? "Confirmé" : "Non confirmé"}
                   </span>
                 </td>
-                <td className="adm-muted">{relativeTime(u.created_at)}</td>
-                <td className="adm-muted">{relativeTime(u.last_login_at)}</td>
-              </tr>
+                <td data-label="Inscrit" className="adm-muted">
+                  {relativeTime(u.created_at)}
+                </td>
+                <td data-label="Activité" className="adm-muted">
+                  {relativeTime(u.last_login_at)}
+                </td>
+              </m.tr>
             ))}
             {data?.items.length === 0 && (
               <tr>
@@ -170,7 +194,7 @@ export default function AdminUsers() {
                   </td>
                 </tr>
               ))}
-          </tbody>
+          </m.tbody>
         </table>
       </div>
 
