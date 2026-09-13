@@ -119,11 +119,13 @@ function normalise(text) {
  * like the history itself: it will not follow a student to another device, and
  * the page simply shows no markers then.
  *
- * Read-only: sessions.js owns that storage and is not touched.
+ * Read-only: sessions.js owns that storage and is not touched. A caller that
+ * already holds the live list (the home screen, via the sessions context)
+ * passes it in, since storage is only written after the render that changed it.
  */
-export function startedExerciseTexts() {
+export function startedExerciseTexts(sessions = loadSessions()) {
   const started = new Set();
-  for (const session of loadSessions()) {
+  for (const session of sessions) {
     const first = session?.messages?.find((m) => m.role === "user");
     if (first?.content) started.add(normalise(first.content));
   }

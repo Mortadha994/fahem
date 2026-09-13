@@ -32,13 +32,18 @@ CONTROL_STRUCTURES = {
     # markdown tables, so Python lands mid-line after "| " and "**" and a
     # plain ^-anchored pattern silently misses it (it did - ex27's `def main():`
     # inside a table cell passed as clean).
-    "python if": re.compile(rf"{_CELL}(if|elif|else)\b"),
-    "python loop": re.compile(rf"{_CELL}(for|while)\b"),
-    "def": re.compile(rf"{_CELL}def\s+\w"),
+    # MULTILINE so `^` means start of *any* line, as the comment on _CELL
+    # says. Without it `^` only matched the start of the whole string: a
+    # context written as Markdown code blocks (uploaded chapters, Phase 9b)
+    # supplies `if` at the start of a line and was reported as missing it,
+    # and an answer written as a code block could invent `if` unnoticed.
+    "python if": re.compile(rf"{_CELL}(if|elif|else)\b", re.MULTILINE),
+    "python loop": re.compile(rf"{_CELL}(for|while)\b", re.MULTILINE),
+    "def": re.compile(rf"{_CELL}def\s+\w", re.MULTILINE),
     # Named explicitly by rule 2, so checked explicitly. `return` outside a
     # function is a syntax error anyway, and the __main__ guard is a function
     # definition idiom regardless of intent.
-    "return": re.compile(rf"{_CELL}return\b"),
+    "return": re.compile(rf"{_CELL}return\b", re.MULTILINE),
     # The backslash is optional: markdown answers escape the quotes as \"...\".
     "__main__ guard": re.compile(r"__name__\s*==\s*\\?['\"]__main__"),
     # f-strings and comprehensions are, in spirit, the same over-reach as def/

@@ -184,6 +184,92 @@ def resolve_pins(
     return resolved
 
 
+# Phase 9. PINS above is chapter 1's hand-curated reference sheet, located by
+# anchor text that exists only in chapter 1's PDF. Uploaded chapters carry
+# their reference sheet in the published Qdrant payload instead: the admin
+# ticks which chunks are pinned during review, and chapter_store.publish writes
+# `pinned`/`pin_label` onto those points. Reading them back from Qdrant (not
+# from the draft rows in Postgres) is what keeps a half-reviewed edit out of a
+# student's prompt until it is republished.
+BUILTIN_PIN_SCOPE = ("2eme", "1")
+
+
+def published_pins(niveau: str, chapitre: str, url: str = QDRANT_URL) -> list[PinnedChunk]:
+    """The pinned chunks of a published uploaded chapter, or fail loudly.
+
+    Same contract as resolve_pins: an empty reference sheet is an error, not an
+    empty list - a prompt with no syntax core would let the model fall back on
+    whatever notation it learned elsewhere. An unpublished chapter has no
+    points at all, so it fails here too, and /solve answers 422.
+    """
+    pins = []
+    for r in scroll_scope(niveau, chapitre, url=url):
+        payload = r.payload or {}
+        if not payload.get("pinned"):
+            continue
+        pins.append(
+            PinnedChunk(
+                label=str(payload.get("pin_label") or payload.get("section") or "Référence"),
+                content=str(payload.get(TEXT_KEY, "")),
+                metadata={
+                    k: v
+                    for k, v in payload.items()
+                    if k not in (TEXT_KEY, "chunk_id", "pinned", "pin_label")
+                },
+                chunk_id=str(payload.get("chunk_id", r.id)),
+            )
+        )
+    if not pins:
+        raise PinResolutionError(
+            f"no pinned syntax core published for niveau={niveau} chapitre={chapitre}"
+        )
+    # Scroll order is point-id order, which is arbitrary; the course's order is
+    # the order a student reads the reference sheet in. `position` is written
+    # at publish; `page` is the fallback for points published before it was.
+    pins.sort(
+        key=lambda p: (
+            int(p.metadata.get("position", -1)),
+            int(p.metadata.get("page") or 0),
+            p.label,
+        )
+    )
+    return pins
+
+
+def prerequisite_pins(niveau: str, chapitre: str, url: str = QDRANT_URL) -> list[PinnedChunk]:
+    """The reference sheets of every chapter before this one.
+
+    The programme is cumulative - a chapter-2 exercise still reads input with
+    Lire/input() and tests parity with mod, which are chapter-1 syntax. Scoping
+    the syntax core to the current chapter alone made the model fall back on
+    whatever notation it knew (`N % 2 = 0` in an algorithm instead of
+    `N mod 2 = 0`) and made the checker flag input()/int() as invented.
+
+    Chapter 1 is the built-in sheet (PINS) and must resolve, as everywhere
+    else. A later chapter that is not published yet is simply absent: the
+    student cannot have studied it on Fahem either. Labels are prefixed with
+    the chapter so the prompt shows where each sheet comes from.
+    """
+    try:
+        n = int(str(chapitre).strip())
+    except ValueError:
+        return []
+    pins: list[PinnedChunk] = []
+    if str(niveau).strip().lower() == BUILTIN_PIN_SCOPE[0] and n > 1:
+        pins.extend(resolve_pins(niveau, BUILTIN_PIN_SCOPE[1], url))
+        for p in pins:
+            p.label = f"Ch. 1 — {p.label}"
+    for k in range(2, n):
+        try:
+            earlier = published_pins(niveau, str(k), url)
+        except PinResolutionError:
+            continue
+        for p in earlier:
+            p.label = f"Ch. {k} — {p.label}"
+        pins.extend(earlier)
+    return pins
+
+
 @dataclass
 class Context:
     query: str
@@ -220,7 +306,12 @@ def build_context(
     url: str = QDRANT_URL,
 ) -> Context:
     """Pinned syntax core + k retrieved extras that are not already pinned."""
-    pinned = resolve_pins(niveau, chapitre, url)
+    if (str(niveau).strip().lower(), str(chapitre).strip().lower()) == BUILTIN_PIN_SCOPE:
+        pinned = resolve_pins(niveau, chapitre, url)
+    else:
+        # Earlier chapters first, then this one - the order a student learnt
+        # them in. Retrieval below stays scoped to this chapter alone.
+        pinned = prerequisite_pins(niveau, chapitre, url) + published_pins(niveau, chapitre, url)
     pinned_ids = {p.chunk_id for p in pinned}
 
     # Over-fetch so that dropping pinned duplicates still leaves k extras.

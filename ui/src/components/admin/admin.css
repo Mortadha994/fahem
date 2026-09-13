@@ -1,0 +1,1410 @@
+/* =========================================================================
+   Fahem Console (Phase 8) - the admin shell's own visual system.
+
+   Everything is scoped under .adm and uses its own --adm-* tokens, so nothing
+   here can restyle the student app and nothing in App.css (which targets the
+   app's own class names) reaches in. Different on purpose: the student app is
+   a calm study space; this is an operations tool - a dark command bar, an
+   indigo accent instead of the app's blue, dense tables, tabular numbers,
+   monospace identifiers.
+   ========================================================================= */
+
+.adm {
+  --adm-bg: #f4f5f9;
+  --adm-surface: #ffffff;
+  --adm-surface-2: #f8f9fc;
+  --adm-line: #e3e5ee;
+  --adm-fg: #111827;
+  --adm-dim: #5b6272;
+  /* Fahem's brand violet rather than a separate indigo, so the console reads
+     as the same product in a different frame. White on it is 5.6:1, and as
+     text on --adm-bg / --adm-surface it holds 5.2-5.6:1. */
+  --adm-accent: #6a4fe0;
+  --adm-accent-hover: #5638cf;
+  --adm-accent-soft: #efebff;
+  /* The second series colour (charts, legends), the brand teal. */
+  --adm-accent-2: #0f766e;
+  --adm-brand-grad: linear-gradient(135deg, #3f6fb5, #6a4fe0);
+  --adm-bar: #0e1222;
+  --adm-bar-fg: #e5e7f0;
+  --adm-bar-dim: #9aa1b5;
+  --adm-ok: #047857;
+  --adm-ok-bg: #e6f6ef;
+  --adm-warn: #b45309;
+  --adm-danger: #b91c1c;
+  --adm-danger-bg: #fdecec;
+  --adm-radius: 10px;
+  --adm-shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
+  --adm-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  min-height: 100%;
+  background: var(--adm-bg);
+  color: var(--adm-fg);
+  font-family: var(--adm-font);
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-color-scheme: dark) {
+  .adm {
+    --adm-bg: #0b0d14;
+    --adm-surface: #131623;
+    --adm-surface-2: #181c2b;
+    --adm-line: #252a3b;
+    --adm-fg: #e7e9f2;
+    --adm-dim: #9aa1b5;
+    --adm-accent: #a99bff;
+    --adm-accent-hover: #c4b8ff;
+    --adm-accent-soft: #221d45;
+    --adm-accent-2: #2dd4bf;
+    --adm-bar: #07080d;
+    --adm-ok: #6ee7b7;
+    --adm-ok-bg: #0f2a22;
+    --adm-warn: #fbbf24;
+    --adm-danger: #fca5a5;
+    --adm-danger-bg: #2a1416;
+    --adm-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  }
+}
+
+.adm *,
+.adm *::before,
+.adm *::after {
+  box-sizing: border-box;
+}
+.adm code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.adm :focus-visible {
+  outline: 2px solid var(--adm-accent);
+  outline-offset: 2px;
+}
+
+/* --- boot / gate ----------------------------------------------------------- */
+.adm-boot {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+.adm-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--adm-line);
+  border-top-color: var(--adm-accent);
+  animation: adm-spin 0.8s linear infinite;
+}
+@keyframes adm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- command bar ------------------------------------------------------------- */
+.adm-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  padding-inline: 16px;
+  background: var(--adm-bar);
+  color: var(--adm-bar-fg);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+.adm-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.adm-brand strong {
+  font-weight: 700;
+  color: #fff;
+}
+.adm-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--adm-brand-grad);
+  box-shadow: 0 6px 14px -8px #6a4fe0;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
+  font-size: 14px;
+}
+.adm-env {
+  padding: 2px 8px;
+  border: 1px solid rgb(129 140 248 / 0.4);
+  border-radius: 999px;
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.adm-bar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.adm-bar-link {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-bar-dim);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.adm-bar-link:hover {
+  background: rgb(255 255 255 / 0.07);
+  color: #fff;
+}
+.adm-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 8px;
+  color: var(--adm-bar-fg);
+  font-size: 13px;
+}
+.adm-burger {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.adm-burger span,
+.adm-burger span::before,
+.adm-burger span::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  margin-inline: auto;
+  background: var(--adm-bar-fg);
+  position: relative;
+}
+.adm-burger span::before,
+.adm-burger span::after {
+  content: "";
+  position: absolute;
+}
+.adm-burger span::before {
+  top: -6px;
+}
+.adm-burger span::after {
+  top: 6px;
+}
+
+/* --- rail + main --------------------------------------------------------------- */
+.adm-body {
+  display: flex;
+  min-height: calc(100vh - 56px);
+}
+.adm-rail {
+  flex: none;
+  width: 232px;
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--adm-surface);
+  border-right: 1px solid var(--adm-line);
+}
+.adm-rail-title {
+  margin: 14px 10px 6px;
+  color: var(--adm-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.adm-rail-title:first-child {
+  margin-top: 0;
+}
+.adm-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--adm-dim);
+  font-weight: 500;
+  text-decoration: none;
+}
+.adm-nav-link:hover {
+  background: var(--adm-surface-2);
+  color: var(--adm-fg);
+}
+.adm-nav-link {
+  position: relative;
+}
+/* Current page: tinted fill, accent text and a gradient edge - the same three
+   cues as the student sidebar's current link. */
+.adm-nav-link.is-active {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  font-weight: 600;
+}
+.adm-nav-link.is-active::before {
+  content: "";
+  position: absolute;
+  inset-block: 22%;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--adm-brand-grad);
+}
+.adm-ico {
+  width: 18px;
+  text-align: center;
+}
+.adm-rail-foot {
+  margin: auto 10px 0;
+  padding-top: 16px;
+  color: var(--adm-dim);
+  font-size: 12px;
+}
+.adm-rail-foot code {
+  display: block;
+  margin-top: 4px;
+  color: var(--adm-fg);
+}
+.adm-main {
+  flex: 1;
+  min-width: 0;
+  padding: 28px clamp(16px, 3vw, 40px) 48px;
+}
+.adm-scrim {
+  display: none;
+}
+
+/* --- page scaffolding ------------------------------------------------------------ */
+.adm-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.adm-page-narrow {
+  max-width: 760px;
+}
+.adm-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.adm-h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.adm-h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.adm-sub {
+  margin: 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--adm-dim);
+}
+.adm-back {
+  align-self: flex-start;
+  color: var(--adm-dim);
+  font-size: 13px;
+  text-decoration: none;
+}
+.adm-back:hover {
+  color: var(--adm-accent);
+}
+.adm-panel {
+  padding: 18px;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-line);
+  border-radius: var(--adm-radius);
+  box-shadow: var(--adm-shadow);
+}
+.adm-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.adm-grid-2 {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* --- text helpers -------------------------------------------------------------- */
+.adm-strong {
+  font-weight: 600;
+  color: var(--adm-fg);
+}
+.adm-muted {
+  color: var(--adm-dim);
+}
+.adm-small {
+  margin: 0;
+  font-size: 12.5px;
+}
+.adm-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--adm-accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.adm-link:hover {
+  text-decoration: underline;
+}
+.adm-alert,
+.adm-notice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+.adm-alert {
+  background: var(--adm-danger-bg);
+  color: var(--adm-danger);
+}
+.adm-notice {
+  background: var(--adm-ok-bg);
+  color: var(--adm-ok);
+}
+.adm-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--adm-dim);
+}
+
+/* --- buttons ------------------------------------------------------------------- */
+.adm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--adm-line);
+  border-radius: 8px;
+  background: var(--adm-surface);
+  color: var(--adm-fg);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+.adm-btn:hover:not(:disabled) {
+  background: var(--adm-surface-2);
+  border-color: var(--adm-dim);
+}
+.adm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.adm-btn-primary {
+  border-color: var(--adm-accent);
+  background: var(--adm-accent);
+  color: #fff;
+}
+.adm-btn-primary:hover:not(:disabled) {
+  background: var(--adm-accent-hover);
+  border-color: var(--adm-accent-hover);
+}
+.adm-btn-warn {
+  border-color: var(--adm-warn);
+  color: var(--adm-warn);
+}
+.adm-btn-danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+.adm-btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.adm-btn-danger-ghost {
+  color: var(--adm-danger);
+}
+.adm-btn-danger-ghost:hover:not(:disabled) {
+  border-color: var(--adm-danger);
+  background: var(--adm-danger-bg);
+}
+@media (prefers-color-scheme: dark) {
+  .adm-btn-primary {
+    color: #0b0d14;
+  }
+}
+
+/* --- avatars & tags -------------------------------------------------------------- */
+.adm-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  /* The colour is per account, set inline by AdminAvatar.jsx. */
+  background: var(--adm-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.adm-avatar-sm {
+  width: 32px;
+  height: 32px;
+}
+.adm-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+}
+.adm-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.adm-tag-student {
+  background: var(--adm-surface-2);
+  color: var(--adm-dim);
+  box-shadow: inset 0 0 0 1px var(--adm-line);
+}
+.adm-tag-admin {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+}
+.adm-tag-ok {
+  background: var(--adm-ok-bg);
+  color: var(--adm-ok);
+}
+.adm-tag-dim {
+  background: var(--adm-surface-2);
+  color: var(--adm-dim);
+}
+
+/* --- dashboard ------------------------------------------------------------------ */
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+/* A figure, what it is, and - underneath - the share it is of all accounts.
+   The gradient top edge replaces a flat 3px border, so the four cards read as
+   one row of the same instrument. */
+.adm-stat {
+  position: relative;
+  min-height: 128px;
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-line);
+  border-radius: var(--adm-radius);
+  box-shadow: var(--adm-shadow);
+}
+.adm-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--adm-brand-grad);
+}
+.adm-stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.adm-stat-label {
+  color: var(--adm-dim);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.adm-stat-ico {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  font-size: 14px;
+}
+.adm-stat-value {
+  font-size: 32px;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.adm-stat-hint {
+  color: var(--adm-dim);
+  font-size: 12.5px;
+}
+.adm-meter {
+  margin-top: auto;
+  padding-top: 10px;
+  display: block;
+}
+.adm-meter::before {
+  content: "";
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--adm-surface-2);
+  box-shadow: inset 0 0 0 1px var(--adm-line);
+}
+.adm-meter-fill {
+  display: block;
+  height: 5px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--adm-brand-grad);
+  /* Scaled from 0 to the real ratio by Motion (AdminDashboard.jsx). */
+  transform-origin: 0 50%;
+}
+
+/* Right column: panels stacked with the same gap as the grid. */
+.adm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.adm-noname {
+  color: var(--adm-dim);
+  font-style: italic;
+}
+.adm-list-when {
+  flex: none;
+  font-size: 12.5px;
+}
+
+/* Chapter counts: three tiles in a row. */
+.adm-kpis {
+  margin: 0 0 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.adm-kpi {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--adm-surface-2);
+  box-shadow: inset 0 0 0 1px var(--adm-line);
+}
+.adm-kpi dt {
+  color: var(--adm-dim);
+  font-size: 12px;
+}
+.adm-kpi dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 750;
+}
+.adm-kpi.is-ok dd {
+  color: var(--adm-ok);
+}
+.adm-kpi.is-busy dd {
+  color: var(--adm-accent);
+}
+.adm-callout {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.adm-callout.is-warn {
+  background: color-mix(in srgb, var(--adm-warn) 12%, var(--adm-surface));
+  color: var(--adm-warn);
+}
+.adm-callout.is-ok {
+  background: var(--adm-ok-bg);
+  color: var(--adm-ok);
+}
+
+/* Shortcuts: the three things an admin comes here to do. */
+.adm-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.adm-shortcuts .adm-h2 {
+  margin-bottom: 8px;
+}
+.adm-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-inline: -8px;
+  padding: 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 120ms;
+}
+.adm-shortcut:hover {
+  background: var(--adm-surface-2);
+}
+.adm-shortcut > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.adm-shortcut-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--adm-brand-grad);
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+}
+
+/* A hint set apart as one (the chapters page). */
+.adm-tip {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--adm-accent-soft);
+  color: var(--adm-fg);
+  font-size: 13px;
+}
+.adm-tip-ico {
+  color: var(--adm-accent);
+  font-weight: 700;
+}
+.adm-list {
+  margin: 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+.adm-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.adm-list-row:hover {
+  background: var(--adm-surface-2);
+}
+.adm-list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.adm-list-main > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-split {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.adm-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--adm-accent-2);
+  overflow: hidden;
+}
+/* Scaled by Motion to the password-account share (AdminDashboard.jsx). */
+.adm-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--adm-accent);
+  transform-origin: 0 50%;
+}
+.adm-legend {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.adm-legend > div {
+  display: flex;
+  justify-content: space-between;
+}
+.adm-legend dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--adm-dim);
+}
+.adm-legend dd {
+  margin: 0;
+  font-weight: 700;
+}
+.adm-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.adm-dot-a {
+  background: var(--adm-accent);
+}
+.adm-dot-b {
+  background: var(--adm-accent-2);
+}
+
+/* --- users table ------------------------------------------------------------------ */
+.adm-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.adm-input {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--adm-line);
+  border-radius: 8px;
+  background: var(--adm-surface);
+  color: var(--adm-fg);
+  font: inherit;
+}
+.adm-input:focus-visible {
+  outline: none;
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 3px var(--adm-accent-soft);
+}
+.adm-search {
+  flex: 1 1 280px;
+}
+.adm-table-wrap {
+  overflow-x: auto;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-line);
+  border-radius: var(--adm-radius);
+  box-shadow: var(--adm-shadow);
+}
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+.adm-table th {
+  padding: 10px 14px;
+  background: var(--adm-surface-2);
+  border-bottom: 1px solid var(--adm-line);
+  color: var(--adm-dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.adm-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--adm-line);
+  vertical-align: middle;
+}
+.adm-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.adm-row-link {
+  cursor: pointer;
+}
+.adm-row-link:hover td {
+  background: var(--adm-surface-2);
+}
+.adm-cell-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 340px;
+}
+.adm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+/* --- detail & forms -------------------------------------------------------------- */
+.adm-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.adm-facts {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 0;
+}
+.adm-facts > div {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--adm-line);
+}
+.adm-facts > div:last-child {
+  border-bottom: 0;
+}
+.adm-facts dt {
+  color: var(--adm-dim);
+}
+.adm-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.adm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.adm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.adm-field > span {
+  font-weight: 600;
+}
+.adm-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.adm-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--adm-accent);
+}
+.adm-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.adm-danger {
+  border-color: color-mix(in srgb, var(--adm-danger) 35%, var(--adm-line));
+}
+.adm-danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--adm-line);
+}
+.adm-danger-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.adm-danger-row p {
+  margin: 0;
+}
+.adm-confirm {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- skeletons -------------------------------------------------------------------- */
+.adm-skel {
+  background: linear-gradient(
+    90deg,
+    var(--adm-surface-2),
+    var(--adm-line),
+    var(--adm-surface-2)
+  );
+  background-size: 200% 100%;
+  animation: adm-shimmer 1.2s linear infinite;
+  border-radius: 8px;
+}
+.adm-skel-row {
+  height: 34px;
+}
+.adm-skel-block {
+  height: 220px;
+}
+@keyframes adm-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* --- narrow screens ----------------------------------------------------------------- */
+@media (max-width: 980px) {
+  .adm-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .adm-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .adm-burger {
+    display: block;
+  }
+  .adm-env,
+  .adm-who-name,
+  .adm-bar-right .adm-bar-link:first-child {
+    display: none;
+  }
+  .adm-rail {
+    position: fixed;
+    top: 56px;
+    bottom: 0;
+    left: 0;
+    z-index: 15;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+  }
+  .adm-nav-open .adm-rail {
+    transform: none;
+  }
+  .adm-nav-open .adm-scrim {
+    display: block;
+    position: fixed;
+    inset: 56px 0 0;
+    z-index: 14;
+    background: rgb(0 0 0 / 0.4);
+  }
+  .adm-facts > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .adm-danger-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+/* Tables as cards on a phone. A seven-column table scrolled sideways inside
+   its box, hiding the role and status behind the right edge; here each row
+   becomes a card, the first cell as its title and every other cell as a
+   "label  value" line (the label comes from data-label). */
+@media (max-width: 720px) {
+  .adm-table-cards {
+    min-width: 0;
+  }
+  .adm-table-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .adm-table-cards,
+  .adm-table-cards tbody,
+  .adm-table-cards tr,
+  .adm-table-cards td {
+    display: block;
+  }
+  .adm-table-cards tbody tr {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--adm-line);
+  }
+  .adm-table-cards tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .adm-table-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border: 0;
+  }
+  .adm-table-cards td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--adm-dim);
+    font-size: 12px;
+  }
+  /* The first real cell is the card's title: no label, full width. */
+  .adm-table-cards td[data-label="Utilisateur"],
+  .adm-table-cards td[data-label="Titre"] {
+    order: -1;
+    padding-bottom: 8px;
+  }
+  .adm-table-cards td[data-label="Utilisateur"]::before,
+  .adm-table-cards td[data-label="Titre"]::before {
+    content: none;
+  }
+  .adm-table-cards tr {
+    display: flex;
+    flex-direction: column;
+  }
+  .adm-table-cards .adm-cell-user {
+    max-width: none;
+  }
+  .adm-table-cards .adm-row-link:hover td {
+    background: none;
+  }
+  .adm-table-cards .adm-row-link:hover {
+    background: var(--adm-surface-2);
+  }
+  .adm-table-cards td.adm-empty {
+    justify-content: center;
+  }
+}
+@media (max-width: 480px) {
+  .adm-stats {
+    grid-template-columns: 1fr;
+  }
+  .adm-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-spinner,
+  .adm-skel {
+    animation: none;
+  }
+  .adm-rail,
+  .adm-shortcut {
+    transition: none;
+  }
+}
+
+/* =========================================================================
+   Chapters (Phase 9): upload, review, publish.
+   ========================================================================= */
+
+.adm-tag-busy {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+}
+.adm-tag-danger {
+  background: var(--adm-danger-bg);
+  color: var(--adm-danger);
+}
+.adm-tag-warn {
+  margin-left: 4px;
+  background: color-mix(in srgb, var(--adm-warn) 14%, transparent);
+  color: var(--adm-warn);
+}
+.adm-head-actions {
+  display: flex;
+  gap: 10px;
+}
+.adm-wrap {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.adm-grow {
+  flex: 1;
+}
+
+/* --- upload ------------------------------------------------------------------ */
+.adm-upload-row {
+  display: flex;
+  gap: 12px;
+}
+.adm-field-num {
+  width: 90px;
+}
+.adm-drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 96px;
+  padding: 16px;
+  border: 2px dashed var(--adm-line);
+  border-radius: var(--adm-radius);
+  background: var(--adm-surface-2);
+  color: var(--adm-dim);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 150ms,
+    background-color 150ms;
+}
+.adm-drop:hover,
+.adm-drop:focus-within {
+  border-color: var(--adm-accent);
+  background: var(--adm-accent-soft);
+}
+.adm-drop.has-file {
+  border-style: solid;
+  border-color: var(--adm-accent);
+  color: var(--adm-fg);
+}
+.adm-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.adm-drop-icon {
+  font-size: 26px;
+  color: var(--adm-accent);
+}
+
+/* --- status & checklist ------------------------------------------------------ */
+.adm-notice-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+}
+.adm-spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+.adm-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.adm-check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-line);
+  background: var(--adm-surface);
+  font-weight: 500;
+}
+.adm-check-item > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+}
+.adm-check-item.is-ok > span {
+  background: var(--adm-ok-bg);
+  color: var(--adm-ok);
+}
+.adm-check-item.is-todo {
+  border-color: color-mix(in srgb, var(--adm-warn) 45%, var(--adm-line));
+}
+.adm-check-item.is-todo > span {
+  background: color-mix(in srgb, var(--adm-warn) 16%, transparent);
+  color: var(--adm-warn);
+}
+.adm-check-item.is-soft > span {
+  background: var(--adm-surface-2);
+  color: var(--adm-dim);
+}
+.adm-problems {
+  margin: 0;
+  padding: 10px 14px 10px 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--adm-warn) 10%, transparent);
+  color: var(--adm-warn);
+}
+.adm-grid-review {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* --- forms ----------------------------------------------------------------------- */
+.adm-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.adm-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+/* --- segmented filter -------------------------------------------------------- */
+.adm-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-line);
+}
+.adm-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.adm-seg-btn.is-on {
+  background: var(--adm-surface);
+  color: var(--adm-fg);
+  box-shadow: var(--adm-shadow);
+}
+.adm-seg-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-warn) 18%, transparent);
+  color: var(--adm-warn);
+  font-size: 11px;
+}
+
+/* --- chunks --------------------------------------------------------------------- */
+.adm-chunks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+.adm-chunk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--adm-line);
+  border-left: 4px solid var(--adm-line);
+  border-radius: 8px;
+  background: var(--adm-surface);
+}
+.adm-chunk.is-flagged {
+  border-left-color: var(--adm-warn);
+}
+.adm-chunk.is-pinned {
+  border-left-color: var(--adm-accent);
+  background: color-mix(in srgb, var(--adm-accent-soft) 45%, var(--adm-surface));
+}
+.adm-chunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.adm-chunk-type {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+.adm-chunk-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.adm-chunk-body {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--adm-surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.adm-chunk-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- exercises ------------------------------------------------------------------- */
+.adm-ex-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 460px;
+  overflow: auto;
+}
+.adm-ex {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--adm-line);
+}
+.adm-ex:last-child {
+  border-bottom: 0;
+}
+.adm-ex-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.adm-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal !important;
+}
+
+@media (max-width: 980px) {
+  .adm-grid-review {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .adm-upload-row {
+    flex-direction: column;
+  }
+  .adm-field-num {
+    width: 100%;
+  }
+  .adm-head-actions {
+    width: 100%;
+  }
+  .adm-head-actions .adm-btn {
+    flex: 1;
+  }
+}

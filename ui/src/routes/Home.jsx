@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { fetchChapters, UnauthorizedError } from "../lib/chapters.js";
+import { useEffect, useMemo, useState } from "react";
+import * as m from "motion/react-m";
+import { rise, stagger } from "../lib/motion.js";
+import { fetchChapters, fetchExercises, UnauthorizedError } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
+import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { isStarted, startedExerciseTexts } from "../lib/exercises.js";
 import Alert from "../components/ui/Alert.jsx";
-import Badge from "../components/ui/Badge.jsx";
-import Skeleton from "../components/ui/Skeleton.jsx";
+import ChapterCard, { ChapterCardSkeleton } from "../components/ChapterCard.jsx";
+import HomeWelcome from "../components/HomeWelcome.jsx";
+import RecentSessions from "../components/RecentSessions.jsx";
+import StreakCard from "../components/StreakCard.jsx";
+import WeeklyGoalCard from "../components/WeeklyGoalCard.jsx";
 
 /**
  * Where a student lands after signing in.
@@ -13,16 +19,40 @@ import Skeleton from "../components/ui/Skeleton.jsx";
  * ready. Filtering those out client-side would undo the point of the backend
  * listing them: a short list reads as "this is all there is" rather than
  * "more is coming", and the app would be quietly overstating its coverage.
+ *
+ * Layout: a main column (welcome, chapters, recent discussions) and a
+ * supporting column (streak, weekly goal) that moves under the main one when
+ * the space beside the sidebar gets narrow. Every number on the screen is
+ * derived from the API or this browser's own history; none is decorative.
  */
 export default function Home() {
   const { onUnauthorized } = useAuth();
+  const { sessions } = useChatSessions();
   const [chapters, setChapters] = useState(null);
   const [failed, setFailed] = useState(false);
+  // chapter id -> exercise énoncés, for the available chapters only.
+  const [exercises, setExercises] = useState({});
 
   useEffect(() => {
     let cancelled = false;
     fetchChapters()
-      .then((list) => !cancelled && setChapters(list))
+      .then((list) => {
+        if (cancelled) return;
+        setChapters(list);
+        // The progress line is extra: one failed exercise list simply leaves
+        // that card without it, rather than failing the screen.
+        const active = list.filter((c) => c.status === "active");
+        Promise.allSettled(active.map((c) => fetchExercises(c.id))).then((results) => {
+          if (cancelled) return;
+          const next = {};
+          results.forEach((r, i) => {
+            if (r.status === "fulfilled")
+              next[active[i].id] = r.value.map((e) => e.question);
+            else if (r.reason instanceof UnauthorizedError) onUnauthorized();
+          });
+          setExercises(next);
+        });
+      })
       .catch((err) => {
         if (cancelled) return;
         // A dead session is not a failed request: it sends the student to the
@@ -35,86 +65,116 @@ export default function Home() {
     };
   }, [onUnauthorized]);
 
+  // "Started" = sent to the chat from this browser, the same test the chapter
+  // page's "déjà commencé" marker uses. Recomputed when the sessions change,
+  // so an exercise sent a moment ago counts on the way back here.
+  const started = useMemo(() => {
+    const texts = startedExerciseTexts(sessions);
+    const counts = {};
+    for (const [id, list] of Object.entries(exercises)) {
+      counts[id] = {
+        done: list.filter((q) => isStarted(q, texts)).length,
+        total: list.length,
+      };
+    }
+    return counts;
+  }, [exercises, sessions]);
+
+  const availableCount = (chapters ?? []).filter((c) => c.status === "active").length;
+
   return (
-    <main className="page">
-      <header className="page-head">
-        <h1>Chapitres</h1>
-        <p className="page-lead">
-          Choisis un chapitre pour lire le cours et t'entraîner sur ses exercices — ou
-          pose directement ta question.
-        </p>
-      </header>
+    // Two elements on purpose. .page is the scroll container, so it has a
+    // fixed height. The layout grid used to be that same element, and a grid
+    // with a fixed height shrinks its rows to fit: the welcome card - a
+    // clipping box, whose automatic minimum height is 0 - lost its bottom and
+    // the chapters were laid over its buttons. The grid now lives inside,
+    // with no height of its own, so every row is as tall as its content.
+    <main className="page page-home">
+      <div className="home">
+        {/* Sections rise in one after another (lib/motion.js). */}
+        <m.div
+          className="home-main"
+          variants={stagger(0.08)}
+          initial="hidden"
+          animate="show"
+        >
+          <HomeWelcome />
 
-      {failed && (
-        <Alert className="page-alert">
-          Impossible de charger les chapitres. Recharge la page pour réessayer.
-        </Alert>
-      )}
-
-      {chapters === null && !failed && (
-        <p className="sr-only" role="status">
-          Chargement…
-        </p>
-      )}
-
-      <ul className="chapter-grid">
-        {/* Placeholder cards while the list loads, built from the same card
-            classes so the grid is already standing when the real cards land.
-            Three because that is the catalogue today; the bar heights add up
-            to a real card with a two-line title. */}
-        {chapters === null &&
-          !failed &&
-          [0, 1, 2].map((i) => (
-            <li key={`skeleton-${i}`} className="chapter-cell" aria-hidden="true">
-              <div className="chapter-card surface">
-                <Skeleton width="3rem" height="0.9rem" />
-                <Skeleton width="85%" height="1.1rem" />
-                <Skeleton width="60%" height="1.1rem" />
-                <Skeleton
-                  width="4.5rem"
-                  height="1.475rem"
-                  radius="full"
-                  className="chapter-tag"
-                />
+          <m.section
+            className="home-section"
+            aria-labelledby="chapters-title"
+            variants={rise}
+          >
+            <header className="section-head">
+              <div>
+                <h2 id="chapters-title" className="section-title">
+                  Chapitres
+                </h2>
+                <p className="section-lead">
+                  Lis le cours et entraîne-toi sur les exercices de la série.
+                </p>
               </div>
-            </li>
-          ))}
-        {(chapters ?? []).map((c) => {
-          const active = c.status === "active";
-          const inner = (
-            <>
-              <span className="chapter-niveau">{c.niveau}</span>
-              <span className="chapter-title">{c.title}</span>
-              <Badge tone={active ? "success" : "neutral"} className="chapter-tag">
-                {active ? "Disponible" : "À venir"}
-              </Badge>
-            </>
-          );
-
-          // A coming_soon chapter is rendered as a plain element, not a
-          // disabled link: there is no destination, so there should be nothing
-          // to click and nothing that looks clickable.
-          return (
-            <li key={c.id} className="chapter-cell">
-              {active ? (
-                <Link
-                  to={`/chapitre/${c.id}`}
-                  className="chapter-card surface surface-interactive"
-                >
-                  {inner}
-                </Link>
-              ) : (
-                <div
-                  className="chapter-card surface chapter-card-soon"
-                  aria-disabled="true"
-                >
-                  {inner}
-                </div>
+              {chapters && chapters.length > 0 && (
+                <p className="section-meta">
+                  {availableCount} sur {chapters.length} disponible
+                  {availableCount > 1 ? "s" : ""}
+                </p>
               )}
-            </li>
-          );
-        })}
-      </ul>
+            </header>
+
+            {failed && (
+              <Alert className="page-alert">
+                Impossible de charger les chapitres. Recharge la page pour réessayer.
+              </Alert>
+            )}
+
+            {chapters === null && !failed && (
+              <p className="sr-only" role="status">
+                Chargement…
+              </p>
+            )}
+
+            {/* Skeletons are a plain list; the real cards get their own
+                staggered list once the data lands, so they animate in when
+                they exist rather than while the placeholders are showing. */}
+            {chapters === null && !failed && (
+              <ul className="chapter-grid">
+                {/* Three placeholders because that is the catalogue today. */}
+                {[0, 1, 2].map((i) => (
+                  <ChapterCardSkeleton key={`skeleton-${i}`} />
+                ))}
+              </ul>
+            )}
+            {chapters && (
+              <m.ul
+                className="chapter-grid"
+                variants={stagger(0.07)}
+                initial="hidden"
+                animate="show"
+              >
+                {chapters.map((c) => (
+                  <ChapterCard key={c.id} chapter={c} progress={started[c.id]} />
+                ))}
+              </m.ul>
+            )}
+          </m.section>
+
+          <RecentSessions />
+        </m.div>
+
+        {/* Progress, derived from this browser's own chat history - see
+            lib/progress.js on why that is temporary. */}
+        <m.aside
+          className="home-side"
+          aria-label="Ta progression"
+          variants={stagger(0.1, 0.15)}
+          initial="hidden"
+          animate="show"
+        >
+          <StreakCard />
+          <WeeklyGoalCard />
+        </m.aside>
+      </div>
     </main>
   );
 }

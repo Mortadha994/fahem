@@ -362,6 +362,76 @@ def ingest(
     return len(ids)
 
 
+# --- per-chapter publishing (Phase 9) ------------------------------------------
+#
+# ingest() above is the CLI path for chapter 1 and is left exactly as it was.
+# These two are what the admin console's publish uses: it has chunks in memory
+# (from the database, not chunks.json), needs to attach per-chunk payload that
+# must NOT feed make_id (a pin toggle must not change a chunk's id), and must
+# replace one chapter's points without touching any other chapter's.
+
+
+def delete_scope(niveau: str, chapitre: str, url: str = QDRANT_URL) -> None:
+    """Remove every point in one (niveau, chapitre). No-op if none exist."""
+    client = get_client(url)
+    if not client.collection_exists(COLLECTION_NAME):
+        return
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=qmodels.FilterSelector(filter=scope_filter(niveau, chapitre)),
+        wait=True,
+    )
+
+
+def upsert_chunks(
+    chunks: list[dict[str, Any]],
+    extra_payloads: list[dict[str, Any]],
+    url: str = QDRANT_URL,
+    batch_size: int = 64,
+) -> list[str]:
+    """Embed and upsert chunk dicts; return the chunk id of each, in order.
+
+    `extra_payloads[i]` is merged into chunk i's stored payload after its id is
+    computed. Ids use exactly the same make_id() as ingest(), so the ids the
+    retriever returns and the pinned chunks' ids agree - context.build_context
+    dedups on them.
+    """
+    if len(chunks) != len(extra_payloads):
+        raise ValueError("chunks and extra_payloads must be the same length")
+    client = ensure_collection(url)
+    model = get_model()
+
+    rows = []
+    for chunk, extra in zip(chunks, extra_payloads):
+        text = chunk_text(chunk)
+        meta = normalise_metadata(chunk)
+        if not text or any(k not in meta for k in REQUIRED_META):
+            raise ValueError(f"chunk is missing text or niveau/chapitre: {chunk!r:.120}")
+        rows.append((make_id(text, meta), text, meta, extra))
+
+    for start in range(0, len(rows), batch_size):
+        batch = rows[start : start + batch_size]
+        vectors = model.encode(
+            [text for _, text, _, _ in batch],
+            batch_size=32,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        ).tolist()
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[
+                qmodels.PointStruct(
+                    id=point_id(cid),
+                    vector=vector,
+                    payload={**meta, **extra, "chunk_id": cid, TEXT_KEY: text},
+                )
+                for (cid, text, meta, extra), vector in zip(batch, vectors)
+            ],
+            wait=True,
+        )
+    return [cid for cid, _, _, _ in rows]
+
+
 def describe(url: str = QDRANT_URL) -> None:
     """Print what is in the store, grouped by niveau/chapitre/type."""
     total = count(url)

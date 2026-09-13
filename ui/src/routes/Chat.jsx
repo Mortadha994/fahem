@@ -1,37 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Sidebar from "../components/Sidebar.jsx";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { HOVER_LIFT, PRESS, rise, stagger } from "../lib/motion.js";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
-import Button from "../components/ui/Button.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
-import { loadSessions, saveSessions, newSession, titleFrom } from "../lib/sessions.js";
+import { titleFrom } from "../lib/sessions.js";
+import { fetchChapters, fetchExercises } from "../lib/chapters.js";
+import { exerciseTitle } from "../lib/exercises.js";
+import { hasQuestion } from "../lib/sessionGroups.js";
+import ChatResume from "../components/ChatResume.jsx";
+import HistoryPanel from "../components/HistoryPanel.jsx";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
+import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
 import { rateLimitMessage } from "../lib/rateLimit.js";
+
+// For the shortcut hint only; the handler accepts both Ctrl and Cmd anyway.
+const IS_MAC =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
 /**
  * The chat screen.
  *
  * Lifted out of App.jsx in Phase 3b so App can be the auth + router shell.
- * This is a move, not a rewrite: the session state, the streaming call, the
- * badge logic and the autoscroll behaviour are the code that was already
- * verified, unchanged. The only additions are the auth values now coming from
- * context instead of props, and the prefill handling below.
+ * Phase 6 moved the burger and the scope label to the app sidebar and the
+ * session list to ChatSessionsProvider. The discussions list itself now lives
+ * here again, but as the Historique panel behind the chat header rather than
+ * a second sidebar (HistoryPanel.jsx), with recent discussions offered as
+ * cards in an empty thread (ChatResume.jsx).
+ *
+ * What stayed here is what belongs to the conversation: the streaming call,
+ * the draft, the autoscroll, the live region, and the abort on unmount.
  */
-
 export default function Chat() {
   const { onUnauthorized } = useAuth();
+  const { sessions, setSessions, activeId, setActiveId, createSession, patchLast } =
+    useChatSessions();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [sessions, setSessions] = useState(() => loadSessions());
-  const [activeId, setActiveId] = useState(() => loadSessions()[0]?.id ?? null);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   /* One short line, replaced once per finished answer. See the live region in
      the markup for why this is not driven off the streaming text. */
@@ -40,8 +53,6 @@ export default function Chat() {
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const pinnedToBottom = useRef(true);
-
-  useEffect(() => saveSessions(sessions), [sessions]);
 
   // Abort any stream still running when this screen goes away.
   //
@@ -54,12 +65,6 @@ export default function Chat() {
   // SSE and the backend keeps generating against Groq for a conversation
   // nobody is watching - burning exactly the budget Phase 2's limiter exists
   // to cap, just through a different door.
-  //
-  // Written as an unmount cleanup rather than a logout-specific call because
-  // it covers every cause at once - route change, logout, or anything added
-  // later - instead of one that has to be remembered per exit path. Logging
-  // out reaches it too: App stops rendering <Routes> when the session goes,
-  // which unmounts this subtree.
   //
   // Empty deps so it runs only on unmount; the ref is read at cleanup time,
   // so it always sees the current controller.
@@ -76,6 +81,94 @@ export default function Chat() {
   );
   const messages = active?.messages ?? [];
 
+  // Phase 9: the chapters a new discussion can be about. Fetched once; a
+  // failure just leaves the picker hidden and the default chapter in place.
+  const [chapterList, setChapterList] = useState([]);
+  const [chapterChoice, setChapterChoice] = useState(CHAPITRE);
+  useEffect(() => {
+    let cancelled = false;
+    fetchChapters()
+      .then(
+        (list) =>
+          !cancelled && setChapterList(list.filter((c) => c.status === "active"))
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // In an empty discussion the picker changes that discussion's chapter; once
+  // a message is sent the chapter is fixed, so the answers in one thread never
+  // mix two chapters' syntax.
+  const currentChapter = active?.chapitre ?? chapterChoice;
+  function chooseChapter(id) {
+    setChapterChoice(id);
+    if (active && active.messages.length === 0) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === active.id ? { ...s, chapitre: id } : s))
+      );
+    }
+  }
+  // String on both sides: a session stores its chapter as a string, the API
+  // returns ids as numbers, and a strict comparison never matched.
+  const currentTitle = chapterList.find(
+    (c) => String(c.id) === String(currentChapter)
+  )?.title;
+
+  // A few real exercises from the chosen chapter, offered while the thread is
+  // empty. Only fetched then, and a failure just means no suggestions - the
+  // composer is still the way in.
+  const [suggestions, setSuggestions] = useState([]);
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    if (!isEmpty) return undefined;
+    let cancelled = false;
+    fetchExercises(currentChapter)
+      .then(
+        (list) => !cancelled && setSuggestions(list.slice(0, 3).map((e) => e.question))
+      )
+      .catch(() => !cancelled && setSuggestions([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [isEmpty, currentChapter]);
+  const composerRef = useRef(null);
+
+  // The history panel. Ctrl+K / Cmd+K toggles it from anywhere on this
+  // screen - the shortcut chat apps have taught students - and closing it
+  // hands focus back to the button, so a keyboard user lands where they were.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButtonRef = useRef(null);
+  const closeHistory = useCallback(() => {
+    setHistoryOpen(false);
+    // Next frame, not synchronously: the key press that closed the panel is
+    // still being dispatched, and a button focused mid-press can receive it
+    // as a click and open the panel straight back up.
+    requestAnimationFrame(() => historyButtonRef.current?.focus());
+  }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setHistoryOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const historyCount = sessions.filter(hasQuestion).length;
+
+  // A new question reuses a discussion that is still empty instead of adding
+  // another blank one, the same rule as the home screen's button.
+  const newDiscussion = () => {
+    const blank = sessions.find((s) => !s.messages?.length);
+    if (blank) setActiveId(blank.id);
+    else createSession(chapterChoice);
+    setDraft("");
+    composerRef.current?.focus();
+  };
+
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
   const onScroll = useCallback(() => {
@@ -89,40 +182,6 @@ export default function Chat() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   });
-
-  /** Patch the last assistant message of a session. */
-  const patchLast = useCallback((sessionId, patch) => {
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== sessionId) return s;
-        const msgs = s.messages.slice();
-        const i = msgs.length - 1;
-        if (i < 0 || msgs[i].role !== "assistant") return s;
-        msgs[i] =
-          typeof patch === "function" ? patch(msgs[i]) : { ...msgs[i], ...patch };
-        return { ...s, messages: msgs, updatedAt: Date.now() };
-      })
-    );
-  }, []);
-
-  const handleNew = useCallback(() => {
-    const s = newSession({ niveau: NIVEAU, chapitre: CHAPITRE });
-    setSessions((prev) => [s, ...prev]);
-    setActiveId(s.id);
-    setSidebarOpen(false);
-    return s;
-  }, []);
-
-  const handleDelete = useCallback(
-    (id) => {
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== id);
-        if (id === activeId) setActiveId(next[0]?.id ?? null);
-        return next;
-      });
-    },
-    [activeId]
-  );
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -176,7 +235,13 @@ export default function Chat() {
       abortRef.current = controller;
 
       streamSolve(
-        { problem, niveau: NIVEAU, chapitre: CHAPITRE },
+        // The session's own chapter, not a global: an older discussion keeps
+        // answering in the chapter it was started in.
+        {
+          problem,
+          niveau: session.niveau ?? NIVEAU,
+          chapitre: session.chapitre ?? CHAPITRE,
+        },
         {
           signal: controller.signal,
           onMeta: (meta) =>
@@ -185,7 +250,7 @@ export default function Chat() {
               retrieved: meta.retrieved ?? [],
             }),
           onDelta: (t) =>
-            patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
+            patchLast(sessionId, (msg) => ({ ...msg, content: msg.content + t })),
           onDone: (done) => {
             setAnnouncement(
               done.warnings?.length
@@ -194,8 +259,8 @@ export default function Chat() {
                   } de syntaxe à vérifier.`
                 : "Réponse terminée. Syntaxe du chapitre respectée."
             );
-            patchLast(sessionId, (m) => ({
-              ...m,
+            patchLast(sessionId, (msg) => ({
+              ...msg,
               // "none" when there's no real Algorithme solution to have
               // checked - e.g. the model asked for the problem statement
               // instead of answering (see prompts.py). Zero violations on
@@ -203,7 +268,7 @@ export default function Chat() {
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
               // pass on content the checker never meaningfully looked at.
-              status: !hasRealAlgorithmeSolution(m.content)
+              status: !hasRealAlgorithmeSolution(msg.content)
                 ? "none"
                 : done.warnings?.length
                   ? "warned"
@@ -242,26 +307,26 @@ export default function Chat() {
           // A stream that ended without a done frame still needs to leave the
           // pending badge behind - same real-content gate as onDone, since an
           // aborted stream's partial content has no real solution either.
-          patchLast(sessionId, (m) =>
-            m.status === "streaming"
+          patchLast(sessionId, (msg) =>
+            msg.status === "streaming"
               ? {
-                  ...m,
-                  status: hasRealAlgorithmeSolution(m.content) ? "clean" : "none",
+                  ...msg,
+                  status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
                 }
-              : m
+              : msg
           );
         });
     },
-    [patchLast, onUnauthorized]
+    [patchLast, setSessions, onUnauthorized]
   );
 
   const handleSend = useCallback(() => {
     const problem = draft.trim();
     if (!problem || streaming) return;
-    const session = active ?? handleNew();
+    const session = active ?? createSession(chapterChoice);
     setDraft("");
     send(problem, session);
-  }, [draft, streaming, active, handleNew, send]);
+  }, [draft, streaming, active, createSession, send, chapterChoice]);
 
   /**
    * An exercise clicked on a chapter page arrives as router state and is sent
@@ -284,86 +349,194 @@ export default function Chat() {
     const problem = location.state?.problem;
     if (!problem || prefillSent.current) return;
     prefillSent.current = true;
+    const chapitre = location.state?.chapitre ?? CHAPITRE;
     navigate("/chat", { replace: true, state: null });
-    send(problem, handleNew());
-  }, [location.state, navigate, send, handleNew]);
+    send(problem, createSession(chapitre));
+  }, [location.state, navigate, send, createSession]);
 
   return (
-    <div className="app">
-      <Sidebar
-        sessions={sessions}
-        activeId={activeId}
-        onSelect={(id) => {
-          setActiveId(id);
-          setSidebarOpen(false);
-        }}
-        onNew={handleNew}
-        onDelete={handleDelete}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        scopeLabel={SCOPE_LABEL}
-      />
-
-      <main className="main">
-        {/* The page's only <h1>, and it is here rather than inside the empty
-            state because the empty state disappears the moment a conversation
-            starts - which left this screen with no headings at all once it
-            was actually in use. Visually hidden: the topbar already says what
-            this is on screen, and a second visible title would be noise. */}
-        <h1 className="sr-only">Discussion — {SCOPE_LABEL}</h1>
-
-        {/* Announces one short line per finished answer. Deliberately NOT
-            aria-live on the message list itself: that streams token by token,
-            and a live region there makes a screen reader restart on every
-            fragment, which is worse than saying nothing. The full answer is
-            long technical markdown, so this reports that it is ready and what
-            the checker concluded, and leaves the reading to the user. The
-            "searching" half is already covered - Message.jsx's thinking
-            indicator carries role="status". */}
-        <p className="sr-only" role="status" aria-live="polite">
-          {announcement}
-        </p>
-
-        <header className="topbar">
-          <Button
-            variant="ghost"
-            className="btn-burger"
-            onClick={() => setSidebarOpen((v) => !v)}
-            aria-label="Afficher les discussions"
-          >
-            ☰
-          </Button>
-          <span className="scope">{SCOPE_LABEL}</span>
-        </header>
-
-        <div className="messages" ref={listRef} onScroll={onScroll}>
-          {messages.length === 0 ? (
-            /* h2, not h1: the page-level h1 above is persistent, and this
-               prompt only exists while the thread is empty. */
-            <EmptyState
-              titleAs="h2"
-              title="Pose ta question sur le chapitre"
-              className="chat-empty"
-            >
-              Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-              chapitre — et te montre exactement sur quelles parties du cours il
-              s'appuie.
-            </EmptyState>
-          ) : (
-            messages.map((m) => (
-              <Message key={m.id} message={m} streaming={streaming} />
-            ))
-          )}
+    <div className="chat">
+      {/* The discussion's own bar: what this thread is, and the two ways out
+          of it - the history and a new question. It replaces the discussions
+          list that used to sit in the app sidebar; the sidebar is navigation
+          only again. Its title is the page's <h1>, so a screen reader hears
+          which discussion is open, not a generic "Discussion". */}
+      <header className="chat-head">
+        <div className="chat-head-text">
+          <h1 className="chat-title">
+            {isEmpty ? "Nouvelle discussion" : active.title}
+          </h1>
+          <p className="chat-head-meta">
+            <span className="chat-head-chip">Chapitre {currentChapter}</span>
+            <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
+          </p>
         </div>
+        <div className="chat-head-actions">
+          <m.button
+            ref={historyButtonRef}
+            type="button"
+            className="btn btn-md btn-secondary chat-history-btn"
+            aria-haspopup="dialog"
+            aria-expanded={historyOpen}
+            aria-keyshortcuts="Control+K Meta+K"
+            onClick={() => setHistoryOpen(true)}
+            whileTap={PRESS}
+          >
+            <span className="chat-history-icon" aria-hidden="true">
+              ▤
+            </span>
+            <span className="chat-history-label">Historique</span>
+            {historyCount > 0 && (
+              <span
+                className="chat-history-count"
+                aria-label={`${historyCount} discussions`}
+              >
+                {historyCount}
+              </span>
+            )}
+            <kbd className="chat-history-kbd" aria-hidden="true">
+              {IS_MAC ? "⌘K" : "Ctrl K"}
+            </kbd>
+          </m.button>
+          <m.button
+            type="button"
+            className="btn btn-md chat-new-btn"
+            onClick={newDiscussion}
+            whileTap={PRESS}
+            aria-label="Nouvelle discussion"
+          >
+            <span aria-hidden="true">+</span>
+            <span className="chat-new-label">Nouvelle</span>
+          </m.button>
+        </div>
+      </header>
 
-        <Composer
-          value={draft}
-          onChange={setDraft}
-          onSend={handleSend}
-          onStop={handleStop}
-          streaming={streaming}
-        />
-      </main>
+      <HistoryPanel open={historyOpen} onClose={closeHistory} />
+
+      {/* Announces one short line per finished answer. Deliberately NOT
+          aria-live on the message list itself: that streams token by token,
+          and a live region there makes a screen reader restart on every
+          fragment, which is worse than saying nothing. The full answer is
+          long technical markdown, so this reports that it is ready and what
+          the checker concluded, and leaves the reading to the user. The
+          "searching" half is already covered - Message.jsx's thinking
+          indicator carries role="status". */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
+
+      <div className="messages" ref={listRef} onScroll={onScroll}>
+        {messages.length === 0 ? (
+          /* One column in normal flow: the prompt, the chapter, then a way in.
+             The picker used to be pulled up under the prompt with a negative
+             margin, which laid it over the prompt's second line as soon as
+             the text wrapped. */
+          <m.div
+            className="chat-welcome"
+            variants={stagger(0.08)}
+            initial="hidden"
+            animate="show"
+          >
+            {/* h2, not h1: the page-level h1 above is persistent, and this
+                prompt only exists while the thread is empty. */}
+            <m.div variants={rise}>
+              <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
+                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+                chapitre — et te montre exactement sur quelles parties du cours il
+                s'appuie.
+              </EmptyState>
+            </m.div>
+
+            {chapterList.length > 1 && (
+              <m.label className="chat-chapter-pick" variants={rise}>
+                <span>Chapitre</span>
+                <select
+                  value={currentChapter}
+                  onChange={(e) => chooseChapter(e.target.value)}
+                >
+                  {chapterList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.id} — {c.title}
+                    </option>
+                  ))}
+                </select>
+              </m.label>
+            )}
+
+            <m.div variants={rise}>
+              <ChatResume />
+            </m.div>
+
+            {suggestions.length > 0 && (
+              <section className="chat-suggest" aria-labelledby="chat-suggest-title">
+                <h3 id="chat-suggest-title" className="chat-suggest-title">
+                  Ou commence par un exercice de la série
+                </h3>
+                {/* The suggestions arrive after the prompt (they are fetched),
+                    so they run their own stagger when they land. */}
+                <m.ul
+                  className="chat-suggest-list"
+                  variants={stagger(0.07)}
+                  initial="hidden"
+                  animate="show"
+                >
+                  {suggestions.map((q, i) => (
+                    <m.li
+                      key={q}
+                      variants={rise}
+                      whileHover={HOVER_LIFT}
+                      whileTap={PRESS}
+                    >
+                      {/* Fills the box rather than sending: the student sees
+                          the full énoncé in the composer and can edit it or
+                          add their own attempt first. */}
+                      <button
+                        type="button"
+                        className="chat-suggest-item"
+                        onClick={() => {
+                          setDraft(q);
+                          composerRef.current?.focus();
+                        }}
+                      >
+                        <span className="chat-suggest-head">
+                          <span className="chat-suggest-index" aria-hidden="true">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <span className="chat-suggest-go" aria-hidden="true">
+                            ↵
+                          </span>
+                        </span>
+                        <span className="chat-suggest-name">{exerciseTitle(q)}</span>
+                        <span className="chat-suggest-q">{q}</span>
+                      </button>
+                    </m.li>
+                  ))}
+                </m.ul>
+              </section>
+            )}
+          </m.div>
+        ) : null}
+        {messages.length === 0 ? null : (
+          <>
+            {/* Keyed by discussion with initial={false}: opening a thread shows
+                it as it is, and only messages added while watching animate. */}
+            <AnimatePresence initial={false} key={activeId}>
+              {messages.map((msg) => (
+                <Message key={msg.id} message={msg} streaming={streaming} />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+      </div>
+
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={handleSend}
+        onStop={handleStop}
+        streaming={streaming}
+        inputRef={composerRef}
+      />
     </div>
   );
 }
