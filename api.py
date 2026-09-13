@@ -26,6 +26,7 @@ import urllib.error
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -33,6 +34,7 @@ from slowapi.errors import RateLimitExceeded
 
 import admin
 import admin_chapters
+import attachments
 import auth
 import chapter_store
 import chapters
@@ -561,3 +563,42 @@ def solve_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class ExtractResponse(BaseModel):
+    text: str = Field(description="The exercise as read from the file")
+    source: str = Field(description="image | pdf (text layer) | pdf-scan")
+    pages: int
+
+
+@app.post("/solve/extract", response_model=ExtractResponse)
+@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+async def solve_extract(
+    request: Request,
+    response: Response,
+    user: models.User = Depends(auth.bind_user),
+) -> ExtractResponse:
+    """Read an exercise from a photo or a PDF attached in the chat.
+
+    Returns text only. The chat then sends that text through /solve/stream
+    like a typed message, so the gatekeeper, the grounded pipeline and the
+    checker all apply unchanged - see attachments.py.
+
+    The body is the raw file (its own Content-Type), not multipart: one file,
+    nothing else to carry. Signed-in only, and drawing on the solve rate-limit
+    budget: a transcription is a model call, and a separate bucket would let
+    a caller double the spend.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > attachments.ATTACHMENT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Le fichier est trop volumineux (maximum 10 Mo).")
+    data = await request.body()
+    try:
+        # PDF parsing, image decoding and the model call all block; off the
+        # event loop so one upload does not stall every other request.
+        result = await run_in_threadpool(attachments.extract, data)
+    except attachments.AttachmentError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set") from exc
+    return ExtractResponse(text=result.text, source=result.source, pages=result.pages)

@@ -31,7 +31,23 @@ export default function Message({ message, streaming, onRetry }) {
   if (message.role === "user") {
     return (
       <m.div className="msg msg-user" {...enterUser}>
-        <div className="bubble">{message.content}</div>
+        <div className="bubble">
+          {/* A photo or PDF the exercise came from. Once read, the bubble
+              holds what was read from it, so the student can check the
+              transcription before trusting the answer. */}
+          {message.attachment && (
+            <span className={`msg-attachment${message.content ? "" : " is-alone"}`}>
+              <span className="msg-attachment-icon" aria-hidden="true">
+                {message.attachment.kind === "pdf" ? "PDF" : "IMG"}
+              </span>
+              <span className="msg-attachment-name">{message.attachment.name}</span>
+              <span className="msg-attachment-state">
+                {message.reading ? "lecture…" : message.content ? "texte lu" : ""}
+              </span>
+            </span>
+          )}
+          {message.content}
+        </div>
       </m.div>
     );
   }
@@ -88,7 +104,13 @@ export default function Message({ message, streaming, onRetry }) {
                     }}
                   />
                 ))}
-                <span className="thinking-text">Recherche dans le chapitre…</span>
+                <span className="thinking-text">
+                  {status === "reading"
+                    ? message.readingKind === "pdf"
+                      ? "Lecture de ton PDF…"
+                      : "Lecture de ta photo…"
+                    : "Recherche dans le chapitre…"}
+                </span>
               </p>
             )
           )}

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
+import { ATTACHMENT_TYPES } from "../lib/api.js";
 import { SPRING_HOVER } from "../lib/motion.js";
 
 /**
@@ -8,17 +9,16 @@ import { SPRING_HOVER } from "../lib/motion.js";
  * stop) control and the thread's context underneath. Enter sends,
  * Shift+Enter breaks the line.
  *
- * `followUp` switches the placeholder once the thread has messages, so an
- * empty box in the middle of a discussion invites a follow-up question rather
- * than asking for "an exercise statement" again. `chapterLabel` is shown as a
- * chip, because the chapter decides which syntax the answer will use.
+ * Attachments: a photo or a PDF of an exercise can be added with the paperclip
+ * button, pasted (Ctrl+V a screenshot or a copied image), or dropped on the
+ * card. The chat reads it (POST /solve/extract) and solves what it says; the
+ * text is optional then - it travels with the file as a note. The file itself
+ * is held by Chat.jsx (`attachment`), which also validates it (`onAttach`),
+ * so this component only collects it and shows it.
  *
- * `inputRef` lets the chat put the caret in the box (suggested exercise, new
- * discussion); it points at the same textarea as the internal ref.
- *
- * Send and stop are round icon buttons, each with a spoken name, rather than
- * the shared text Button: at this size the icon is the familiar control, and
- * the text version was the widest thing in the row.
+ * `followUp` switches the placeholder once the thread has messages.
+ * `chapterLabel` is shown as a chip, because the chapter decides which syntax
+ * the answer will use. `inputRef` lets the chat put the caret in the box.
  */
 export default function Composer({
   value,
@@ -29,8 +29,14 @@ export default function Composer({
   inputRef,
   followUp = false,
   chapterLabel,
+  attachment,
+  attachError,
+  onAttach,
+  onRemoveAttachment,
 }) {
   const ref = useRef(null);
+  const fileRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
   const setRef = (el) => {
     ref.current = el;
     if (inputRef) inputRef.current = el;
@@ -44,38 +50,147 @@ export default function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
+  const canSend = !streaming && (value.trim().length > 0 || Boolean(attachment));
+
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (!streaming && value.trim()) onSend();
+      if (canSend) onSend();
     }
   }
 
-  const canSend = !streaming && value.trim().length > 0;
+  // A pasted screenshot or copied image becomes the attachment; pasted text
+  // still goes into the box as usual.
+  function handlePaste(e) {
+    const file = [...(e.clipboardData?.files ?? [])].find((f) =>
+      ATTACHMENT_TYPES.includes(f.type)
+    );
+    if (file) {
+      e.preventDefault();
+      onAttach(file);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) onAttach(file);
+  }
 
   return (
     <div className="composer">
-      <div className="composer-card">
+      <div
+        className={`composer-card${dragging ? " is-dragging" : ""}`}
+        onDragOver={(e) => {
+          if ([...(e.dataTransfer?.types ?? [])].includes("Files")) {
+            e.preventDefault();
+            setDragging(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
+        }}
+        onDrop={handleDrop}
+      >
+        {/* The file waiting to be sent: a thumbnail for a photo, an icon for
+            a PDF, and a way to take it back out. */}
+        <AnimatePresence initial={false}>
+          {attachment && (
+            <m.div
+              key={attachment.url ?? attachment.name}
+              className="composer-attachment"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: SPRING_HOVER }}
+              exit={{ opacity: 0, y: 6, transition: { duration: 0.12 } }}
+            >
+              {attachment.kind === "image" ? (
+                <img
+                  className="composer-attachment-thumb"
+                  src={attachment.url}
+                  alt=""
+                />
+              ) : (
+                <span className="composer-attachment-icon" aria-hidden="true">
+                  PDF
+                </span>
+              )}
+              <span className="composer-attachment-text">
+                <span className="composer-attachment-name">{attachment.name}</span>
+                <span className="composer-attachment-meta">
+                  {attachment.kind === "image" ? "Photo" : "PDF"} ·{" "}
+                  {formatSize(attachment.size)} · l'énoncé sera lu puis résolu
+                </span>
+              </span>
+              <button
+                type="button"
+                className="composer-attachment-remove"
+                onClick={onRemoveAttachment}
+                aria-label={`Retirer ${attachment.name}`}
+                title="Retirer"
+              >
+                ×
+              </button>
+            </m.div>
+          )}
+        </AnimatePresence>
+
         <textarea
           ref={setRef}
           value={value}
           rows={1}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
-            followUp
-              ? "Pose une question de suivi, ou colle un autre énoncé…"
-              : "Un exercice, une question sur le cours, ou ton programme…"
+            attachment
+              ? "Ajoute une précision si tu veux (facultatif)…"
+              : followUp
+                ? "Pose une question de suivi, ou colle un autre énoncé…"
+                : "Un exercice, une question, ton programme… ou une photo 📎"
           }
           aria-label="Ton message"
         />
+        {attachError && (
+          <p className="composer-error" role="alert">
+            {attachError}
+          </p>
+        )}
         <div className="composer-bar">
-          <p className="composer-context">
+          <div className="composer-context">
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ATTACHMENT_TYPES.join(",")}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onAttach(file);
+                // Reset so choosing the same file again still fires onChange.
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="composer-attach"
+              onClick={() => fileRef.current?.click()}
+              disabled={streaming}
+              aria-label="Joindre une photo ou un PDF de l'exercice"
+              title="Joindre une photo ou un PDF"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20.5 11.5 12.4 19.6a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
+              </svg>
+            </button>
             {chapterLabel && <span className="composer-chip">{chapterLabel}</span>}
             <span className="composer-hint">
-              Entrée pour envoyer · Maj+Entrée pour aller à la ligne
+              {dragging
+                ? "Dépose ta photo ou ton PDF ici"
+                : "Entrée pour envoyer · Maj+Entrée pour aller à la ligne · Ctrl+V une capture"}
             </span>
-          </p>
+          </div>
           {/* Send and stop swap with a quick scale-fade; the one showing
               presses with a spring. */}
           <AnimatePresence mode="wait" initial={false}>
@@ -101,8 +216,8 @@ export default function Composer({
                 className="composer-btn is-send"
                 onClick={onSend}
                 disabled={!canSend}
-                aria-label="Envoyer"
-                title="Envoyer"
+                aria-label={attachment ? "Envoyer et résoudre" : "Envoyer"}
+                title={attachment ? "Envoyer et résoudre" : "Envoyer"}
                 initial={{ opacity: 0, scale: 0.7 }}
                 animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
                 exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.1 } }}
@@ -118,4 +233,9 @@ export default function Composer({
       </div>
     </div>
   );
+}
+
+function formatSize(bytes = 0) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
 }

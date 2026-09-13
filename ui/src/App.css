@@ -1447,6 +1447,162 @@ h3 {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* Attachments: the paperclip, the file waiting to be sent, the drop state. */
+.composer-card.is-dragging {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.composer-attach {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-left: calc(-1 * var(--space-2));
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.composer-attach:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--accent);
+}
+.composer-attach:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.composer-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.composer-attach svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.composer-attachment {
+  align-self: flex-start;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.composer-attachment-thumb,
+.composer-attachment-icon {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+.composer-attachment-thumb {
+  object-fit: cover;
+  background: var(--bg);
+}
+.composer-attachment-icon {
+  display: grid;
+  place-items: center;
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.composer-attachment-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.composer-attachment-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.composer-attachment-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.composer-attachment-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--fg-dim);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.composer-attachment-remove:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+.composer-attachment-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.composer-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--err);
+}
+/* The file an exercise came from, at the top of the student's bubble. */
+.msg-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+.msg-attachment.is-alone {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.msg-attachment-icon {
+  flex: none;
+  padding: 1px var(--space-1);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.msg-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.msg-attachment-state {
+  flex: none;
+  color: var(--fg-dim);
+}
 /* The shortcut line means nothing without a keyboard. */
 @media (hover: none), (pointer: coarse) {
   .composer-hint {

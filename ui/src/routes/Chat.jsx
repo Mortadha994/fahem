@@ -6,7 +6,13 @@ import { HOVER_LIFT, PRESS, SPRING_HOVER, rise, stagger } from "../lib/motion.js
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
-import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
+import {
+  streamSolve,
+  extractAttachment,
+  GENERIC_ERROR,
+  ATTACHMENT_TYPES,
+  ATTACHMENT_MAX_BYTES,
+} from "../lib/api.js";
 import { titleFrom } from "../lib/sessions.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
@@ -45,6 +51,37 @@ export default function Chat() {
 
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
+
+  /* A photo or PDF of an exercise waiting in the composer:
+     { file, url, name, size, kind: "image" | "pdf" }. `url` is an object URL
+     for the thumbnail, revoked whenever the attachment changes or goes. */
+  const [attachment, setAttachment] = useState(null);
+  const [attachError, setAttachError] = useState("");
+  useEffect(() => {
+    const url = attachment?.url;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [attachment]);
+  const acceptFile = useCallback((file) => {
+    if (!ATTACHMENT_TYPES.includes(file.type)) {
+      setAttachError("Envoie une photo (JPEG, PNG ou WebP) ou un PDF.");
+      return;
+    }
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      setAttachError("Le fichier est trop volumineux (maximum 10 Mo).");
+      return;
+    }
+    const kind = file.type === "application/pdf" ? "pdf" : "image";
+    setAttachError("");
+    setAttachment({
+      file,
+      kind,
+      name: file.name || (kind === "image" ? "capture.png" : "exercice.pdf"),
+      size: file.size,
+      url: kind === "image" ? URL.createObjectURL(file) : null,
+    });
+  }, []);
 
   /* One short line, replaced once per finished answer. See the live region in
      the markup for why this is not driven off the streaming text. */
@@ -214,7 +251,7 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session) => {
+    (problem, session, { reuse } = {}) => {
       const sessionId = session.id;
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
@@ -222,29 +259,45 @@ export default function Chat() {
       setStreaming(true);
       pinnedToBottom.current = true;
 
+      // `reuse`: the exchange is already on screen - an attachment was read
+      // first (sendAttachment) - so its two messages are filled in rather
+      // than appended again.
       setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId
-            ? {
-                ...s,
-                title: s.messages.length === 0 ? titleFrom(problem) : s.title,
-                updatedAt: Date.now(),
-                messages: [
-                  ...s.messages,
-                  { id: `u_${Date.now()}`, role: "user", content: problem },
-                  {
-                    id: `a_${Date.now()}`,
-                    role: "assistant",
-                    content: "",
-                    pinned: [],
-                    retrieved: [],
-                    warnings: [],
-                    status: "streaming",
-                  },
-                ],
-              }
-            : s
-        )
+        prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          if (reuse) {
+            return {
+              ...s,
+              title: s.messages.length <= 2 ? titleFrom(problem) : s.title,
+              updatedAt: Date.now(),
+              messages: s.messages.map((msg) =>
+                msg.id === reuse.userId
+                  ? { ...msg, content: problem, reading: false }
+                  : msg.id === reuse.assistantId
+                    ? { ...msg, status: "streaming" }
+                    : msg
+              ),
+            };
+          }
+          return {
+            ...s,
+            title: s.messages.length === 0 ? titleFrom(problem) : s.title,
+            updatedAt: Date.now(),
+            messages: [
+              ...s.messages,
+              { id: `u_${Date.now()}`, role: "user", content: problem },
+              {
+                id: `a_${Date.now()}`,
+                role: "assistant",
+                content: "",
+                pinned: [],
+                retrieved: [],
+                warnings: [],
+                status: "streaming",
+              },
+            ],
+          };
+        })
       );
 
       const controller = new AbortController();
@@ -336,13 +389,130 @@ export default function Chat() {
     [patchLast, setSessions, onUnauthorized]
   );
 
+  /**
+   * Send a photo or PDF: show the exchange straight away with a "reading"
+   * state, turn the file into the exercise's text (POST /solve/extract), then
+   * hand that text to send() like a typed message - so the gatekeeper, the
+   * grounded answer and the checker all apply unchanged. The student's own
+   * words, if any, travel in front of the transcription.
+   */
+  const sendAttachment = useCallback(
+    async (file, kind, name, note, session) => {
+      const sessionId = session.id;
+      const stamp = Date.now();
+      const userId = `u_${stamp}`;
+      const assistantId = `a_${stamp}`;
+      setAnnouncement("");
+      setStreaming(true);
+      pinnedToBottom.current = true;
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                title: s.messages.length === 0 ? titleFrom(note || name) : s.title,
+                updatedAt: stamp,
+                messages: [
+                  ...s.messages,
+                  {
+                    id: userId,
+                    role: "user",
+                    content: note,
+                    attachment: { name, kind },
+                    reading: true,
+                  },
+                  {
+                    id: assistantId,
+                    role: "assistant",
+                    content: "",
+                    pinned: [],
+                    retrieved: [],
+                    warnings: [],
+                    status: "reading",
+                    readingKind: kind,
+                  },
+                ],
+              }
+            : s
+        )
+      );
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const result = await extractAttachment(file, { signal: controller.signal });
+      const markRead = () =>
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  messages: s.messages.map((msg) =>
+                    msg.id === userId ? { ...msg, reading: false } : msg
+                  ),
+                }
+              : s
+          )
+        );
+
+      // Stopped while reading: handleStop already marked the answer.
+      if (result.aborted || abortRef.current !== controller) {
+        markRead();
+        return;
+      }
+      abortRef.current = null;
+
+      if (!result.ok) {
+        markRead();
+        setStreaming(false);
+        let error = result.error ?? GENERIC_ERROR;
+        if (result.unauthorized) {
+          error = "Ta session a expiré. Reconnecte-toi pour continuer.";
+          onUnauthorized();
+        } else if (result.rateLimited) {
+          error = rateLimitMessage(result.retryAfter);
+        }
+        setAnnouncement("Lecture du fichier impossible.");
+        patchLast(sessionId, { error, status: "error" });
+        return;
+      }
+
+      const problem = [note, result.text].filter(Boolean).join("\n\n").slice(0, 2000);
+      send(problem, session, { reuse: { userId, assistantId } });
+    },
+    [patchLast, setSessions, onUnauthorized, send]
+  );
+
   const handleSend = useCallback(() => {
     const problem = draft.trim();
-    if (!problem || streaming) return;
+    if (streaming) return;
+    if (attachment) {
+      const session = active ?? createSession(chapterChoice);
+      setDraft("");
+      setAttachment(null);
+      setAttachError("");
+      sendAttachment(
+        attachment.file,
+        attachment.kind,
+        attachment.name,
+        problem,
+        session
+      );
+      return;
+    }
+    if (!problem) return;
     const session = active ?? createSession(chapterChoice);
     setDraft("");
     send(problem, session);
-  }, [draft, streaming, active, createSession, send, chapterChoice]);
+  }, [
+    draft,
+    streaming,
+    active,
+    createSession,
+    send,
+    sendAttachment,
+    attachment,
+    chapterChoice,
+  ]);
 
   /**
    * "Réessayer" on a failed answer: drop the failed exchange (the question
@@ -356,6 +526,7 @@ export default function Chat() {
     const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
     if (lastUserIndex < 0) return;
     const question = msgs[lastUserIndex].content;
+    if (!question) return;
     const kept = msgs.slice(0, lastUserIndex);
     setSessions((prev) =>
       prev.map((s) => (s.id === active.id ? { ...s, messages: kept } : s))
@@ -366,6 +537,11 @@ export default function Chat() {
   // Retry is offered on the last answer only, and only once nothing is
   // streaming - an older failure further up has been superseded.
   const lastMessageId = messages[messages.length - 1]?.id;
+  // A photo that could not be read left no text to resend; the student
+  // attaches it again (or a better one) instead.
+  const lastUserHasText = Boolean(
+    messages.findLast((msg) => msg.role === "user")?.content
+  );
 
   /**
    * An exercise clicked on a chapter page arrives as router state and is sent
@@ -485,10 +661,10 @@ export default function Chat() {
                     program - said up front so a first-time student knows all
                     three are welcome. */}
                 <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
-                  Colle l'énoncé d'un exercice, pose une question sur le cours, ou colle
-                  ton propre programme pour le faire corriger. Fahem répond avec la
-                  syntaxe de ton chapitre — et te montre sur quelles parties du cours il
-                  s'appuie.
+                  Colle l'énoncé d'un exercice — ou envoie sa photo ou son PDF —, pose
+                  une question sur le cours, ou colle ton propre programme pour le faire
+                  corriger. Fahem répond avec la syntaxe de ton chapitre — et te montre
+                  sur quelles parties du cours il s'appuie.
                 </EmptyState>
               </m.div>
 
@@ -574,6 +750,7 @@ export default function Chat() {
                     onRetry={
                       msg.id === lastMessageId &&
                       (msg.error || msg.status === "stopped") &&
+                      lastUserHasText &&
                       !streaming
                         ? retryLast
                         : undefined
@@ -617,6 +794,14 @@ export default function Chat() {
         inputRef={composerRef}
         followUp={!isEmpty}
         chapterLabel={`Chapitre ${currentChapter}`}
+        attachment={attachment}
+        attachError={attachError}
+        onAttach={acceptFile}
+        onRemoveAttachment={() => {
+          setAttachment(null);
+          setAttachError("");
+          composerRef.current?.focus();
+        }}
       />
     </div>
   );
