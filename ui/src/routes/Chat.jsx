@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { HOVER_LIFT, PRESS, rise, stagger } from "../lib/motion.js";
+import { HOVER_LIFT, PRESS, SPRING_HOVER, rise, stagger } from "../lib/motion.js";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
@@ -171,11 +171,27 @@ export default function Chat() {
 
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
+  // The same measure drives the "back to the latest message" button: it shows
+  // exactly when autoscroll has let go.
+  const [showJump, setShowJump] = useState(false);
   const onScroll = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setShowJump(!pinnedToBottom.current);
   }, []);
+  const jumpToLatest = () => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedToBottom.current = true;
+    setShowJump(false);
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  };
 
   useEffect(() => {
     if (pinnedToBottom.current && listRef.current) {
@@ -329,6 +345,29 @@ export default function Chat() {
   }, [draft, streaming, active, createSession, send, chapterChoice]);
 
   /**
+   * "Réessayer" on a failed answer: drop the failed exchange (the question
+   * and its error) and send the same question again, through the same send()
+   * as everything else. Dropping first keeps the thread from showing the
+   * question twice.
+   */
+  const retryLast = useCallback(() => {
+    if (!active || streaming) return;
+    const msgs = active.messages;
+    const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
+    if (lastUserIndex < 0) return;
+    const question = msgs[lastUserIndex].content;
+    const kept = msgs.slice(0, lastUserIndex);
+    setSessions((prev) =>
+      prev.map((s) => (s.id === active.id ? { ...s, messages: kept } : s))
+    );
+    send(question, { ...active, messages: kept });
+  }, [active, streaming, setSessions, send]);
+
+  // Retry is offered on the last answer only, and only once nothing is
+  // streaming - an older failure further up has been superseded.
+  const lastMessageId = messages[messages.length - 1]?.id;
+
+  /**
    * An exercise clicked on a chapter page arrives as router state and is sent
    * immediately, in a fresh session.
    *
@@ -425,108 +464,143 @@ export default function Chat() {
         {announcement}
       </p>
 
-      <div className="messages" ref={listRef} onScroll={onScroll}>
-        {messages.length === 0 ? (
-          /* One column in normal flow: the prompt, the chapter, then a way in.
+      <div className="messages-wrap">
+        <div className="messages" ref={listRef} onScroll={onScroll}>
+          {messages.length === 0 ? (
+            /* One column in normal flow: the prompt, the chapter, then a way in.
              The picker used to be pulled up under the prompt with a negative
              margin, which laid it over the prompt's second line as soon as
              the text wrapped. */
-          <m.div
-            className="chat-welcome"
-            variants={stagger(0.08)}
-            initial="hidden"
-            animate="show"
-          >
-            {/* h2, not h1: the page-level h1 above is persistent, and this
+            <m.div
+              className="chat-welcome"
+              variants={stagger(0.08)}
+              initial="hidden"
+              animate="show"
+            >
+              {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
-            <m.div variants={rise}>
-              <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
-                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-                chapitre — et te montre exactement sur quelles parties du cours il
-                s'appuie.
-              </EmptyState>
-            </m.div>
+              <m.div variants={rise}>
+                <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
+                  Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+                  chapitre — et te montre exactement sur quelles parties du cours il
+                  s'appuie.
+                </EmptyState>
+              </m.div>
 
-            {chapterList.length > 1 && (
-              <m.label className="chat-chapter-pick" variants={rise}>
-                <span>Chapitre</span>
-                <select
-                  value={currentChapter}
-                  onChange={(e) => chooseChapter(e.target.value)}
-                >
-                  {chapterList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.id} — {c.title}
-                    </option>
-                  ))}
-                </select>
-              </m.label>
-            )}
+              {chapterList.length > 1 && (
+                <m.label className="chat-chapter-pick" variants={rise}>
+                  <span>Chapitre</span>
+                  <select
+                    value={currentChapter}
+                    onChange={(e) => chooseChapter(e.target.value)}
+                  >
+                    {chapterList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id} — {c.title}
+                      </option>
+                    ))}
+                  </select>
+                </m.label>
+              )}
 
-            <m.div variants={rise}>
-              <ChatResume />
-            </m.div>
+              <m.div variants={rise}>
+                <ChatResume />
+              </m.div>
 
-            {suggestions.length > 0 && (
-              <section className="chat-suggest" aria-labelledby="chat-suggest-title">
-                <h3 id="chat-suggest-title" className="chat-suggest-title">
-                  Ou commence par un exercice de la série
-                </h3>
-                {/* The suggestions arrive after the prompt (they are fetched),
+              {suggestions.length > 0 && (
+                <section className="chat-suggest" aria-labelledby="chat-suggest-title">
+                  <h3 id="chat-suggest-title" className="chat-suggest-title">
+                    Ou commence par un exercice de la série
+                  </h3>
+                  {/* The suggestions arrive after the prompt (they are fetched),
                     so they run their own stagger when they land. */}
-                <m.ul
-                  className="chat-suggest-list"
-                  variants={stagger(0.07)}
-                  initial="hidden"
-                  animate="show"
-                >
-                  {suggestions.map((q, i) => (
-                    <m.li
-                      key={q}
-                      variants={rise}
-                      whileHover={HOVER_LIFT}
-                      whileTap={PRESS}
-                    >
-                      {/* Fills the box rather than sending: the student sees
+                  <m.ul
+                    className="chat-suggest-list"
+                    variants={stagger(0.07)}
+                    initial="hidden"
+                    animate="show"
+                  >
+                    {suggestions.map((q, i) => (
+                      <m.li
+                        key={q}
+                        variants={rise}
+                        whileHover={HOVER_LIFT}
+                        whileTap={PRESS}
+                      >
+                        {/* Fills the box rather than sending: the student sees
                           the full énoncé in the composer and can edit it or
                           add their own attempt first. */}
-                      <button
-                        type="button"
-                        className="chat-suggest-item"
-                        onClick={() => {
-                          setDraft(q);
-                          composerRef.current?.focus();
-                        }}
-                      >
-                        <span className="chat-suggest-head">
-                          <span className="chat-suggest-index" aria-hidden="true">
-                            {String(i + 1).padStart(2, "0")}
+                        <button
+                          type="button"
+                          className="chat-suggest-item"
+                          onClick={() => {
+                            setDraft(q);
+                            composerRef.current?.focus();
+                          }}
+                        >
+                          <span className="chat-suggest-head">
+                            <span className="chat-suggest-index" aria-hidden="true">
+                              {String(i + 1).padStart(2, "0")}
+                            </span>
+                            <span className="chat-suggest-go" aria-hidden="true">
+                              ↵
+                            </span>
                           </span>
-                          <span className="chat-suggest-go" aria-hidden="true">
-                            ↵
-                          </span>
-                        </span>
-                        <span className="chat-suggest-name">{exerciseTitle(q)}</span>
-                        <span className="chat-suggest-q">{q}</span>
-                      </button>
-                    </m.li>
-                  ))}
-                </m.ul>
-              </section>
-            )}
-          </m.div>
-        ) : null}
-        {messages.length === 0 ? null : (
-          <>
-            {/* Keyed by discussion with initial={false}: opening a thread shows
+                          <span className="chat-suggest-name">{exerciseTitle(q)}</span>
+                          <span className="chat-suggest-q">{q}</span>
+                        </button>
+                      </m.li>
+                    ))}
+                  </m.ul>
+                </section>
+              )}
+            </m.div>
+          ) : null}
+          {messages.length === 0 ? null : (
+            <>
+              {/* Keyed by discussion with initial={false}: opening a thread shows
                 it as it is, and only messages added while watching animate. */}
-            <AnimatePresence initial={false} key={activeId}>
-              {messages.map((msg) => (
-                <Message key={msg.id} message={msg} streaming={streaming} />
-              ))}
-            </AnimatePresence>
-          </>
-        )}
+              <AnimatePresence initial={false} key={activeId}>
+                {messages.map((msg) => (
+                  <Message
+                    key={msg.id}
+                    message={msg}
+                    streaming={streaming}
+                    onRetry={
+                      msg.id === lastMessageId &&
+                      (msg.error || msg.status === "stopped") &&
+                      !streaming
+                        ? retryLast
+                        : undefined
+                    }
+                  />
+                ))}
+              </AnimatePresence>
+            </>
+          )}
+        </div>
+
+        {/* Back to the latest message, once the student has scrolled away
+            from it - most useful while an answer is still streaming below. */}
+        <AnimatePresence>
+          {showJump && messages.length > 0 && (
+            <m.button
+              type="button"
+              className="chat-jump"
+              onClick={jumpToLatest}
+              aria-label="Aller au dernier message"
+              initial={{ opacity: 0, y: 12, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1, transition: SPRING_HOVER }}
+              exit={{ opacity: 0, y: 12, scale: 0.9, transition: { duration: 0.15 } }}
+              whileTap={PRESS}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5.5 12.5 12 19l6.5-6.5" />
+              </svg>
+              {streaming && <span className="chat-jump-label">Réponse en cours</span>}
+            </m.button>
+          )}
+        </AnimatePresence>
       </div>
 
       <Composer
@@ -536,6 +610,8 @@ export default function Chat() {
         onStop={handleStop}
         streaming={streaming}
         inputRef={composerRef}
+        followUp={!isEmpty}
+        chapterLabel={`Chapitre ${currentChapter}`}
       />
     </div>
   );
