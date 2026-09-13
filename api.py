@@ -305,7 +305,8 @@ def solve(
             elapsed_ms=int((time.monotonic() - started) * 1000),
         )
 
-    # route == "PROBLEM": everything below is unchanged.
+    # route is PROBLEM, CODE or QUESTION (gatekeeper.GROUNDED_ROUTES): the same
+    # grounded pipeline for all three, each with its own prompt (prompts.py).
     try:
         context = build_context(
             payload.problem,
@@ -332,6 +333,7 @@ def solve(
         # on. Keeping the two separate is deliberate.
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
+        kind=route,
     )
 
     try:
@@ -473,9 +475,10 @@ def solve_stream(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    # route == "PROBLEM": everything below is unchanged. Context assembly
-    # happens before the response starts, so a bad scope is still a clean
-    # 422 rather than an error frame inside a 200 stream.
+    # route is PROBLEM, CODE or QUESTION (gatekeeper.GROUNDED_ROUTES): the same
+    # grounded pipeline for all three, each with its own prompt (prompts.py).
+    # Context assembly happens before the response starts, so a bad scope is
+    # still a clean 422 rather than an error frame inside a 200 stream.
     try:
         context = build_context(
             payload.problem,
@@ -499,6 +502,7 @@ def solve_stream(
         query=payload.problem,
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
+        kind=route,
     )
 
     def events():

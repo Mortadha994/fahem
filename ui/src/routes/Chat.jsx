@@ -480,9 +480,14 @@ export default function Chat() {
               {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
               <m.div variants={rise}>
+                {/* The three kinds of message the backend routes (gatekeeper.py):
+                    an exercise, a question on the course, the student's own
+                    program - said up front so a first-time student knows all
+                    three are welcome. */}
                 <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
-                  Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-                  chapitre — et te montre exactement sur quelles parties du cours il
+                  Colle l'énoncé d'un exercice, pose une question sur le cours, ou colle
+                  ton propre programme pour le faire corriger. Fahem répond avec la
+                  syntaxe de ton chapitre — et te montre sur quelles parties du cours il
                   s'appuie.
                 </EmptyState>
               </m.div>

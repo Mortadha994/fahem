@@ -65,7 +65,7 @@ export default function Composer({
           placeholder={
             followUp
               ? "Pose une question de suivi, ou colle un autre énoncé…"
-              : "Colle ton énoncé d'exercice…"
+              : "Un exercice, une question sur le cours, ou ton programme…"
           }
           aria-label="Ton message"
         />
