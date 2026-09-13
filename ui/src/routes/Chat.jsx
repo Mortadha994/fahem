@@ -10,28 +10,35 @@ import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
 import { titleFrom } from "../lib/sessions.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
+import { hasQuestion } from "../lib/sessionGroups.js";
+import ChatResume from "../components/ChatResume.jsx";
+import HistoryPanel from "../components/HistoryPanel.jsx";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
 import { rateLimitMessage } from "../lib/rateLimit.js";
 
+// For the shortcut hint only; the handler accepts both Ctrl and Cmd anyway.
+const IS_MAC =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
+
 /**
  * The chat screen.
  *
  * Lifted out of App.jsx in Phase 3b so App can be the auth + router shell.
- * Phase 6 took two more things out of it: the session-history sidebar, which
- * is now a section of the one app sidebar (AppSidebar), and the topbar that
- * held the burger and the scope label, which the sidebar carries instead -
- * the audit's "two stacked bars" (P2-5). The session list itself moved to
- * ChatSessionsProvider, because the sidebar reads it too.
+ * Phase 6 moved the burger and the scope label to the app sidebar and the
+ * session list to ChatSessionsProvider. The discussions list itself now lives
+ * here again, but as the Historique panel behind the chat header rather than
+ * a second sidebar (HistoryPanel.jsx), with recent discussions offered as
+ * cards in an empty thread (ChatResume.jsx).
  *
  * What stayed here is what belongs to the conversation: the streaming call,
  * the draft, the autoscroll, the live region, and the abort on unmount.
  */
 export default function Chat() {
   const { onUnauthorized } = useAuth();
-  const { sessions, setSessions, activeId, createSession, patchLast } =
+  const { sessions, setSessions, activeId, setActiveId, createSession, patchLast } =
     useChatSessions();
   const location = useLocation();
   const navigate = useNavigate();
@@ -103,7 +110,11 @@ export default function Chat() {
       );
     }
   }
-  const currentTitle = chapterList.find((c) => c.id === currentChapter)?.title;
+  // String on both sides: a session stores its chapter as a string, the API
+  // returns ids as numbers, and a strict comparison never matched.
+  const currentTitle = chapterList.find(
+    (c) => String(c.id) === String(currentChapter)
+  )?.title;
 
   // A few real exercises from the chosen chapter, offered while the thread is
   // empty. Only fetched then, and a failure just means no suggestions - the
@@ -123,6 +134,40 @@ export default function Chat() {
     };
   }, [isEmpty, currentChapter]);
   const composerRef = useRef(null);
+
+  // The history panel. Ctrl+K / Cmd+K toggles it from anywhere on this
+  // screen - the shortcut chat apps have taught students - and closing it
+  // hands focus back to the button, so a keyboard user lands where they were.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButtonRef = useRef(null);
+  const closeHistory = useCallback(() => {
+    setHistoryOpen(false);
+    // Next frame, not synchronously: the key press that closed the panel is
+    // still being dispatched, and a button focused mid-press can receive it
+    // as a click and open the panel straight back up.
+    requestAnimationFrame(() => historyButtonRef.current?.focus());
+  }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setHistoryOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const historyCount = sessions.filter(hasQuestion).length;
+
+  // A new question reuses a discussion that is still empty instead of adding
+  // another blank one, the same rule as the home screen's button.
+  const newDiscussion = () => {
+    const blank = sessions.find((s) => !s.messages?.length);
+    if (blank) setActiveId(blank.id);
+    else createSession(chapterChoice);
+    setDraft("");
+    composerRef.current?.focus();
+  };
 
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
@@ -311,9 +356,62 @@ export default function Chat() {
 
   return (
     <div className="chat">
-      {/* The page's only <h1>. Visually hidden: the sidebar already says what
-          this screen is, and a second visible title would be noise. */}
-      <h1 className="sr-only">Discussion — {SCOPE_LABEL}</h1>
+      {/* The discussion's own bar: what this thread is, and the two ways out
+          of it - the history and a new question. It replaces the discussions
+          list that used to sit in the app sidebar; the sidebar is navigation
+          only again. Its title is the page's <h1>, so a screen reader hears
+          which discussion is open, not a generic "Discussion". */}
+      <header className="chat-head">
+        <div className="chat-head-text">
+          <h1 className="chat-title">
+            {isEmpty ? "Nouvelle discussion" : active.title}
+          </h1>
+          <p className="chat-head-meta">
+            <span className="chat-head-chip">Chapitre {currentChapter}</span>
+            <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
+          </p>
+        </div>
+        <div className="chat-head-actions">
+          <m.button
+            ref={historyButtonRef}
+            type="button"
+            className="btn btn-md btn-secondary chat-history-btn"
+            aria-haspopup="dialog"
+            aria-expanded={historyOpen}
+            aria-keyshortcuts="Control+K Meta+K"
+            onClick={() => setHistoryOpen(true)}
+            whileTap={PRESS}
+          >
+            <span className="chat-history-icon" aria-hidden="true">
+              ▤
+            </span>
+            <span className="chat-history-label">Historique</span>
+            {historyCount > 0 && (
+              <span
+                className="chat-history-count"
+                aria-label={`${historyCount} discussions`}
+              >
+                {historyCount}
+              </span>
+            )}
+            <kbd className="chat-history-kbd" aria-hidden="true">
+              {IS_MAC ? "⌘K" : "Ctrl K"}
+            </kbd>
+          </m.button>
+          <m.button
+            type="button"
+            className="btn btn-md chat-new-btn"
+            onClick={newDiscussion}
+            whileTap={PRESS}
+            aria-label="Nouvelle discussion"
+          >
+            <span aria-hidden="true">+</span>
+            <span className="chat-new-label">Nouvelle</span>
+          </m.button>
+        </div>
+      </header>
+
+      <HistoryPanel open={historyOpen} onClose={closeHistory} />
 
       {/* Announces one short line per finished answer. Deliberately NOT
           aria-live on the message list itself: that streams token by token,
@@ -364,6 +462,10 @@ export default function Chat() {
                 </select>
               </m.label>
             )}
+
+            <m.div variants={rise}>
+              <ChatResume />
+            </m.div>
 
             {suggestions.length > 0 && (
               <section className="chat-suggest" aria-labelledby="chat-suggest-title">
@@ -416,11 +518,6 @@ export default function Chat() {
         ) : null}
         {messages.length === 0 ? null : (
           <>
-            {chapterList.length > 1 && currentTitle && (
-              <p className="chat-chapter-tag">
-                Chapitre {currentChapter} — {currentTitle}
-              </p>
-            )}
             {/* Keyed by discussion with initial={false}: opening a thread shows
                 it as it is, and only messages added while watching animate. */}
             <AnimatePresence initial={false} key={activeId}>
