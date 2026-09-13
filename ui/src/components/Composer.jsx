@@ -1,9 +1,25 @@
 import { useEffect, useRef } from "react";
 import Button from "./ui/Button.jsx";
 
-/** Auto-resizing textarea. Enter sends, Shift+Enter breaks the line. */
-export default function Composer({ value, onChange, onSend, onStop, streaming }) {
+/**
+ * Auto-resizing textarea. Enter sends, Shift+Enter breaks the line.
+ *
+ * `inputRef` lets the chat put the caret in the box after filling it from a
+ * suggested exercise; it points at the same textarea as the internal ref.
+ */
+export default function Composer({
+  value,
+  onChange,
+  onSend,
+  onStop,
+  streaming,
+  inputRef,
+}) {
   const ref = useRef(null);
+  const setRef = (el) => {
+    ref.current = el;
+    if (inputRef) inputRef.current = el;
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -24,7 +40,7 @@ export default function Composer({ value, onChange, onSend, onStop, streaming })
     <div className="composer">
       <div className="composer-inner surface">
         <textarea
-          ref={ref}
+          ref={setRef}
           value={value}
           rows={1}
           onChange={(e) => onChange(e.target.value)}

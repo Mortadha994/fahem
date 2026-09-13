@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { ago } from "../lib/relativeTime.js";
 
 /**
  * The last few discussions, one tap from the home screen.
@@ -20,26 +21,6 @@ import { useChatSessions } from "../lib/chatSessionsContext.js";
 
 const SOLVED = new Set(["clean", "warned"]);
 const LIMIT = 3;
-
-const relative = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
-
-/** "à l'instant", "il y a 5 minutes", "hier", "il y a 3 jours"… */
-function ago(timestamp, now = Date.now()) {
-  const seconds = Math.round((timestamp - now) / 1000);
-  const steps = [
-    [60, "second"],
-    [3600, "minute", 60],
-    [86400, "hour", 3600],
-    [604800, "day", 86400],
-    [Infinity, "week", 604800],
-  ];
-  if (Math.abs(seconds) < 45) return "à l'instant";
-  for (const [limit, unit, size = 1] of steps) {
-    if (Math.abs(seconds) < limit)
-      return relative.format(Math.round(seconds / size), unit);
-  }
-  return "";
-}
 
 export default function RecentSessions() {
   const { sessions, setActiveId } = useChatSessions();

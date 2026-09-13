@@ -442,25 +442,37 @@ body {
   font-size: 1.1rem;
   margin-bottom: 0.6rem;
 }
-/* Placement only - the look is .btn-secondary. */
+/* The look is .btn-secondary, set to the nav's type size: at the default size
+   and weight this one button outweighed the navigation above it. */
 .btn-new {
   width: 100%;
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
+/* No inline padding of its own, so the rows line up with the button and the
+   nav links above rather than sitting indented under them. */
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2);
+  padding: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .session {
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  transition: background-color var(--dur-fast) var(--ease);
 }
 .session:hover {
   background: var(--bg-alt);
 }
-.session-active {
-  background: var(--bg-alt);
+/* The open discussion: the same tint as the current nav link, so "where am
+   I" reads the same way everywhere in the sidebar. */
+.session-active,
+.session-active:hover {
+  background: rgb(106 79 224 / 0.12);
 }
 .session-btn {
   flex: 1;
@@ -468,21 +480,41 @@ body {
   text-align: left;
   background: none;
   border: 0;
+  border-radius: inherit;
   cursor: pointer;
-  padding: var(--space-2) 0.6rem;
+  padding: var(--space-2) var(--space-3);
   font: inherit;
   color: inherit;
+}
+.session-btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
 }
 .session-title {
   display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+}
+.session-active .session-title {
+  font-weight: 600;
 }
 .session-sub {
   display: block;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-xs);
   color: var(--fg-dim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .session {
+    transition: none;
+  }
 }
 /* The look is .btn-ghost / .btn-danger (see Sidebar.jsx). This rule only
    sizes the bare glyph and hides it until the row is hovered or focused. */
@@ -515,13 +547,89 @@ body {
 }
 
 /* ---------- empty chat ----------
-   Placement only - the prompt is the EmptyState primitive. The 14vh drop
-   puts it near the optical centre of an empty thread; the primitive's own
-   block padding is zeroed so the drop stays exactly what it was. */
-.chat-empty {
+   One column in normal flow: the EmptyState prompt, the chapter picker, then
+   suggested exercises. Each is spaced by the column's gap, never pulled into
+   its neighbour with a negative margin. The top drop puts the block near the
+   optical centre of an empty thread without pushing the suggestions below
+   the fold on a laptop. */
+.chat-welcome {
   max-width: 46rem;
-  margin: 14vh auto 0;
+  margin: clamp(var(--space-5), 10vh, var(--space-8)) auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-5);
+}
+.chat-welcome .empty-state {
   padding-block: 0;
+}
+.chat-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.chat-suggest-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  text-align: center;
+}
+.chat-suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-3);
+}
+.chat-suggest-item {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.chat-suggest-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-alt);
+}
+.chat-suggest-item:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.chat-suggest-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+/* Two lines of the énoncé; the whole text goes into the composer on click. */
+.chat-suggest-q {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-suggest-item {
+    transition: none;
+  }
 }
 
 /* ---------- messages ---------- */
@@ -540,6 +648,22 @@ body {
   padding: 0.6rem 0.85rem;
   max-width: 80%;
   white-space: pre-wrap;
+}
+
+/* "← Fahem" above each answer: small, so it labels the answer without
+   competing with it. */
+.msg-author {
+  margin: 0 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.msg-author .brand-mark {
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: var(--text-xs);
 }
 
 .thinking {
@@ -600,7 +724,7 @@ body {
 .grounding {
   margin-top: 0.8rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-alt);
 }
 .grounding-toggle {
@@ -696,11 +820,44 @@ body {
   border-top: 1px solid var(--line);
   margin: 1.1rem 0;
 }
+/* The scroll wrapper Markdown.jsx puts around every table: a wide
+   Algorithme|Python table scrolls sideways here on a phone instead of
+   widening the page. */
+.md-table {
+  margin: 0.7rem 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
 .md table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 0.7rem 0;
   font-size: 0.88rem;
+}
+/* The solution table spans the answer, and both of its columns are code:
+   Python set in a proportional face beside a monospace Algorithme column
+   read as two different kinds of thing. A short table (the declaration
+   table) keeps its natural width. */
+.md-table:has(.algo-col-header) table {
+  width: 100%;
+  table-layout: fixed;
+}
+.md-table:has(.algo-col-header) td {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.md-table:has(.algo-col-header) th {
+  padding: 0.35rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-dim);
+  vertical-align: middle;
+}
+/* The label's own 0.8em would compound with the header's 0.8em above. */
+.md-table:has(.algo-col-header) .algo-header-label {
+  font-size: inherit;
 }
 .md th,
 .md td {
@@ -711,10 +868,6 @@ body {
 }
 .md th {
   background: var(--bg-alt);
-}
-.md > table {
-  display: block;
-  overflow-x: auto;
 }
 .md code {
   background: var(--bg-alt);
@@ -818,8 +971,21 @@ body {
   align-items: flex-end;
   padding: 0.45rem 0.45rem 0.45rem 0.7rem;
 }
+.composer-inner {
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+}
+/* A soft halo on top of the accent border: the box being typed in is the
+   one thing on this screen that should look active. */
 .composer-inner:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(63 111 181 / 0.18);
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-inner {
+    transition: none;
+  }
 }
 .composer textarea {
   min-height: var(--tap);
@@ -5017,8 +5183,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  margin: calc(var(--space-4) * -1) auto var(--space-5);
+  /* Spacing comes from .chat-welcome's gap. */
+  margin: 0;
   max-width: 100%;
   font-size: var(--text-sm);
   color: var(--fg-dim);

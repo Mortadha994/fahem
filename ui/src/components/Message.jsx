@@ -22,6 +22,14 @@ export default function Message({ message, streaming }) {
 
   return (
     <div className="msg msg-assistant">
+      {/* Who is speaking, once per answer. Without it a long thread of
+          unboxed answers and short bubbles is hard to scan back through.
+          Decorative for screen readers, which already get each answer as its
+          own block after the student's question. */}
+      <p className="msg-author" aria-hidden="true">
+        <span className="brand-mark">←</span>
+        Fahem
+      </p>
       {error ? (
         <Alert className="msg-error">{error}</Alert>
       ) : (

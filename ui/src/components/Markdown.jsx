@@ -26,7 +26,20 @@ const REHYPE_PLUGINS = [[rehypeHighlight, { detect: false, ignoreMissing: true }
 // render any differently - every other table (declaration table,
 // GroundingStrip) is untouched. See remarkAlgoTable.js and AlgoCode.jsx.
 const REMARK_PLUGINS = [remarkGfm, remarkAlgoTable];
-const COMPONENTS = { th: AlgoHeaderCell, td: AlgoBodyCell };
+
+// Tables scroll inside a wrapper rather than being display:block themselves.
+// A block-level <table> shrink-wraps its columns, so the Algorithme|Python
+// panel could never span the answer's width however much room there was;
+// with the wrapper doing the scrolling, the table stays a real table.
+function ScrollTable({ node: _node, ...rest }) {
+  return (
+    <div className="md-table">
+      <table {...rest} />
+    </div>
+  );
+}
+
+const COMPONENTS = { th: AlgoHeaderCell, td: AlgoBodyCell, table: ScrollTable };
 
 export default function Markdown({ children }) {
   return (

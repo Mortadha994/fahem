@@ -5,7 +5,8 @@ import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
 import { titleFrom } from "../lib/sessions.js";
-import { fetchChapters } from "../lib/chapters.js";
+import { fetchChapters, fetchExercises } from "../lib/chapters.js";
+import { exerciseTitle } from "../lib/exercises.js";
 import { hasRealAlgorithmeSolution } from "../lib/hasRealSolution.js";
 import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
@@ -100,6 +101,25 @@ export default function Chat() {
     }
   }
   const currentTitle = chapterList.find((c) => c.id === currentChapter)?.title;
+
+  // A few real exercises from the chosen chapter, offered while the thread is
+  // empty. Only fetched then, and a failure just means no suggestions - the
+  // composer is still the way in.
+  const [suggestions, setSuggestions] = useState([]);
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    if (!isEmpty) return undefined;
+    let cancelled = false;
+    fetchExercises(currentChapter)
+      .then(
+        (list) => !cancelled && setSuggestions(list.slice(0, 3).map((e) => e.question))
+      )
+      .catch(() => !cancelled && setSuggestions([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [isEmpty, currentChapter]);
+  const composerRef = useRef(null);
 
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
@@ -306,31 +326,63 @@ export default function Chat() {
 
       <div className="messages" ref={listRef} onScroll={onScroll}>
         {messages.length === 0 ? (
-          /* h2, not h1: the page-level h1 above is persistent, and this
-             prompt only exists while the thread is empty. */
-          <EmptyState
-            titleAs="h2"
-            title="Pose ta question sur le chapitre"
-            className="chat-empty"
-          >
-            Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-            chapitre — et te montre exactement sur quelles parties du cours il s'appuie.
-          </EmptyState>
-        ) : null}
-        {messages.length === 0 && chapterList.length > 1 ? (
-          <label className="chat-chapter-pick">
-            <span>Chapitre</span>
-            <select
-              value={currentChapter}
-              onChange={(e) => chooseChapter(e.target.value)}
-            >
-              {chapterList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.id} — {c.title}
-                </option>
-              ))}
-            </select>
-          </label>
+          /* One column in normal flow: the prompt, the chapter, then a way in.
+             The picker used to be pulled up under the prompt with a negative
+             margin, which laid it over the prompt's second line as soon as
+             the text wrapped. */
+          <div className="chat-welcome">
+            {/* h2, not h1: the page-level h1 above is persistent, and this
+                prompt only exists while the thread is empty. */}
+            <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
+              Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+              chapitre — et te montre exactement sur quelles parties du cours il
+              s'appuie.
+            </EmptyState>
+
+            {chapterList.length > 1 && (
+              <label className="chat-chapter-pick">
+                <span>Chapitre</span>
+                <select
+                  value={currentChapter}
+                  onChange={(e) => chooseChapter(e.target.value)}
+                >
+                  {chapterList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.id} — {c.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {suggestions.length > 0 && (
+              <section className="chat-suggest" aria-labelledby="chat-suggest-title">
+                <h3 id="chat-suggest-title" className="chat-suggest-title">
+                  Ou commence par un exercice de la série
+                </h3>
+                <ul className="chat-suggest-list">
+                  {suggestions.map((q) => (
+                    <li key={q}>
+                      {/* Fills the box rather than sending: the student sees
+                          the full énoncé in the composer and can edit it or
+                          add their own attempt first. */}
+                      <button
+                        type="button"
+                        className="chat-suggest-item"
+                        onClick={() => {
+                          setDraft(q);
+                          composerRef.current?.focus();
+                        }}
+                      >
+                        <span className="chat-suggest-name">{exerciseTitle(q)}</span>
+                        <span className="chat-suggest-q">{q}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
         ) : null}
         {messages.length === 0 ? null : (
           <>
@@ -352,6 +404,7 @@ export default function Chat() {
         onSend={handleSend}
         onStop={handleStop}
         streaming={streaming}
+        inputRef={composerRef}
       />
     </div>
   );

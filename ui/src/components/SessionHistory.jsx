@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Button from "./ui/Button.jsx";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { ago } from "../lib/relativeTime.js";
 
 /**
  * The chat's discussions, as a section of the app sidebar.
@@ -67,8 +68,12 @@ export default function SessionHistory({ onNavigate }) {
               }}
             >
               <span className="session-title">{s.title}</span>
+              {/* Chapter and recency - what tells two similar titles apart. The
+                  niveau is the same for every discussion, so it is not
+                  repeated on each row. */}
               <span className="session-sub">
-                {s.niveau} · ch. {s.chapitre}
+                Chapitre {s.chapitre}
+                {s.messages?.length > 0 && s.updatedAt ? ` · ${ago(s.updatedAt)}` : ""}
               </span>
             </button>
             {/* ghost at rest, danger while asking: the variant is what turns
