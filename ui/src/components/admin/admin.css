@@ -9,12 +9,15 @@
    blue-violet, so it is the same product in a different frame.
    ========================================================================= */
 
+/* Neutrals, radius and typeface follow the app's 21st.dev "Violet Dusk"
+   palette (App.css) so the console and the app share one surface system;
+   the console keeps its own dark command bar and density. */
 .adm {
-  --adm-bg: #f4f5f9;
+  --adm-bg: #f8fafc;
   --adm-surface: #ffffff;
-  --adm-surface-2: #f8f9fc;
-  --adm-line: #e3e5ee;
-  --adm-fg: #111827;
+  --adm-surface-2: #f3f4f6;
+  --adm-line: #e5e7eb;
+  --adm-fg: #030712;
   --adm-dim: #5b6272;
   /* Fahem's brand violet rather than a separate indigo, so the console reads
      as the same product in a different frame. White on it is 5.6:1, and as
@@ -33,9 +36,10 @@
   --adm-warn: #b45309;
   --adm-danger: #b91c1c;
   --adm-danger-bg: #fdecec;
-  --adm-radius: 10px;
-  --adm-shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
-  --adm-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --adm-radius: 12px;
+  --adm-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 14px rgb(107 38 217 / 0.06);
+  --adm-font:
+    "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   min-height: 100%;
   background: var(--adm-bg);
@@ -49,15 +53,15 @@
    top of App.css): the device setting by default, the theme button's choice
    once there is one. */
 :root[data-theme="dark"] .adm {
-  --adm-bg: #0b0d14;
-  --adm-surface: #131623;
-  --adm-surface-2: #181c2b;
-  --adm-line: #252a3b;
-  --adm-fg: #e7e9f2;
-  --adm-dim: #9aa1b5;
+  --adm-bg: #050408;
+  --adm-surface: #09080d;
+  --adm-surface-2: #13101a;
+  --adm-line: #241f2e;
+  --adm-fg: #f8fafc;
+  --adm-dim: #b0abba;
   --adm-accent: #a99bff;
   --adm-accent-hover: #c4b8ff;
-  --adm-accent-soft: #221d45;
+  --adm-accent-soft: #211a38;
   --adm-accent-2: #2dd4bf;
   --adm-bar: #07080d;
   --adm-ok: #6ee7b7;
