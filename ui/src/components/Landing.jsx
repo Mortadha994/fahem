@@ -20,6 +20,12 @@ import { SCOPE_LABEL } from "../config.js";
  * sign-in panel runs - so arriving on /connexion from here reads as a
  * continuation rather than a different product. See the landing section of
  * App.css; every loop and entrance there stops under prefers-reduced-motion.
+ *
+ * Two layers of motion. CSS carries what must play at once (the hero, the
+ * syntax strip, the loops). Motion - springs, scroll-linked effects, counters,
+ * cursor-following cards - lives in landingMotion.js, imported on demand so
+ * it is a separate chunk only this page downloads. The markup here is always
+ * the finished page; that module only ever animates *towards* it.
  */
 
 /* Same idea as AuthShell's GLYPHS: the background is the syntax the course
@@ -43,6 +49,22 @@ const FACTS = [
   { n: "2", unit: "langages", label: "Algorithme et Python, côte à côte" },
   { n: "7", unit: "exercices", label: "de la série, corrigés à la demande" },
   { n: "117", unit: "extraits", label: "de ton cours, cités à l'appui" },
+];
+
+/* The syntax strip: chapter 1 notation beside its Python, which is the whole
+   pitch in one line. Only what the available chapter covers - no Si or Pour
+   while those chapters are "à venir". */
+const SYNTAX = [
+  ["x ← x + 1", "x = x + 1"],
+  ["Lire (x)", "x = input()"],
+  ['Ecrire ("Bonjour")', 'print("Bonjour")'],
+  ["a mod b", "a % b"],
+  ["a div b", "a // b"],
+  ["carre ← x * x", "carre = x * x"],
+  ["réel", "float"],
+  ["entier", "int"],
+  ["chaîne", "str"],
+  ["booléen", "bool"],
 ];
 
 const FEATURES = [
@@ -131,48 +153,6 @@ const FAQ = [
   },
 ];
 
-/*
- * Reveal on scroll.
- *
- * One observer for the whole page rather than one per card: every [data-reveal]
- * element is registered at mount, gets data-shown the first time it reaches the
- * viewport, and is then unobserved - the entrance plays once, not again every
- * time the student scrolls back up. When the browser has no
- * IntersectionObserver, or the student asked for reduced motion, everything is
- * marked shown immediately: the failure mode of a scroll animation must never
- * be invisible content.
- */
-function useRevealOnScroll(rootRef) {
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return undefined;
-    const targets = root.querySelectorAll("[data-reveal]");
-
-    const reduced =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced || typeof IntersectionObserver !== "function") {
-      targets.forEach((el) => el.setAttribute("data-shown", ""));
-      return undefined;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          entry.target.setAttribute("data-shown", "");
-          observer.unobserve(entry.target);
-        }
-      },
-      // Slightly inside the bottom edge: the entrance should be finishing as
-      // the element arrives, not starting once it is already centred.
-      { rootMargin: "0px 0px -10% 0px", threshold: 0.12 }
-    );
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [rootRef]);
-}
-
 /** The hero demo tilts toward the cursor, exactly as the sign-in panel's copy
  *  of it does - .auth-sample reads --tilt-x/--tilt-y, wherever they are set. */
 function handleDemoPointer(event) {
@@ -197,13 +177,83 @@ function handleCardPointer(event) {
   card.style.setProperty("--my", `${event.clientY - box.top}px`);
 }
 
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/** A heading's words as separate boxes, so CSS can bring them in one after
+ *  another. The spaces stay outside the inline-blocks, or lines could not
+ *  break between words. */
+function Words({ text }) {
+  return text.split(" ").flatMap((word, i) => [
+    i > 0 ? " " : null,
+    <span className="lp-word" key={i} style={{ "--w": i }}>
+      {word}
+    </span>,
+  ]);
+}
+
+/*
+ * The notation correction, as a small card: the line a generic model writes,
+ * struck out, over the line the course writes - Fahem's whole argument in
+ * eight characters. The resting markup is the finished correction;
+ * landingMotion.js replays the strike and the arrow when it scrolls in.
+ */
+function SyntaxFix({ className = "" }) {
+  return (
+    <figure
+      className={`lp-fix ${className}`}
+      role="img"
+      aria-label="Correction : x = x + 1, la notation d'une IA généraliste, devient x ← x + 1, la notation de ton cours."
+    >
+      <div className="lp-fix-line lp-fix-wrong" aria-hidden="true">
+        <span className="lp-fix-icon">✕</span>
+        <code className="lp-fix-code">
+          x = x + 1
+          <span className="lp-fix-strike" />
+        </code>
+        <span className="lp-fix-tag">IA généraliste</span>
+      </div>
+      <div className="lp-fix-line lp-fix-right" aria-hidden="true">
+        <span className="lp-fix-icon lp-fix-check">✓</span>
+        <code className="lp-fix-code">
+          x <span className="lp-fix-arrow">←</span> x + 1
+        </code>
+        <span className="lp-fix-tag">ton cours</span>
+      </div>
+    </figure>
+  );
+}
+
 export default function Landing() {
   const pageRef = useRef(null);
   // The bar is transparent over the hero and becomes a solid strip once the
   // page has moved, so the headline is not sitting behind a band.
   const [scrolled, setScrolled] = useState(false);
 
-  useRevealOnScroll(pageRef);
+  // Motion is loaded here rather than imported at the top: a static import
+  // would put it in the main bundle the student app and the console share.
+  // Reduced motion never downloads it, and if the import fails the page is
+  // simply static - nothing waits on it to become visible.
+  useEffect(() => {
+    const root = pageRef.current;
+    if (!root || prefersReducedMotion()) return undefined;
+    let cleanup;
+    let cancelled = false;
+    import("./landingMotion.js")
+      .then(({ enhanceLanding }) => {
+        if (!cancelled) cleanup = enhanceLanding(root);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -249,6 +299,8 @@ export default function Landing() {
           </a>
 
           <nav className="lp-nav" aria-label="Sections de la page">
+            {/* Slides under the current section's link (landingMotion.js). */}
+            <span className="lp-nav-pill" aria-hidden="true" />
             <a href="#fonctionnalites">Ce que ça fait</a>
             <a href="#etapes">Comment ça marche</a>
             <a href="#programme">Programme</a>
@@ -271,6 +323,8 @@ export default function Landing() {
             </Link>
           </div>
         </div>
+        {/* Reading progress, bound to scroll by landingMotion.js. */}
+        <span className="lp-progress" aria-hidden="true" />
       </header>
 
       <main id="top">
@@ -279,9 +333,15 @@ export default function Landing() {
           <div className="lp-hero-copy">
             <Badge className="lp-eyebrow">{SCOPE_LABEL}</Badge>
 
+            {/* Word by word: the plain words rise, then the gradient phrase
+                fades in as one inline run - split into boxes it could not wrap
+                on a phone, and each box would restart the gradient. */}
             <h1 className="lp-title">
-              L'algorithmique, corrigée{" "}
-              <span className="auth-gradient-text">dans la syntaxe de ton cours.</span>
+              <Words text="L'algorithmique, corrigée" />{" "}
+              <span className="auth-gradient-text lp-title-accent">
+                dans la syntaxe de ton cours.
+              </span>
+              <span className="type-caret lp-title-caret" aria-hidden="true" />
             </h1>
 
             <p className="lp-lead">
@@ -309,24 +369,51 @@ export default function Landing() {
             </p>
           </div>
 
-          {/* The same demo the sign-in panel runs: the product, typing. */}
-          <div
-            className="lp-hero-demo"
-            onPointerMove={handleDemoPointer}
-            onPointerLeave={(event) => {
-              event.currentTarget.style.setProperty("--tilt-x", "0deg");
-              event.currentTarget.style.setProperty("--tilt-y", "0deg");
-            }}
-          >
-            <AuthDemo paused={false} />
+          {/* A wrapper for the scroll parallax, so it never competes with the
+              demo window's own CSS entrance over `transform`. */}
+          <div className="lp-hero-visual">
+            {/* The same demo the sign-in panel runs: the product, typing. */}
+            <div
+              className="lp-hero-demo"
+              onPointerMove={handleDemoPointer}
+              onPointerLeave={(event) => {
+                event.currentTarget.style.setProperty("--tilt-x", "0deg");
+                event.currentTarget.style.setProperty("--tilt-y", "0deg");
+              }}
+            >
+              <AuthDemo paused={false} />
+            </div>
+            {/* Phones do not get the demo (its code columns are unreadable
+                there), so the hero shows the one-line version of the pitch. */}
+            <SyntaxFix className="lp-hero-fix" />
           </div>
         </section>
+
+        {/* --- syntax strip ----------------------------------------------- */}
+        {/* Decorative: every pair is also said in words on the page. Listed
+            twice so the loop wraps without a seam. */}
+        <div className="lp-marquee" aria-hidden="true">
+          <div className="lp-marquee-track">
+            {[...SYNTAX, ...SYNTAX].map(([algo, py], i) => (
+              <span className="lp-marquee-item" key={i}>
+                <code className="lp-marquee-algo">{algo}</code>
+                <span className="lp-marquee-sep">⇄</span>
+                <code className="lp-marquee-py">{py}</code>
+              </span>
+            ))}
+          </div>
+        </div>
 
         {/* --- the three numbers ------------------------------------------ */}
         <section className="lp-facts" aria-label="Fahem en trois chiffres">
           {FACTS.map((f, i) => (
             <div className="lp-fact" key={f.unit} data-reveal="" style={{ "--i": i }}>
-              <span className="lp-fact-n">{f.n}</span>
+              {/* Counts up on arrival; the moving digits are hidden from
+                  screen readers, the real number beside them is not. */}
+              <span className="lp-fact-n" aria-hidden="true" data-count={f.n}>
+                {f.n}
+              </span>
+              <span className="sr-only">{f.n}</span>
               <span className="lp-fact-unit">{f.unit}</span>
               <span className="lp-fact-label">{f.label}</span>
             </div>
@@ -372,17 +459,28 @@ export default function Landing() {
             <h2 className="lp-h2">Trois minutes, trois étapes.</h2>
           </header>
 
-          <ol className="lp-steps">
-            {STEPS.map((s, i) => (
-              <li className="lp-step" key={s.title} data-reveal="" style={{ "--i": i }}>
-                <span className="lp-step-n" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <h3 className="lp-step-title">{s.title}</h3>
-                <p className="lp-step-body">{s.body}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="lp-steps-wrap">
+            {/* Fills with scroll between the numbers (landingMotion.js). */}
+            <span className="lp-steps-track" aria-hidden="true">
+              <span className="lp-steps-fill" />
+            </span>
+            <ol className="lp-steps">
+              {STEPS.map((s, i) => (
+                <li
+                  className="lp-step"
+                  key={s.title}
+                  data-reveal=""
+                  style={{ "--i": i }}
+                >
+                  <span className="lp-step-n" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <h3 className="lp-step-title">{s.title}</h3>
+                  <p className="lp-step-body">{s.body}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
         </section>
 
         {/* --- versus a generic chatbot ----------------------------------- */}
@@ -397,6 +495,10 @@ export default function Landing() {
               Une réponse juste dans la mauvaise notation reste fausse sur une copie.
             </p>
           </header>
+
+          <div className="lp-fix-row" data-reveal="">
+            <SyntaxFix />
+          </div>
 
           <div className="lp-versus">
             <div className="lp-versus-col lp-versus-them" data-reveal="">
