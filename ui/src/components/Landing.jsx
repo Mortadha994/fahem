@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
+import LineByLine from "./LineByLine.jsx";
 import Badge from "./ui/Badge.jsx";
 import { SCOPE_LABEL } from "../config.js";
 
@@ -65,6 +66,16 @@ const SYNTAX = [
   ["entier", "int"],
   ["chaîne", "str"],
   ["booléen", "bool"],
+];
+
+/* The phone menu lists every section, including the interactive one the
+   desktop bar leaves out for width. */
+const MENU = [
+  { href: "#fonctionnalites", label: "Ce que ça fait" },
+  { href: "#ligne-a-ligne", label: "Ligne à ligne" },
+  { href: "#etapes", label: "Comment ça marche" },
+  { href: "#programme", label: "Programme" },
+  { href: "#questions", label: "Questions" },
 ];
 
 const FEATURES = [
@@ -234,6 +245,8 @@ export default function Landing() {
   // The bar is transparent over the hero and becomes a solid strip once the
   // page has moved, so the headline is not sitting behind a band.
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
 
   // Motion is loaded here rather than imported at the top: a static import
   // would put it in the main bundle the student app and the console share.
@@ -254,6 +267,26 @@ export default function Landing() {
       cleanup?.();
     };
   }, []);
+
+  // The phone menu closes on Escape (focus goes back to its button, where the
+  // student was) and whenever the window grows past the breakpoint that hides
+  // its button - otherwise it could stay open with no way to close it.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    const wide = window.matchMedia("(min-width: 981px)");
+    const onWide = () => wide.matches && setMenuOpen(false);
+    document.addEventListener("keydown", onKey);
+    wide.addEventListener("change", onWide);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      wide.removeEventListener("change", onWide);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -321,8 +354,52 @@ export default function Landing() {
             >
               Créer un compte
             </Link>
+            {/* Only below 980px, where the section links above are hidden. */}
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="lp-menu-btn"
+              aria-expanded={menuOpen}
+              aria-controls="lp-menu"
+              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <span className="lp-menu-icon" aria-hidden="true" />
+            </button>
           </div>
         </div>
+
+        {/* The phone menu. Always in the DOM so it can animate open and shut;
+            `inert` while closed keeps its links out of the tab order and away
+            from screen readers. */}
+        <nav
+          id="lp-menu"
+          className="lp-menu"
+          aria-label="Menu"
+          data-open={menuOpen ? "" : undefined}
+          inert={!menuOpen}
+        >
+          <div className="lp-menu-inner">
+            {MENU.map((item, i) => (
+              <a
+                key={item.href}
+                href={item.href}
+                style={{ "--i": i }}
+                onClick={() => setMenuOpen(false)}
+              >
+                {item.label}
+                <span aria-hidden="true">→</span>
+              </a>
+            ))}
+            <Link
+              className="lp-menu-signin"
+              to="/connexion"
+              style={{ "--i": MENU.length }}
+            >
+              Se connecter
+            </Link>
+          </div>
+        </nav>
         {/* Reading progress, bound to scroll by landingMotion.js. */}
         <span className="lp-progress" aria-hidden="true" />
       </header>
@@ -449,6 +526,24 @@ export default function Landing() {
                 <p className="lp-card-body">{f.body}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        {/* --- line by line (interactive) --------------------------------- */}
+        <section className="lp-section" id="ligne-a-ligne">
+          <header className="lp-section-head" data-reveal="">
+            <p className="lp-kicker">Essaie</p>
+            <h2 className="lp-h2">
+              Ligne à ligne,{" "}
+              <span className="auth-gradient-text">sans rien retraduire</span>.
+            </h2>
+            <p className="lp-section-lead">
+              Choisis un exercice, puis passe sur une ligne : tu vois sa version Python
+              et ce qui change entre les deux.
+            </p>
+          </header>
+          <div data-reveal="">
+            <LineByLine />
           </div>
         </section>
 

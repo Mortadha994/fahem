@@ -54,7 +54,11 @@ export default function StreakCard() {
           says nothing on its own. */}
       <ul className="streak-days">
         {markers.map((day, i) => (
-          <li key={day.key} className={`streak-day is-${day.state}`}>
+          <li
+            key={day.key}
+            className={`streak-day is-${day.state}`}
+            style={{ "--d": i }}
+          >
             <span aria-hidden="true">{day.label}</span>
             <span className="sr-only">
               {DAY_NAMES[i]}

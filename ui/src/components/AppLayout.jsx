@@ -57,6 +57,9 @@ export default function AppLayout() {
             ☰
           </Button>
           <Link to="/" className="mobilebar-brand">
+            <span className="brand-mark" aria-hidden="true">
+              ←
+            </span>
             Fahem
           </Link>
         </header>

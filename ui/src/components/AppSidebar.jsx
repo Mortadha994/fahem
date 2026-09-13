@@ -32,6 +32,9 @@ export default function AppSidebar({ onNavigate }) {
   return (
     <aside className="appnav" aria-label="Navigation principale">
       <Link to="/" className="appnav-brand" onClick={onNavigate}>
+        <span className="brand-mark" aria-hidden="true">
+          ←
+        </span>
         Fahem
       </Link>
 

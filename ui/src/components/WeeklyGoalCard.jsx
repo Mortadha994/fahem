@@ -29,6 +29,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 export default function WeeklyGoalCard() {
   const { sessions } = useChatSessions();
   const inputId = useId();
+  const gradientId = `goal-grad-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [goal, setGoal] = useState(loadWeeklyGoal);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => String(loadWeeklyGoal()));
@@ -50,7 +51,10 @@ export default function WeeklyGoalCard() {
   }
 
   return (
-    <section className="widget surface" aria-labelledby="goal-title">
+    <section
+      className={`widget surface${remaining === 0 && !editing ? " is-reached" : ""}`}
+      aria-labelledby="goal-title"
+    >
       <div className="widget-head">
         <h2 id="goal-title" className="widget-label">
           Objectif hebdomadaire
@@ -98,14 +102,26 @@ export default function WeeklyGoalCard() {
             aria-valuetext={`${done} exercice${done > 1 ? "s" : ""} sur ${goal} cette semaine`}
           >
             <svg viewBox="0 0 100 100" aria-hidden="true">
+              {/* Blue to violet along the arc, the brand pair. The id is made
+                  from useId without its punctuation, which url(#…) would not
+                  accept. */}
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="var(--brand-blue)" />
+                  <stop offset="1" stopColor="var(--brand-violet)" />
+                </linearGradient>
+              </defs>
               <circle className="goal-ring-track" cx="50" cy="50" r={RADIUS} />
+              {/* --circ lets the CSS draw the arc in from empty on mount. */}
               <circle
                 className="goal-ring-arc"
                 cx="50"
                 cy="50"
                 r={RADIUS}
+                stroke={`url(#${gradientId})`}
                 strokeDasharray={CIRCUMFERENCE}
                 strokeDashoffset={CIRCUMFERENCE * (1 - ratio)}
+                style={{ "--circ": CIRCUMFERENCE }}
               />
             </svg>
             <span className="goal-ring-center" aria-hidden="true">

@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchChapters, UnauthorizedError } from "../lib/chapters.js";
+import { fetchChapters, fetchExercises, UnauthorizedError } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
+import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { isStarted, startedExerciseTexts } from "../lib/exercises.js";
 import Alert from "../components/ui/Alert.jsx";
 import Badge from "../components/ui/Badge.jsx";
 import Skeleton from "../components/ui/Skeleton.jsx";
+import HomeWelcome from "../components/HomeWelcome.jsx";
+import RecentSessions from "../components/RecentSessions.jsx";
 import StreakCard from "../components/StreakCard.jsx";
 import WeeklyGoalCard from "../components/WeeklyGoalCard.jsx";
 
@@ -15,16 +19,41 @@ import WeeklyGoalCard from "../components/WeeklyGoalCard.jsx";
  * ready. Filtering those out client-side would undo the point of the backend
  * listing them: a short list reads as "this is all there is" rather than
  * "more is coming", and the app would be quietly overstating its coverage.
+ *
+ * Top to bottom: a welcome card with the way back into the last discussion,
+ * the chapters (each available one with how many of its exercises this
+ * browser has already started), and the recent discussions - with the streak
+ * and the weekly goal beside them. Every number on the screen is derived from
+ * the API or this browser's own history; none is decorative.
  */
 export default function Home() {
   const { onUnauthorized } = useAuth();
+  const { sessions } = useChatSessions();
   const [chapters, setChapters] = useState(null);
   const [failed, setFailed] = useState(false);
+  // chapter id -> exercise énoncés, for the available chapters only.
+  const [exercises, setExercises] = useState({});
 
   useEffect(() => {
     let cancelled = false;
     fetchChapters()
-      .then((list) => !cancelled && setChapters(list))
+      .then((list) => {
+        if (cancelled) return;
+        setChapters(list);
+        // The progress line is extra: one failed exercise list simply leaves
+        // that card without it, rather than failing the screen.
+        const active = list.filter((c) => c.status === "active");
+        Promise.allSettled(active.map((c) => fetchExercises(c.id))).then((results) => {
+          if (cancelled) return;
+          const next = {};
+          results.forEach((r, i) => {
+            if (r.status === "fulfilled")
+              next[active[i].id] = r.value.map((e) => e.question);
+            else if (r.reason instanceof UnauthorizedError) onUnauthorized();
+          });
+          setExercises(next);
+        });
+      })
       .catch((err) => {
         if (cancelled) return;
         // A dead session is not a failed request: it sends the student to the
@@ -37,14 +66,30 @@ export default function Home() {
     };
   }, [onUnauthorized]);
 
+  // "Started" = sent to the chat from this browser, the same test the chapter
+  // page's "déjà commencé" marker uses. Recomputed when the sessions change,
+  // so an exercise sent a moment ago counts on the way back here.
+  const started = useMemo(() => {
+    const texts = startedExerciseTexts(sessions);
+    const counts = {};
+    for (const [id, list] of Object.entries(exercises)) {
+      counts[id] = {
+        done: list.filter((q) => isStarted(q, texts)).length,
+        total: list.length,
+      };
+    }
+    return counts;
+  }, [exercises, sessions]);
+
   return (
     <main className="page home">
+      <HomeWelcome />
+
       <div className="home-main">
-        <header className="page-head">
-          <h1>Chapitres</h1>
+        <header className="home-section-head">
+          <h2 className="home-h2">Chapitres</h2>
           <p className="page-lead">
-            Choisis un chapitre pour lire le cours et t'entraîner sur ses exercices — ou
-            pose directement ta question.
+            Lis le cours et entraîne-toi sur les exercices de la série.
           </p>
         </header>
 
@@ -82,15 +127,47 @@ export default function Home() {
                 </div>
               </li>
             ))}
-          {(chapters ?? []).map((c) => {
+          {(chapters ?? []).map((c, i) => {
             const active = c.status === "active";
+            const progress = started[c.id];
+            const ratio = progress?.total ? progress.done / progress.total : 0;
             const inner = (
               <>
+                <span className="chapter-top">
+                  {/* The chapter's own id, as a big numeral: "01". Decoration -
+                      the niveau line beside it already says which chapter. */}
+                  <span className="chapter-num" aria-hidden="true">
+                    {String(c.id).padStart(2, "0")}
+                  </span>
+                  <Badge tone={active ? "success" : "neutral"} className="chapter-tag">
+                    {active ? "Disponible" : "À venir"}
+                  </Badge>
+                </span>
                 <span className="chapter-niveau">{c.niveau}</span>
                 <span className="chapter-title">{c.title}</span>
-                <Badge tone={active ? "success" : "neutral"} className="chapter-tag">
-                  {active ? "Disponible" : "À venir"}
-                </Badge>
+
+                {active && progress && progress.total > 0 && (
+                  <span className="chapter-progress">
+                    <span className="chapter-progress-text">
+                      {progress.done} / {progress.total} exercices commencés
+                    </span>
+                    <span
+                      className="chapter-bar"
+                      role="progressbar"
+                      aria-label="Exercices commencés"
+                      aria-valuemin={0}
+                      aria-valuemax={progress.total}
+                      aria-valuenow={progress.done}
+                    >
+                      <span className="chapter-bar-fill" style={{ "--ratio": ratio }} />
+                    </span>
+                  </span>
+                )}
+                {active && (
+                  <span className="chapter-open" aria-hidden="true">
+                    Ouvrir <span className="chapter-open-arrow">→</span>
+                  </span>
+                )}
               </>
             );
 
@@ -98,11 +175,11 @@ export default function Home() {
             // disabled link: there is no destination, so there should be nothing
             // to click and nothing that looks clickable.
             return (
-              <li key={c.id} className="chapter-cell">
+              <li key={c.id} className="chapter-cell" style={{ "--i": i }}>
                 {active ? (
                   <Link
                     to={`/chapitre/${c.id}`}
-                    className="chapter-card surface surface-interactive"
+                    className="chapter-card surface surface-interactive is-active"
                   >
                     {inner}
                   </Link>
@@ -118,6 +195,8 @@ export default function Home() {
             );
           })}
         </ul>
+
+        <RecentSessions />
       </div>
 
       {/* Progress, derived from this browser's own chat history - see

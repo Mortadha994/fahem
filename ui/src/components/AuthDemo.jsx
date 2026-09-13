@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Badge from "./ui/Badge.jsx";
+import { tokenize } from "../lib/tokenizeAlgo.js";
 
 /*
  * Three real exercises in chapter 1 syntax. Each one plays as: the énoncé is
@@ -46,25 +47,6 @@ print("Reste :", r)`,
     chips: ["mod → %", "Types entiers", "Affectation ←"],
   },
 ];
-
-// One pass of lightweight highlighting. Longest alternatives first, and
-// strings before everything so a keyword inside quotes stays a string.
-const TOKEN =
-  /("[^"\n]*"?)|\b(Lire|Ecrire|Si|Alors|Sinon|Pour|Faire|mod|div)\b|\b(print|input|float|int)\b|(←|[*+/%=-])|(\d+)/g;
-const KINDS = ["str", "kw", "fn", "op", "num"];
-
-function tokenize(text) {
-  const out = [];
-  let last = 0;
-  for (const m of text.matchAll(TOKEN)) {
-    if (m.index > last) out.push({ text: text.slice(last, m.index) });
-    const kind = KINDS[m.slice(1).findIndex((g) => g !== undefined)];
-    out.push({ text: m[0], kind });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) out.push({ text: text.slice(last) });
-  return out;
-}
 
 /** The first `count` characters of `text`, highlighted, plus the rest as an
  * invisible ghost that holds the final size so nothing shifts while typing. */
