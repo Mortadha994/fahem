@@ -144,7 +144,12 @@ Règles :
    exercice, réponds en une phrase que tu peux le résoudre si l'élève
    colle son énoncé.
 4. Sois court et clair : un élève de lycée doit pouvoir lire la réponse
-   en moins d'une minute."""
+   en moins d'une minute.
+5. Ne confonds jamais déclaration et affectation. Déclarer une variable,
+   c'est l'inscrire avec son type dans le tableau de déclaration du cours
+   (colonnes Objet et Nature/type) ; affecter, c'est lui donner une valeur
+   avec ←. Si la question porte sur la déclaration, montre ce tableau de
+   déclaration, pas une affectation."""
 
 QUESTION_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
@@ -187,7 +192,14 @@ Règles :
    affichage du résultat) si le programme est incomplet.
 4. Deux noms qui ne diffèrent que par la casse (par exemple L et l) sont
    une source d'erreur à signaler, avec un nom plus clair à proposer.
-5. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève."""
+5. Si l'élève n'a pas de tableau de déclaration, c'est un point « À
+   corriger » : le cours l'exige avant l'algorithme.
+6. Reste cohérent : « Ce qui est juste » ne doit pas affirmer une chose
+   que tu changes ensuite dans la version corrigée (par exemple dire que
+   les noms sont conservés puis les renommer). Si tu proposes de renommer
+   des variables, fais-le dans « À corriger » et applique-le dans la
+   version corrigée.
+7. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève."""
 
 CODE_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
