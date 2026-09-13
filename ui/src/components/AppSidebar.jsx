@@ -1,5 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import Button from "./ui/Button.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import { useAuth } from "../lib/authContext.js";
 import { isAdmin } from "../lib/auth.js";
 import { SCOPE_LABEL } from "../config.js";
@@ -78,14 +79,19 @@ export default function AppSidebar({ onNavigate }) {
             {user?.email && <span className="account-mail">{user.email}</span>}
           </span>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="appnav-logout"
-          onClick={logout}
-        >
-          Déconnexion
-        </Button>
+        {/* Theme beside sign-out: both are about this browser session, not
+            about where to go, so they share the account block's row. */}
+        <div className="appnav-actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="appnav-logout"
+            onClick={logout}
+          >
+            Déconnexion
+          </Button>
+          <ThemeToggle className="appnav-theme" />
+        </div>
       </div>
     </aside>
   );

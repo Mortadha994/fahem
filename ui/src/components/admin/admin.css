@@ -4,9 +4,9 @@
    Everything is scoped under .adm and uses its own --adm-* tokens, so nothing
    here can restyle the student app and nothing in App.css (which targets the
    app's own class names) reaches in. Different on purpose: the student app is
-   a calm study space; this is an operations tool - a dark command bar, an
-   indigo accent instead of the app's blue, dense tables, tabular numbers,
-   monospace identifiers.
+   a calm study space; this is an operations tool - a dark command bar, dense
+   tables, tabular numbers, monospace identifiers - in Fahem's own brand
+   blue-violet, so it is the same product in a different frame.
    ========================================================================= */
 
 .adm {
@@ -45,26 +45,27 @@
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
-@media (prefers-color-scheme: dark) {
-  .adm {
-    --adm-bg: #0b0d14;
-    --adm-surface: #131623;
-    --adm-surface-2: #181c2b;
-    --adm-line: #252a3b;
-    --adm-fg: #e7e9f2;
-    --adm-dim: #9aa1b5;
-    --adm-accent: #a99bff;
-    --adm-accent-hover: #c4b8ff;
-    --adm-accent-soft: #221d45;
-    --adm-accent-2: #2dd4bf;
-    --adm-bar: #07080d;
-    --adm-ok: #6ee7b7;
-    --adm-ok-bg: #0f2a22;
-    --adm-warn: #fbbf24;
-    --adm-danger: #fca5a5;
-    --adm-danger-bg: #2a1416;
-    --adm-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-  }
+/* Dark theme, keyed off <html data-theme> like the rest of the app (see the
+   top of App.css): the device setting by default, the theme button's choice
+   once there is one. */
+:root[data-theme="dark"] .adm {
+  --adm-bg: #0b0d14;
+  --adm-surface: #131623;
+  --adm-surface-2: #181c2b;
+  --adm-line: #252a3b;
+  --adm-fg: #e7e9f2;
+  --adm-dim: #9aa1b5;
+  --adm-accent: #a99bff;
+  --adm-accent-hover: #c4b8ff;
+  --adm-accent-soft: #221d45;
+  --adm-accent-2: #2dd4bf;
+  --adm-bar: #07080d;
+  --adm-ok: #6ee7b7;
+  --adm-ok-bg: #0f2a22;
+  --adm-warn: #fbbf24;
+  --adm-danger: #fca5a5;
+  --adm-danger-bg: #2a1416;
+  --adm-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 .adm *,
@@ -171,6 +172,20 @@
 .adm-bar-link:hover {
   background: rgb(255 255 255 / 0.07);
   color: #fff;
+}
+/* The theme button on the dark command bar: the bar's own translucent
+   control style, not the app's solid chip. */
+.adm .adm-theme {
+  width: 36px;
+  height: 36px;
+  border-color: rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--adm-bar-fg);
+}
+.adm .adm-theme:hover {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.07);
 }
 .adm-who {
   display: inline-flex;
@@ -465,10 +480,8 @@
   border-color: var(--adm-danger);
   background: var(--adm-danger-bg);
 }
-@media (prefers-color-scheme: dark) {
-  .adm-btn-primary {
-    color: #0b0d14;
-  }
+:root[data-theme="dark"] .adm-btn-primary {
+  color: #0b0d14;
 }
 
 /* --- avatars & tags -------------------------------------------------------------- */

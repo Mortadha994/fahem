@@ -86,23 +86,33 @@
      ever padded up to the minimum. */
   --tap: 44px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1c1f;
-    --bg-alt: #232327;
-    --side: #161618;
-    --line: #33333a;
-    --fg: #ececf1;
-    --fg-dim: #9ca3af;
-    --accent: #5b8ad6;
-    --ok: #7ee2a8;
-    --ok-bg: #14321f;
-    --warn: #f0c674;
-    --warn-bg: #33280f;
-    --err: #ff8f87;
-    --err-bg: #3a1d1a;
+/* Dark theme. Keyed off <html data-theme>, not a prefers-color-scheme media
+   query: index.html resolves the device setting into the attribute before
+   first paint, and the theme button (ThemeToggle.jsx) can then override it -
+   which a media query cannot be. Every theme rule in this file follows the
+   same pattern. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #1c1c1f;
+  --bg-alt: #232327;
+  --side: #161618;
+  --line: #33333a;
+  --fg: #ececf1;
+  --fg-dim: #9ca3af;
+  --accent: #5b8ad6;
+  --ok: #7ee2a8;
+  --ok-bg: #14321f;
+  --warn: #f0c674;
+  --warn-bg: #33280f;
+  --err: #ff8f87;
+  --err-bg: #3a1d1a;
 
-    /* Ink on an accent fill is dark here, not white.
+  /* Ink on an accent fill is dark here, not white.
        --accent has two jobs: coloured text/borders on a dark page, and a
        filled background for .btn-send, .appbar-cta-on and .account-avatar.
        In dark mode those pull in opposite directions and cannot both be met
@@ -112,16 +122,15 @@
        the ink resolves it: white on #5b8ad6 was 3.47:1, --bg on #5b8ad6 is
        4.9:1. Reusing --bg rather than a new hex keeps the palette the size it
        was, and the filled chip reads as cut out of the page. */
-    --accent-fg: var(--bg);
+  --accent-fg: var(--bg);
 
-    /* Shadows are restated, not inherited. The light-mode values are tuned
+  /* Shadows are restated, not inherited. The light-mode values are tuned
        against a white page; at 6-8% on a #1c1c1f ground they are close to
        invisible, so a surface that is meant to float just looks smudged.
        Raising the opacity and the spread is what makes elevation read at
        all on a dark background. */
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
-    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.55);
-  }
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / 0.55);
 }
 
 * {
@@ -1313,10 +1322,8 @@ body {
 .algo-tok {
   color: var(--algo-light, inherit);
 }
-@media (prefers-color-scheme: dark) {
-  .algo-tok {
-    color: var(--algo-dark, inherit);
-  }
+:root[data-theme="dark"] .algo-tok {
+  color: var(--algo-dark, inherit);
 }
 
 /* ---------- composer ---------- */
@@ -1713,6 +1720,87 @@ body {
 .appnav-logout {
   width: 100%;
 }
+/* Déconnexion takes the row; the theme button sits at its end. */
+.appnav-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.appnav-actions .appnav-logout {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- theme toggle (ThemeToggle.jsx) ----------
+   A 44px square with a sun and a moon drawn on top of each other; the one
+   that is not wanted turns away and fades. Colours come from the bar it sits
+   in (currentColor and the bar's own tokens), placements below only adjust
+   the frame. */
+.theme-toggle {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.theme-toggle-icon {
+  grid-area: 1 / 1;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    transform 320ms var(--ease),
+    opacity 200ms var(--ease);
+}
+/* Light page: offer the moon. Dark page: offer the sun. */
+.theme-toggle[data-theme-current="light"] .theme-toggle-sun,
+.theme-toggle[data-theme-current="dark"] .theme-toggle-moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .theme-toggle-icon {
+    transition: none;
+  }
+}
+/* Phone bar: pushed to the far end, opposite the brand. */
+.mobilebar-theme {
+  margin-left: auto;
+}
+/* Public pages: on the glass, not a solid chip. */
+.lp-theme {
+  border-color: var(--glass-line, var(--line));
+  background: transparent;
+}
+.auth-theme {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 5;
+  border-color: var(--glass-line, var(--line));
+  background: var(--glass, var(--bg));
+  backdrop-filter: blur(10px);
+}
 
 /* The sidebar as a drawer, declared *after* the rules above so it actually
    wins. 900px rather than 760: at tablet-portrait width a 264px sidebar would
@@ -2028,14 +2116,9 @@ body {
    same on the welcome card's tint - under AA for the small text it colours
    there. The same one-step-darker value the public pages use, light mode
    only: dark mode already passes. */
-@media (prefers-color-scheme: light) {
-  .appnav,
-  .verify-banner,
-  .hero,
-  .chat-head,
-  .history-panel {
-    --fg-dim: #4b5563;
-  }
+:root[data-theme="light"]
+  :is(.appnav, .verify-banner, .hero, .chat-head, .history-panel) {
+  --fg-dim: #4b5563;
 }
 
 /* --- layout ------------------------------------------------------------------ */
@@ -3259,22 +3342,19 @@ body {
   isolation: isolate;
   background: var(--auth-ground);
 }
-@media (prefers-color-scheme: dark) {
-  .signin,
-  .landing {
-    --auth-ground: #090b12;
-    --glass: rgb(20 22 32 / 0.74);
-    --glass-line: rgb(255 255 255 / 0.08);
-    --glass-panel: rgb(255 255 255 / 0.025);
-    --field-fill: rgb(255 255 255 / 0.04);
-    --field-line: rgb(255 255 255 / 0.12);
-    --grad-text: linear-gradient(100deg, #8fb4ff, #b9a2ff 35%, #5eead4 70%, #8fb4ff);
-    --blob-opacity: 0.42;
-    --card-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
-    /* Restated: the light override above would otherwise win here too,
+:root[data-theme="dark"] :is(.signin, .landing) {
+  --auth-ground: #090b12;
+  --glass: rgb(20 22 32 / 0.74);
+  --glass-line: rgb(255 255 255 / 0.08);
+  --glass-panel: rgb(255 255 255 / 0.025);
+  --field-fill: rgb(255 255 255 / 0.04);
+  --field-line: rgb(255 255 255 / 0.12);
+  --grad-text: linear-gradient(100deg, #8fb4ff, #b9a2ff 35%, #5eead4 70%, #8fb4ff);
+  --blob-opacity: 0.42;
+  --card-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
+  /* Restated: the light override above would otherwise win here too,
        since .signin outranks :root. Dark's own value passes at 6.35:1. */
-    --fg-dim: #9ca3af;
-  }
+  --fg-dim: #9ca3af;
 }
 
 /* --- aurora background --------------------------------------------------- */
@@ -3507,16 +3587,13 @@ body {
   --tk-num: #be185d;
   --glyph-rgb: 100 110 210;
 }
-@media (prefers-color-scheme: dark) {
-  .signin,
-  .landing {
-    --tk-kw: #8fb4ff;
-    --tk-op: #c4b5fd;
-    --tk-str: #5eead4;
-    --tk-fn: #fbbf24;
-    --tk-num: #f9a8d4;
-    --glyph-rgb: 150 170 255;
-  }
+:root[data-theme="dark"] :is(.signin, .landing) {
+  --tk-kw: #8fb4ff;
+  --tk-op: #c4b5fd;
+  --tk-str: #5eead4;
+  --tk-fn: #fbbf24;
+  --tk-num: #f9a8d4;
+  --glyph-rgb: 150 170 255;
 }
 
 .auth-demo {

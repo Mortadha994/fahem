@@ -5,6 +5,27 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Assistant d'algorithmique — 2ème</title>
+    <!-- Theme before the first paint, so the page never flashes the wrong one.
+         The saved choice (src/lib/theme.js) if there is one, else the device
+         setting. Inline and tiny on purpose: a module script would run after
+         the CSS has already painted in light. -->
+    <script>
+      (function () {
+        var theme;
+        try {
+          theme = localStorage.getItem("fahem.theme");
+        } catch (e) {}
+        if (theme !== "light" && theme !== "dark") {
+          theme =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        }
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

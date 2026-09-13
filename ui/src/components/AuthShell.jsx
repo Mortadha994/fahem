@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
 import Badge from "./ui/Badge.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import { SCOPE_LABEL } from "../config.js";
 
 /*
@@ -69,6 +70,9 @@ export default function AuthShell({ title, subtitle, children }) {
 
   return (
     <div className="signin">
+      {/* Top-right corner, outside the card: the choice belongs to the page,
+          not to the form. */}
+      <ThemeToggle className="auth-theme" />
       <div className="aurora" aria-hidden="true">
         <span className="aurora-blob aurora-blob-1" />
         <span className="aurora-blob aurora-blob-2" />

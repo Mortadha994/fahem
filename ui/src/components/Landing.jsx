@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
 import LineByLine from "./LineByLine.jsx";
 import Badge from "./ui/Badge.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import { SCOPE_LABEL } from "../config.js";
 
 /*
@@ -341,6 +342,7 @@ export default function Landing() {
           </nav>
 
           <div className="lp-bar-actions">
+            <ThemeToggle className="lp-theme" />
             <Link className="lp-textlink" to="/connexion">
               Se connecter
             </Link>

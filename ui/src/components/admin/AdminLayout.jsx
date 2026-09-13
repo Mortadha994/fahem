@@ -8,6 +8,7 @@ import {
 import { useAuth } from "../../lib/authContext.js";
 import MotionProvider from "../MotionProvider.jsx";
 import AdminAvatar from "./AdminAvatar.jsx";
+import ThemeToggle from "../ThemeToggle.jsx";
 import "./admin.css";
 
 /**
@@ -104,6 +105,7 @@ export default function AdminLayout() {
             <Link to="/" className="adm-bar-link">
               ↩ Retour à l'app
             </Link>
+            <ThemeToggle className="adm-theme" />
             <span className="adm-who" title={user?.email}>
               <AdminAvatar seed={user?.id} label={label} />
               <span className="adm-who-name">{label}</span>
