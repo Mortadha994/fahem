@@ -40,6 +40,10 @@ Untitled-*.algo
 .idea/
 .DS_Store
 
+# Playwright MCP writes console logs and screenshots here during browser
+# checks; they are local debugging output, not project files.
+.playwright-mcp/
+
 # Test problems are transcribed verbatim from the curriculum PDF, so they
 # inherit the same restriction as chunks.json. Copy
 # sample_problems.example.json and fill it with your own exercises.
