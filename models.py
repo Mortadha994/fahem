@@ -58,6 +58,32 @@ ROLE_ADMIN = "admin"
 ROLES = (ROLE_STUDENT, ROLE_ADMIN)
 
 
+# --- student profile ------------------------------------------------------------
+#
+# The student's year and section, asked once right after the first sign-in.
+# Closed sets, like the role, so a typo can never be stored and silently
+# match nothing. The keys are what the API and the database hold; the labels
+# are what the student reads.
+#
+# Tunisian secondary school: the 2ème année has four of these sections (no
+# Math, no Technique - those open in 3ème); 3ème and the bac year share all six.
+
+NIVEAUX = {"2eme": "2ème année", "3eme": "3ème année", "bac": "Bac"}
+SECTIONS = {
+    "informatique": "Informatique",
+    "math": "Mathématiques",
+    "sciences": "Sciences expérimentales",
+    "lettres": "Lettres",
+    "technique": "Sciences techniques",
+    "eco": "Économie et gestion",
+}
+SECTIONS_BY_NIVEAU = {
+    "2eme": ("informatique", "sciences", "lettres", "eco"),
+    "3eme": tuple(SECTIONS),
+    "bac": tuple(SECTIONS),
+}
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -113,6 +139,12 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # The student profile (see NIVEAUX / SECTIONS). Null until the student
+    # answers the one-time question after signing in - which is exactly how
+    # the client knows to ask it. Set together or not at all (CHECK below).
+    niveau: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -140,6 +172,19 @@ class User(Base):
         CheckConstraint(
             "role IN ('student', 'admin')",
             name="ck_users_role",
+        ),
+        CheckConstraint(
+            "niveau IS NULL OR niveau IN ('2eme', '3eme', 'bac')",
+            name="ck_users_niveau",
+        ),
+        CheckConstraint(
+            "section IS NULL OR section IN "
+            "('informatique', 'math', 'sciences', 'lettres', 'technique', 'eco')",
+            name="ck_users_section",
+        ),
+        CheckConstraint(
+            "(niveau IS NULL) = (section IS NULL)",
+            name="ck_users_profile_pair",
         ),
         # Case-insensitive, and only among password accounts - the one place an
         # email is used to find an account.

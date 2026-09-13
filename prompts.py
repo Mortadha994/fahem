@@ -226,17 +226,37 @@ _PROMPTS = {
 }
 
 
+PROFILE_NOTE = """
+
+PROFIL DE L'ÉLÈVE : {profile}.
+Adapte le ton et le niveau de détail des explications à ce profil. Cela ne
+change jamais la syntaxe : elle reste celle du chapitre et du cours ci-dessus."""
+
+
 def build_messages(
-    context: str, query: str, niveau: str, chapitre: str, kind: str = "PROBLEM"
+    context: str,
+    query: str,
+    niveau: str,
+    chapitre: str,
+    kind: str = "PROBLEM",
+    profile: str | None = None,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
-    generate.py and existing callers are unchanged), QUESTION or CODE."""
+    generate.py and existing callers are unchanged), QUESTION or CODE.
+
+    `profile` is the student's own year and section from their account
+    ("3ème année, section Informatique"), when they have answered it. It only
+    steers how the answer explains; `niveau`/`chapitre` still decide the
+    course the answer is grounded in and the syntax it must use."""
     system, user = _PROMPTS.get(kind, _PROMPTS["PROBLEM"])
+    system_content = system.format(niveau=niveau, chapitre=chapitre)
+    if profile:
+        system_content += PROFILE_NOTE.format(profile=profile)
     return [
         {
             "role": "system",
-            "content": system.format(niveau=niveau, chapitre=chapitre),
+            "content": system_content,
         },
         {
             "role": "user",

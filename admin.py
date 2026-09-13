@@ -74,6 +74,8 @@ class AdminUser(BaseModel):
     created_at: datetime
     last_login_at: datetime | None
     sessions_valid_after: datetime | None
+    niveau: str | None = None
+    section: str | None = None
 
     @classmethod
     def of(cls, user: User) -> "AdminUser":
@@ -87,6 +89,8 @@ class AdminUser(BaseModel):
             created_at=user.created_at,
             last_login_at=user.last_login_at,
             sessions_valid_after=user.sessions_valid_after,
+            niveau=user.niveau,
+            section=user.section,
         )
 
 

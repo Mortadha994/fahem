@@ -181,6 +181,16 @@ def niveau_label(niveau: str) -> str:
     return re.sub(r"(\d+)\s*ere\b", r"\1ère", label)
 
 
+def student_profile(user: models.User) -> str | None:
+    """The account's niveau and section as the prompt reads them, or None if
+    the student has not answered the question yet."""
+    if not user.niveau or not user.section:
+        return None
+    niveau = models.NIVEAUX.get(user.niveau, user.niveau)
+    section = models.SECTIONS.get(user.section, user.section)
+    return f"{niveau}, section {section}"
+
+
 class SolveRequest(BaseModel):
     problem: str = Field(min_length=1, description="The problem pasted by the student")
     niveau: str = Field(min_length=1, examples=["2eme"])
@@ -336,6 +346,7 @@ def solve(
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
         kind=route,
+        profile=student_profile(user),
     )
 
     try:
@@ -505,6 +516,7 @@ def solve_stream(
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
         kind=route,
+        profile=student_profile(user),
     )
 
     def events():
