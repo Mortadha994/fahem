@@ -6054,3 +6054,86 @@ h3 {
   color: var(--fg);
   font: inherit;
 }
+
+/* =========================================================================
+   Signed-out screens, simplified: one quiet card, no showcase.
+   The landing page keeps the aurora, the demo and the glass; these screens
+   come after it and only have to let the student in. Declared last so it
+   wins over the showcase rules above, which the landing still shares.
+   ========================================================================= */
+.signin-simple {
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(
+      60rem 32rem at 50% -10%,
+      color-mix(in srgb, var(--accent) 9%, transparent),
+      transparent 70%
+    ),
+    var(--canvas);
+}
+.signin-simple .auth-shell {
+  max-width: 26rem;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: visible;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--shadow-md);
+  animation: auth-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.signin-simple .auth-shell::before,
+.signin-simple .auth-shell::after {
+  display: none;
+}
+.signin-simple .auth-main {
+  padding: var(--space-6);
+}
+.signin-simple .auth-main > * {
+  animation: none;
+}
+.signin-simple .auth-brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--fg);
+  text-decoration: none;
+}
+.signin-simple .auth-brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+.signin-simple .auth-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.signin-simple .auth-mark-arrow {
+  animation: none;
+}
+.signin-simple .auth-title {
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+}
+.signin-simple .auth-head {
+  margin-bottom: var(--space-5);
+}
+.signin-simple .auth-theme {
+  background: var(--bg);
+  border-color: var(--line);
+  backdrop-filter: none;
+}
+@media (max-width: 480px) {
+  .signin-simple .auth-main {
+    padding: var(--space-5) var(--space-4);
+  }
+}
