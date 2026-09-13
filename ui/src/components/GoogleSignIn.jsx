@@ -54,6 +54,9 @@ export default function GoogleSignIn({ onCredential, disabled }) {
         shape: "pill",
         text: "signin_with",
         logo_alignment: "left",
+        // The page is French; without this GIS follows the browser's
+        // language and can label the button in another script.
+        locale: "fr",
         // Fill the column it sits in. GIS only takes a fixed pixel width (and
         // caps it at 400), so it is measured once, when the button is drawn.
         width: Math.max(200, Math.min(400, holder.current.offsetWidth || 280)),
