@@ -459,9 +459,13 @@ body {
   flex-direction: column;
   gap: 2px;
 }
+/* Clipped so Motion can grow a new row in and collapse a deleted one out
+   (SessionHistory.jsx); the button's focus ring is inset to survive that. */
 .session {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
   border-radius: var(--radius-md);
   transition: background-color var(--dur-fast) var(--ease);
 }
@@ -488,7 +492,7 @@ body {
 }
 .session-btn:focus-visible {
   outline: 2px solid transparent;
-  box-shadow: var(--focus-ring);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .session-title {
   display: block;
@@ -611,6 +615,45 @@ body {
   outline: 2px solid transparent;
   box-shadow: var(--focus-ring);
 }
+/* A numbered head row, with a return glyph that slides in on hover: the card
+   says "this goes into the box", not "this sends". */
+.chat-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+.chat-suggest-index {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@media (forced-colors: active) {
+  .chat-suggest-index {
+    background: none;
+    color: CanvasText;
+  }
+}
+.chat-suggest-go {
+  color: var(--accent);
+  opacity: 0;
+  translate: -4px 0;
+  transition:
+    opacity var(--dur-base) var(--ease),
+    translate var(--dur-base) var(--ease);
+}
+.chat-suggest-item:hover .chat-suggest-go,
+.chat-suggest-item:focus-visible .chat-suggest-go {
+  opacity: 1;
+  translate: 0 0;
+}
+.chat-suggest-item:hover {
+  box-shadow: 0 14px 28px -20px rgb(40 40 100 / 0.5);
+}
 .chat-suggest-name {
   font-size: var(--text-sm);
   font-weight: 600;
@@ -627,7 +670,8 @@ body {
   color: var(--fg-dim);
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-suggest-item {
+  .chat-suggest-item,
+  .chat-suggest-go {
     transition: none;
   }
 }
@@ -677,29 +721,13 @@ body {
   margin-left: 0.4rem;
   font-size: 0.9rem;
 }
+/* The rise-and-fade loop is Motion's (Message.jsx); this is the dot at rest. */
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
   opacity: 0.35;
-  animation: blink 1.2s infinite;
-}
-.dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-.dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-@keyframes blink {
-  0%,
-  80%,
-  100% {
-    opacity: 0.25;
-  }
-  40% {
-    opacity: 0.9;
-  }
 }
 
 /* ---------- checker verdict ----------
@@ -707,6 +735,11 @@ body {
    answer above. */
 .msg-verdict {
   margin-top: 0.6rem;
+}
+/* Motion's wrapper for the verdict's pop (Message.jsx): scales from its left
+   edge, where the badge sits, rather than from the middle of the column. */
+.msg-verdict-wrap {
+  transform-origin: 0 50%;
 }
 .warn-list {
   margin: 0.4rem 0 0;
@@ -747,8 +780,15 @@ body {
   width: 1em;
   color: var(--fg-dim);
 }
+/* Clipped while Motion animates its height open and shut. No block padding:
+   padding would still show at height 0, so the bottom space is the last
+   list's margin instead. */
 .grounding-body {
-  padding: 0 var(--space-3) 0.7rem;
+  overflow: hidden;
+  padding: 0 var(--space-3);
+}
+.grounding-body > :last-child {
+  margin-bottom: 0.7rem;
 }
 .ground-group {
   margin: var(--space-2) 0 0.3rem;
@@ -1003,6 +1043,23 @@ body {
 /* Placement only - Envoyer is .btn-primary, Arrêter is .btn-secondary. */
 .btn-composer {
   flex-shrink: 0;
+}
+/* Motion's wrapper for the swap and press (Composer.jsx). */
+.composer-action {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+/* Envoyer on the brand gradient once there is something to send - the same
+   white-on-gradient pairing as the home screen's primary action (5.1:1 at
+   its lightest end). Disabled, it keeps .btn-primary's own disabled look. */
+.btn-send:not(:disabled) {
+  background: var(--brand-grad);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 10px 22px -14px var(--brand-violet);
+}
+.btn-send:not(:disabled):hover {
+  filter: brightness(1.08);
 }
 .stop-square {
   width: 9px;
@@ -1715,26 +1772,10 @@ body {
   }
 }
 
-/* Arrival: sections rise in, one after the other. */
-.home-main > *,
-.home-side {
-  animation: home-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.home-main > :nth-child(2) {
-  animation-delay: 70ms;
-}
-.home-main > :nth-child(3) {
-  animation-delay: 140ms;
-}
-.home-side {
-  animation-delay: 110ms;
-}
-@keyframes home-rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-}
+/* Arrival - sections, cards, rows and widget details rising in one after
+   another - is Motion's now (lib/motion.js), not CSS keyframes: springs,
+   staggered through variants, and dropped to fades under reduced motion by
+   MotionProvider. */
 
 /* --- sections ---------------------------------------------------------------- */
 
@@ -1881,19 +1922,16 @@ body {
   background: var(--brand-grad);
   box-shadow: 0 12px 26px -14px var(--brand-violet);
   text-align: left;
-  transition:
-    transform var(--dur-fast) var(--ease),
-    box-shadow var(--dur-base) var(--ease);
+  /* Lift and press are Motion springs (HomeWelcome.jsx); only the shadow is
+     a CSS transition, and CSS never sets transform here, so the two never
+     fight over one property. */
+  transition: box-shadow var(--dur-base) var(--ease);
 }
 .hero-primary:hover {
-  transform: translateY(-1px);
   box-shadow: 0 16px 32px -14px var(--brand-violet);
 }
 .hero-primary:focus-visible {
   box-shadow: var(--focus-ring);
-}
-.hero-primary:active {
-  transform: translateY(0) scale(0.98);
 }
 .hero-primary::after {
   content: "";
@@ -1947,9 +1985,12 @@ body {
     linear-gradient(135deg, var(--brand-blue), var(--brand-violet), var(--brand-teal))
       border-box;
   box-shadow: 0 24px 48px -28px var(--brand-violet);
-  animation: hero-float 7s ease-in-out infinite alternate;
 }
+/* The idle float is on the arrow, not the tile: the tile's transform belongs
+   to Motion (entrance and hover tilt). */
 .hero-art-arrow {
+  display: inline-block;
+  animation: hero-float 7s ease-in-out infinite alternate;
   font-family: var(--font-mono);
   font-size: 5.5rem;
   font-weight: 800;
@@ -2012,10 +2053,10 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
   gap: var(--space-4);
 }
+/* The cell carries Motion's entrance, hover lift and press (ChapterCard.jsx);
+   the card inside keeps colour, border and shadow. */
 .chapter-cell {
   min-width: 0;
-  animation: home-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(140ms + var(--i, 0) * 70ms);
 }
 /* Three bands - head, body, foot - with the foot pinned to the bottom so bars
    and actions line up across cards whose titles wrap differently. */
@@ -2036,11 +2077,35 @@ body {
   overflow: clip;
 }
 .chapter-card.is-active {
+  isolation: isolate;
   box-shadow: var(--shadow-sm);
   transition:
     border-color var(--dur-fast) var(--ease),
-    transform var(--dur-base) var(--ease),
     box-shadow var(--dur-base) var(--ease);
+}
+/* A soft light that follows the pointer across an available card - the
+   "spotlight card" pattern. ChapterCard.jsx writes --mx/--my on pointer move;
+   z-index -1 inside the isolated card paints it above the card's fill and
+   below its text, so it never lowers the text's contrast. Pointer devices
+   only: on touch there is no hover to follow. */
+.chapter-card.is-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    18rem circle at var(--mx, 50%) var(--my, 0%),
+    rgb(106 79 224 / 0.14),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease);
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .chapter-card.is-active:hover::after {
+    opacity: 1;
+  }
 }
 /* A lit top edge on the chapters that exist. */
 .chapter-card.is-active::before {
@@ -2057,7 +2122,6 @@ body {
 }
 .chapter-card.is-active:hover {
   border-color: var(--brand-violet);
-  transform: translateY(-3px);
   box-shadow: 0 18px 36px -24px rgb(40 40 100 / 0.55);
 }
 .chapter-card.is-active:focus-visible {
@@ -2155,14 +2219,8 @@ body {
   height: 100%;
   border-radius: inherit;
   background: var(--brand-grad);
-  transform: scaleX(var(--ratio));
+  /* Scaled by Motion from 0 to the real ratio (ChapterCard.jsx). */
   transform-origin: 0 50%;
-  animation: chapter-fill 900ms cubic-bezier(0.16, 1, 0.3, 1) 300ms backwards;
-}
-@keyframes chapter-fill {
-  from {
-    transform: scaleX(0);
-  }
 }
 .chapter-open {
   display: inline-flex;
@@ -2195,10 +2253,6 @@ body {
   background: var(--bg);
   overflow: hidden;
   overflow: clip;
-}
-.recent-list li {
-  animation: home-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(260ms + var(--i, 0) * 60ms);
 }
 .recent-list li + li {
   border-top: 1px solid var(--line);
@@ -2358,14 +2412,7 @@ body {
   font-weight: 600;
   color: var(--fg-dim);
   background: var(--bg-alt);
-  animation: streak-pop 460ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  animation-delay: calc(300ms + var(--d, 0) * 45ms);
-}
-@keyframes streak-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
+  /* Pops in with a Motion spring, staggered left to right (StreakCard.jsx). */
 }
 /* A day with real practice on it: white on the fixed brand gradient, the
    same in both themes. */
@@ -2380,8 +2427,11 @@ body {
   box-shadow: inset 0 0 0 2px var(--accent);
   color: var(--accent);
 }
+/* Days still to come: an empty outline rather than a faded fill. Opacity is
+   Motion's to animate on entrance, and it would end the pop at 1 anyway. */
 .streak-day.is-future {
-  opacity: 0.5;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .goal-ring {
@@ -2408,15 +2458,12 @@ body {
   /* The colour is the SVG's own gradient (WeeklyGoalCard), set as an
      attribute - a stroke declared here would override it. */
   stroke-linecap: round;
-  transition: stroke-dashoffset 600ms var(--ease);
-  /* Drawn in from empty when the card appears, then transitions normally
-     when the count changes. */
-  animation: goal-draw 1100ms cubic-bezier(0.16, 1, 0.3, 1) 250ms backwards;
+  /* Drawn in and updated by a Motion spring on stroke-dashoffset. */
 }
-@keyframes goal-draw {
-  from {
-    stroke-dashoffset: var(--circ);
-  }
+.goal-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 .goal-ring-center {
   position: absolute;
@@ -2464,33 +2511,25 @@ body {
   flex: none;
 }
 
+/* Reduced motion, CSS half: the loops and transitions CSS still owns. The
+   Motion half (entrances, lifts, presses, pops) is MotionProvider's
+   reducedMotion="user", which keeps fades and drops the movement. */
 @media (prefers-reduced-motion: reduce) {
-  .home-main > *,
-  .home-side,
-  .chapter-cell,
-  .recent-list li,
-  .streak-day,
   .hero-glow,
-  .hero-art,
-  .chapter-bar-fill,
-  .goal-ring-arc,
+  .hero-art-arrow,
   .widget.is-reached .goal-ring {
     animation: none;
   }
   .hero-primary,
   .chapter-card.is-active,
+  .chapter-card.is-active::after,
   .chapter-open-arrow,
   .recent-item,
-  .recent-go,
-  .goal-ring-arc {
+  .recent-go {
     transition: none;
   }
   .hero-primary::after {
     display: none;
-  }
-  .hero-primary:hover,
-  .chapter-card.is-active:hover {
-    transform: none;
   }
 }
 

@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Button from "./ui/Button.jsx";
+import { SPRING_HOVER } from "../lib/motion.js";
 
 /**
  * Auto-resizing textarea. Enter sends, Shift+Enter breaks the line.
@@ -48,26 +51,40 @@ export default function Composer({
           placeholder="Colle ton énoncé d'exercice…"
           aria-label="Énoncé de l'exercice"
         />
-        {streaming ? (
-          <Button
-            variant="secondary"
-            className="btn-composer"
-            onClick={onStop}
-            aria-label="Arrêter"
+        {/* Envoyer and Arrêter swap with a quick scale-fade, and the one that
+            is showing presses with a spring. The wrapper carries the motion so
+            the shared Button primitive stays a plain button. */}
+        <AnimatePresence mode="wait" initial={false}>
+          <m.span
+            key={streaming ? "stop" : "send"}
+            className="composer-action"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
+            exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.1 } }}
+            whileTap={streaming || value.trim() ? { scale: 0.94 } : undefined}
           >
-            <span className="stop-square" aria-hidden="true" /> Arrêter
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            className="btn-composer"
-            onClick={onSend}
-            disabled={!value.trim()}
-            aria-label="Envoyer"
-          >
-            Envoyer
-          </Button>
-        )}
+            {streaming ? (
+              <Button
+                variant="secondary"
+                className="btn-composer"
+                onClick={onStop}
+                aria-label="Arrêter"
+              >
+                <span className="stop-square" aria-hidden="true" /> Arrêter
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                className="btn-composer btn-send"
+                onClick={onSend}
+                disabled={!value.trim()}
+                aria-label="Envoyer"
+              >
+                Envoyer
+              </Button>
+            )}
+          </m.span>
+        </AnimatePresence>
       </div>
       <p className="composer-hint">
         Entrée pour envoyer · Maj+Entrée pour un retour à la ligne

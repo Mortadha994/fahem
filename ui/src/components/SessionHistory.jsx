@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { SPRING_ENTER } from "../lib/motion.js";
 import Button from "./ui/Button.jsx";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { ago } from "../lib/relativeTime.js";
@@ -53,77 +56,87 @@ export default function SessionHistory({ onNavigate }) {
         {sessions.length === 0 && (
           <p className="session-empty">Aucune discussion pour l'instant.</p>
         )}
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            className={`session ${s.id === activeId ? "session-active" : ""}`}
-          >
-            <button
-              type="button"
-              className="session-btn"
-              aria-current={s.id === activeId ? "true" : undefined}
-              onClick={() => {
-                setActiveId(s.id);
-                onNavigate?.();
-              }}
+        {/* A new discussion grows into the top of the list and a deleted one
+            collapses out of it, so the rows below slide rather than jump.
+            initial={false}: the list as it already is does not animate. */}
+        <AnimatePresence initial={false}>
+          {sessions.map((s) => (
+            <m.div
+              key={s.id}
+              className={`session ${s.id === activeId ? "session-active" : ""}`}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto", transition: SPRING_ENTER }}
+              exit={{ opacity: 0, height: 0, transition: { duration: 0.2 } }}
             >
-              <span className="session-title">{s.title}</span>
-              {/* Chapter and recency - what tells two similar titles apart. The
+              <button
+                type="button"
+                className="session-btn"
+                aria-current={s.id === activeId ? "true" : undefined}
+                onClick={() => {
+                  setActiveId(s.id);
+                  onNavigate?.();
+                }}
+              >
+                <span className="session-title">{s.title}</span>
+                {/* Chapter and recency - what tells two similar titles apart. The
                   niveau is the same for every discussion, so it is not
                   repeated on each row. */}
-              <span className="session-sub">
-                Chapitre {s.chapitre}
-                {s.messages?.length > 0 && s.updatedAt ? ` · ${ago(s.updatedAt)}` : ""}
-              </span>
-            </button>
-            {/* ghost at rest, danger while asking: the variant is what turns
+                <span className="session-sub">
+                  Chapitre {s.chapitre}
+                  {s.messages?.length > 0 && s.updatedAt
+                    ? ` · ${ago(s.updatedAt)}`
+                    : ""}
+                </span>
+              </button>
+              {/* ghost at rest, danger while asking: the variant is what turns
                 the bare glyph into the red "Supprimer ?" chip. The
                 session-del classes only handle the hover/focus reveal. */}
-            <Button
-              variant={confirmingId === s.id ? "danger" : "ghost"}
-              size="sm"
-              className={`session-del${
-                confirmingId === s.id ? " session-del-confirm" : ""
-              }`}
-              onClick={(e) => {
-                if (confirmingId === s.id) {
-                  deleteSession(s.id);
-                  setConfirmingId(null);
-                } else {
-                  setConfirmingId(s.id);
-                  // Focus explicitly on entering the confirm state, because
-                  // blur is what cancels it. A click does not reliably focus
-                  // a button - Safari notably does not - so without this the
-                  // prompt could be left stuck open with no way back except
-                  // confirming, which is the one outcome this guard exists
-                  // to prevent.
-                  e.currentTarget.focus();
-                }
-              }}
-              /* Functional updater, not `confirmingId === s.id && ...`:
+              <Button
+                variant={confirmingId === s.id ? "danger" : "ghost"}
+                size="sm"
+                className={`session-del${
+                  confirmingId === s.id ? " session-del-confirm" : ""
+                }`}
+                onClick={(e) => {
+                  if (confirmingId === s.id) {
+                    deleteSession(s.id);
+                    setConfirmingId(null);
+                  } else {
+                    setConfirmingId(s.id);
+                    // Focus explicitly on entering the confirm state, because
+                    // blur is what cancels it. A click does not reliably focus
+                    // a button - Safari notably does not - so without this the
+                    // prompt could be left stuck open with no way back except
+                    // confirming, which is the one outcome this guard exists
+                    // to prevent.
+                    e.currentTarget.focus();
+                  }
+                }}
+                /* Functional updater, not `confirmingId === s.id && ...`:
                  the handler closes over the render that attached it, so the
                  plain comparison can read a stale value and silently skip
                  the cancel - which it did, leaving the prompt stuck open. */
-              onBlur={() => setConfirmingId((cur) => (cur === s.id ? null : cur))}
-              onKeyDown={(e) => {
-                if (e.key !== "Escape") return;
-                e.stopPropagation();
-                setConfirmingId((cur) => (cur === s.id ? null : cur));
-              }}
-              /* The name changes with the state so a screen reader hears
+                onBlur={() => setConfirmingId((cur) => (cur === s.id ? null : cur))}
+                onKeyDown={(e) => {
+                  if (e.key !== "Escape") return;
+                  e.stopPropagation();
+                  setConfirmingId((cur) => (cur === s.id ? null : cur));
+                }}
+                /* The name changes with the state so a screen reader hears
                  what the next click will actually do, rather than the same
                  "Supprimer" in both. */
-              aria-label={
-                confirmingId === s.id
-                  ? `Confirmer la suppression de ${s.title}`
-                  : `Supprimer ${s.title}`
-              }
-              title={confirmingId === s.id ? "Confirmer" : "Supprimer"}
-            >
-              {confirmingId === s.id ? "Supprimer ?" : "×"}
-            </Button>
-          </div>
-        ))}
+                aria-label={
+                  confirmingId === s.id
+                    ? `Confirmer la suppression de ${s.title}`
+                    : `Supprimer ${s.title}`
+                }
+                title={confirmingId === s.id ? "Confirmer" : "Supprimer"}
+              >
+                {confirmingId === s.id ? "Supprimer ?" : "×"}
+              </Button>
+            </m.div>
+          ))}
+        </AnimatePresence>
       </div>
     </section>
   );

@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import * as m from "motion/react-m";
+import { HOVER_LIFT, PRESS, SPRING_ENTER, rise } from "../lib/motion.js";
 import Badge from "./ui/Badge.jsx";
 import Skeleton from "./ui/Skeleton.jsx";
 
@@ -25,7 +27,7 @@ function niveauLabel(niveau) {
   return String(niveau ?? "").replace(/eme$/, "ème");
 }
 
-export default function ChapterCard({ chapter, progress, index = 0 }) {
+export default function ChapterCard({ chapter, progress }) {
   const active = chapter.status === "active";
   const hasProgress = active && progress && progress.total > 0;
   const ratio = hasProgress ? progress.done / progress.total : 0;
@@ -63,7 +65,16 @@ export default function ChapterCard({ chapter, progress, index = 0 }) {
                 a progressbar inside a link leaks its bare value into the
                 link's name. */}
             <span className="chapter-bar" aria-hidden="true">
-              <span className="chapter-bar-fill" style={{ "--ratio": ratio }} />
+              {/* Fills from empty with a spring once the card has landed, and
+                  springs to the new value when a started exercise changes it. */}
+              <m.span
+                className="chapter-bar-fill"
+                initial={{ scaleX: 0 }}
+                animate={{
+                  scaleX: ratio,
+                  transition: { ...SPRING_ENTER, visualDuration: 0.9, delay: 0.35 },
+                }}
+              />
             </span>
           </span>
         )}
@@ -79,16 +90,40 @@ export default function ChapterCard({ chapter, progress, index = 0 }) {
   );
 
   return (
-    <li className="chapter-cell" style={{ "--i": index }}>
+    // A child of Home's staggered grid. Only an available chapter lifts and
+    // presses: a coming-soon card has nothing behind it, so nothing about it
+    // should respond like a control.
+    <m.li
+      className="chapter-cell"
+      variants={rise}
+      whileHover={active ? HOVER_LIFT : undefined}
+      whileTap={active ? PRESS : undefined}
+    >
       {active ? (
-        <Link to={`/chapitre/${chapter.id}`} className="chapter-card is-active">
+        <Link
+          to={`/chapitre/${chapter.id}`}
+          className="chapter-card is-active"
+          onPointerMove={trackSpotlight}
+        >
           {body}
         </Link>
       ) : (
         <div className="chapter-card is-soon">{body}</div>
       )}
-    </li>
+    </m.li>
   );
+}
+
+/**
+ * The pointer position, as custom properties the card's ::after glow reads.
+ * Written straight to the element's style: a React state update per pointer
+ * move would re-render the card sixty times a second for a decoration.
+ */
+function trackSpotlight(event) {
+  const el = event.currentTarget;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty("--mx", `${event.clientX - r.left}px`);
+  el.style.setProperty("--my", `${event.clientY - r.top}px`);
 }
 
 /** Stands in while the list loads, built from the same bands so nothing jumps. */

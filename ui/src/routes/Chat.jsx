@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { HOVER_LIFT, PRESS, rise, stagger } from "../lib/motion.js";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
@@ -202,7 +205,7 @@ export default function Chat() {
               retrieved: meta.retrieved ?? [],
             }),
           onDelta: (t) =>
-            patchLast(sessionId, (m) => ({ ...m, content: m.content + t })),
+            patchLast(sessionId, (msg) => ({ ...msg, content: msg.content + t })),
           onDone: (done) => {
             setAnnouncement(
               done.warnings?.length
@@ -211,8 +214,8 @@ export default function Chat() {
                   } de syntaxe à vérifier.`
                 : "Réponse terminée. Syntaxe du chapitre respectée."
             );
-            patchLast(sessionId, (m) => ({
-              ...m,
+            patchLast(sessionId, (msg) => ({
+              ...msg,
               // "none" when there's no real Algorithme solution to have
               // checked - e.g. the model asked for the problem statement
               // instead of answering (see prompts.py). Zero violations on
@@ -220,7 +223,7 @@ export default function Chat() {
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
               // pass on content the checker never meaningfully looked at.
-              status: !hasRealAlgorithmeSolution(m.content)
+              status: !hasRealAlgorithmeSolution(msg.content)
                 ? "none"
                 : done.warnings?.length
                   ? "warned"
@@ -259,13 +262,13 @@ export default function Chat() {
           // A stream that ended without a done frame still needs to leave the
           // pending badge behind - same real-content gate as onDone, since an
           // aborted stream's partial content has no real solution either.
-          patchLast(sessionId, (m) =>
-            m.status === "streaming"
+          patchLast(sessionId, (msg) =>
+            msg.status === "streaming"
               ? {
-                  ...m,
-                  status: hasRealAlgorithmeSolution(m.content) ? "clean" : "none",
+                  ...msg,
+                  status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
                 }
-              : m
+              : msg
           );
         });
     },
@@ -330,17 +333,24 @@ export default function Chat() {
              The picker used to be pulled up under the prompt with a negative
              margin, which laid it over the prompt's second line as soon as
              the text wrapped. */
-          <div className="chat-welcome">
+          <m.div
+            className="chat-welcome"
+            variants={stagger(0.08)}
+            initial="hidden"
+            animate="show"
+          >
             {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
-            <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
-              Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-              chapitre — et te montre exactement sur quelles parties du cours il
-              s'appuie.
-            </EmptyState>
+            <m.div variants={rise}>
+              <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
+                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
+                chapitre — et te montre exactement sur quelles parties du cours il
+                s'appuie.
+              </EmptyState>
+            </m.div>
 
             {chapterList.length > 1 && (
-              <label className="chat-chapter-pick">
+              <m.label className="chat-chapter-pick" variants={rise}>
                 <span>Chapitre</span>
                 <select
                   value={currentChapter}
@@ -352,7 +362,7 @@ export default function Chat() {
                     </option>
                   ))}
                 </select>
-              </label>
+              </m.label>
             )}
 
             {suggestions.length > 0 && (
@@ -360,9 +370,21 @@ export default function Chat() {
                 <h3 id="chat-suggest-title" className="chat-suggest-title">
                   Ou commence par un exercice de la série
                 </h3>
-                <ul className="chat-suggest-list">
-                  {suggestions.map((q) => (
-                    <li key={q}>
+                {/* The suggestions arrive after the prompt (they are fetched),
+                    so they run their own stagger when they land. */}
+                <m.ul
+                  className="chat-suggest-list"
+                  variants={stagger(0.07)}
+                  initial="hidden"
+                  animate="show"
+                >
+                  {suggestions.map((q, i) => (
+                    <m.li
+                      key={q}
+                      variants={rise}
+                      whileHover={HOVER_LIFT}
+                      whileTap={PRESS}
+                    >
                       {/* Fills the box rather than sending: the student sees
                           the full énoncé in the composer and can edit it or
                           add their own attempt first. */}
@@ -374,15 +396,23 @@ export default function Chat() {
                           composerRef.current?.focus();
                         }}
                       >
+                        <span className="chat-suggest-head">
+                          <span className="chat-suggest-index" aria-hidden="true">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <span className="chat-suggest-go" aria-hidden="true">
+                            ↵
+                          </span>
+                        </span>
                         <span className="chat-suggest-name">{exerciseTitle(q)}</span>
                         <span className="chat-suggest-q">{q}</span>
                       </button>
-                    </li>
+                    </m.li>
                   ))}
-                </ul>
+                </m.ul>
               </section>
             )}
-          </div>
+          </m.div>
         ) : null}
         {messages.length === 0 ? null : (
           <>
@@ -391,9 +421,13 @@ export default function Chat() {
                 Chapitre {currentChapter} — {currentTitle}
               </p>
             )}
-            {messages.map((m) => (
-              <Message key={m.id} message={m} streaming={streaming} />
-            ))}
+            {/* Keyed by discussion with initial={false}: opening a thread shows
+                it as it is, and only messages added while watching animate. */}
+            <AnimatePresence initial={false} key={activeId}>
+              {messages.map((msg) => (
+                <Message key={msg.id} message={msg} streaming={streaming} />
+              ))}
+            </AnimatePresence>
           </>
         )}
       </div>

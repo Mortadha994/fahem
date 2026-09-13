@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { SPRING_ENTER } from "../lib/motion.js";
 
 /**
  * Fahem's differentiator: the exact curriculum text the answer was built on.
@@ -62,33 +65,47 @@ export default function GroundingStrip({ pinned = [], retrieved = [] }) {
         )}
       </button>
 
-      {open && (
-        <div className="grounding-body">
-          {pinned.length > 0 && (
-            <>
-              <p className="ground-group">
-                Syntaxe de référence — incluse dans chaque réponse
-              </p>
-              <ul className="ground-list">
-                {pinned.map((p) => renderItem(p, p.label, p.section))}
-              </ul>
-            </>
-          )}
+      {/* Opens to its height instead of appearing in one frame, so the
+          answer above is not shoved down all at once. */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <m.div
+            key="body"
+            className="grounding-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1, transition: SPRING_ENTER }}
+            exit={{ height: 0, opacity: 0, transition: { duration: 0.18 } }}
+          >
+            {pinned.length > 0 && (
+              <>
+                <p className="ground-group">
+                  Syntaxe de référence — incluse dans chaque réponse
+                </p>
+                <ul className="ground-list">
+                  {pinned.map((p) => renderItem(p, p.label, p.section))}
+                </ul>
+              </>
+            )}
 
-          {retrieved.length > 0 && (
-            <>
-              <p className="ground-group">
-                Extraits liés à ce problème — sélectionnés par recherche
-              </p>
-              <ul className="ground-list">
-                {retrieved.map((r) =>
-                  renderItem(r, r.section, `${r.type} · ${(r.score * 100).toFixed(0)}%`)
-                )}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
+            {retrieved.length > 0 && (
+              <>
+                <p className="ground-group">
+                  Extraits liés à ce problème — sélectionnés par recherche
+                </p>
+                <ul className="ground-list">
+                  {retrieved.map((r) =>
+                    renderItem(
+                      r,
+                      r.section,
+                      `${r.type} · ${(r.score * 100).toFixed(0)}%`
+                    )
+                  )}
+                </ul>
+              </>
+            )}
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

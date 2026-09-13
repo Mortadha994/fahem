@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import AppSidebar from "./AppSidebar.jsx";
 import ChatSessionsProvider from "./ChatSessionsProvider.jsx";
+import MotionProvider from "./MotionProvider.jsx";
 import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
 import Button from "./ui/Button.jsx";
 
@@ -41,46 +42,48 @@ export default function AppLayout() {
 
   return (
     <ChatSessionsProvider>
-      <div className={`shell${navOpen ? " shell-nav-open" : ""}`}>
-        {/* Narrow screens only. Nothing here duplicates the sidebar: it is a
+      <MotionProvider>
+        <div className={`shell${navOpen ? " shell-nav-open" : ""}`}>
+          {/* Narrow screens only. Nothing here duplicates the sidebar: it is a
             toggle and the brand, so there is something to tap and something
             to recognise. */}
-        <header className="mobilebar">
-          <Button
-            variant="ghost"
-            className="btn-burger"
-            aria-label="Afficher la navigation"
-            aria-expanded={navOpen}
-            aria-controls="app-nav"
-            onClick={() => setNavOpen((v) => !v)}
-          >
-            ☰
-          </Button>
-          <Link to="/" className="mobilebar-brand">
-            <span className="brand-mark" aria-hidden="true">
-              ←
-            </span>
-            Fahem
-          </Link>
-        </header>
+          <header className="mobilebar">
+            <Button
+              variant="ghost"
+              className="btn-burger"
+              aria-label="Afficher la navigation"
+              aria-expanded={navOpen}
+              aria-controls="app-nav"
+              onClick={() => setNavOpen((v) => !v)}
+            >
+              ☰
+            </Button>
+            <Link to="/" className="mobilebar-brand">
+              <span className="brand-mark" aria-hidden="true">
+                ←
+              </span>
+              Fahem
+            </Link>
+          </header>
 
-        <div
-          className={`scrim ${navOpen ? "scrim-open" : ""}`}
-          onClick={() => setNavOpen(false)}
-          aria-hidden="true"
-        />
+          <div
+            className={`scrim ${navOpen ? "scrim-open" : ""}`}
+            onClick={() => setNavOpen(false)}
+            aria-hidden="true"
+          />
 
-        <div id="app-nav" className="appnav-holder">
-          <AppSidebar onNavigate={() => setNavOpen(false)} />
-        </div>
+          <div id="app-nav" className="appnav-holder">
+            <AppSidebar onNavigate={() => setNavOpen(false)} />
+          </div>
 
-        <div className="shell-main">
-          <VerifyEmailBanner />
-          <div className="shell-body">
-            <Outlet />
+          <div className="shell-main">
+            <VerifyEmailBanner />
+            <div className="shell-body">
+              <Outlet />
+            </div>
           </div>
         </div>
-      </div>
+      </MotionProvider>
     </ChatSessionsProvider>
   );
 }

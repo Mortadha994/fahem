@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import * as m from "motion/react-m";
+import { PRESS, SPRING_ENTER, SPRING_HOVER, rise, stagger } from "../lib/motion.js";
 import { CHAPITRE } from "../config.js";
 import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
@@ -36,7 +38,7 @@ const DATE = new Intl.DateTimeFormat("fr", {
 /** The discussion to resume: the most recently touched one that has content. */
 function lastDiscussion(sessions) {
   return sessions
-    .filter((s) => s.messages?.some((m) => m.role === "user"))
+    .filter((s) => s.messages?.some((msg) => msg.role === "user"))
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
 }
 
@@ -63,28 +65,34 @@ export default function HomeWelcome() {
   };
 
   return (
-    <section className="hero" aria-labelledby="welcome-title">
+    // A child of Home's staggered column; its own copy staggers inside it, so
+    // the greeting lands a beat before the sentence and the buttons.
+    <m.section className="hero" aria-labelledby="welcome-title" variants={rise}>
       {/* Soft light, clipped to the card, so the rest of the app stays calm. */}
       <span className="hero-glow hero-glow-1" aria-hidden="true" />
       <span className="hero-glow hero-glow-2" aria-hidden="true" />
 
-      <div className="hero-copy">
-        <p className="hero-eyebrow">{DATE.format(new Date())}</p>
-        <h1 id="welcome-title" className="hero-title">
+      <m.div className="hero-copy" variants={stagger(0.06, 0.05)}>
+        <m.p className="hero-eyebrow" variants={rise}>
+          {DATE.format(new Date())}
+        </m.p>
+        <m.h1 id="welcome-title" className="hero-title" variants={rise}>
           {greeting()}
           {firstName ? `, ${firstName}` : ""}
-        </h1>
-        <p className="hero-lead">
+        </m.h1>
+        <m.p className="hero-lead" variants={rise}>
           {weekDone > 0
             ? `Tu as résolu ${weekDone} exercice${weekDone > 1 ? "s" : ""} cette semaine. Continue sur ta lancée.`
             : "Choisis un chapitre ou pose ta question : ton premier exercice de la semaine t'attend."}
-        </p>
+        </m.p>
 
-        <div className="hero-actions">
+        <m.div className="hero-actions" variants={rise}>
           {resume ? (
-            <button
+            <m.button
               type="button"
               className="btn btn-md hero-primary"
+              whileHover={{ y: -2, transition: SPRING_HOVER }}
+              whileTap={PRESS}
               onClick={() => {
                 setActiveId(resume.id);
                 navigate("/chat");
@@ -92,20 +100,27 @@ export default function HomeWelcome() {
             >
               <span className="hero-primary-label">Reprendre</span>
               <span className="hero-primary-sub">{resume.title}</span>
-            </button>
+            </m.button>
           ) : (
-            <button type="button" className="btn btn-md hero-primary" onClick={askNew}>
+            <m.button
+              type="button"
+              className="btn btn-md hero-primary"
+              whileHover={{ y: -2, transition: SPRING_HOVER }}
+              whileTap={PRESS}
+              onClick={askNew}
+            >
               <span className="hero-primary-label">Poser ma première question</span>
-            </button>
+            </m.button>
           )}
           {resume ? (
-            <button
+            <m.button
               type="button"
               className="btn btn-md btn-secondary hero-secondary"
+              whileTap={PRESS}
               onClick={askNew}
             >
               Nouvelle question
-            </button>
+            </m.button>
           ) : (
             <Link
               to={`/chapitre/${CHAPITRE}`}
@@ -114,17 +129,31 @@ export default function HomeWelcome() {
               Ouvrir le chapitre {CHAPITRE}
             </Link>
           )}
-        </div>
-      </div>
+        </m.div>
+      </m.div>
 
       {/* The course's assignment arrow, the mark the whole product is named
-          around. Pure decoration, and dropped when the card is narrow. */}
-      <div className="hero-art" aria-hidden="true">
+          around. Pure decoration, and dropped when the card is narrow. It
+          springs in after the copy and tilts toward the pointer on hover;
+          the idle float lives on the arrow inside, so the two transforms
+          never fight over one element. */}
+      <m.div
+        className="hero-art"
+        aria-hidden="true"
+        initial={{ opacity: 0, scale: 0.85, rotate: -6 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          rotate: 0,
+          transition: { ...SPRING_ENTER, bounce: 0.35, delay: 0.25 },
+        }}
+        whileHover={{ rotate: -4, scale: 1.04, transition: SPRING_HOVER }}
+      >
         <span className="hero-art-arrow">←</span>
         <code className="hero-art-code">
           x <b>←</b> x + 1
         </code>
-      </div>
-    </section>
+      </m.div>
+    </m.section>
   );
 }

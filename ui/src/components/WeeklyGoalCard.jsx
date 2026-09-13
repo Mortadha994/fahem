@@ -1,5 +1,9 @@
 import { useId, useMemo, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Button from "./ui/Button.jsx";
+import CountUp from "./CountUp.jsx";
+import { SPRING_ENTER, rise } from "../lib/motion.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import {
   WEEKLY_GOAL_RANGE,
@@ -51,9 +55,10 @@ export default function WeeklyGoalCard() {
   }
 
   return (
-    <section
+    <m.section
       className={`widget surface${remaining === 0 && !editing ? " is-reached" : ""}`}
       aria-labelledby="goal-title"
+      variants={rise}
     >
       <div className="widget-head">
         <h2 id="goal-title" className="widget-label">
@@ -70,76 +75,103 @@ export default function WeeklyGoalCard() {
         </Button>
       </div>
 
-      {editing ? (
-        <form className="goal-form" onSubmit={save}>
-          <label className="field-label" htmlFor={inputId}>
-            Exercices par semaine
-          </label>
-          <div className="goal-form-row">
-            <input
-              id={inputId}
-              className="field-input goal-input"
-              type="number"
-              inputMode="numeric"
-              min={WEEKLY_GOAL_RANGE.min}
-              max={WEEKLY_GOAL_RANGE.max}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <Button type="submit" variant="primary">
-              Enregistrer
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <>
-          <div
-            className="goal-ring"
-            role="progressbar"
-            aria-labelledby="goal-title"
-            aria-valuenow={done}
-            aria-valuemin={0}
-            aria-valuemax={goal}
-            aria-valuetext={`${done} exercice${done > 1 ? "s" : ""} sur ${goal} cette semaine`}
+      {/* The ring and the edit form cross-fade rather than swapping in one
+          frame; `initial={false}` keeps the first render still, so only a
+          switch the student makes is animated. */}
+      <AnimatePresence mode="wait" initial={false}>
+        {editing ? (
+          <m.form
+            key="form"
+            className="goal-form"
+            onSubmit={save}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0, transition: SPRING_ENTER }}
+            exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }}
           >
-            <svg viewBox="0 0 100 100" aria-hidden="true">
-              {/* Blue to violet along the arc, the brand pair. The id is made
+            <label className="field-label" htmlFor={inputId}>
+              Exercices par semaine
+            </label>
+            <div className="goal-form-row">
+              <input
+                id={inputId}
+                className="field-input goal-input"
+                type="number"
+                inputMode="numeric"
+                min={WEEKLY_GOAL_RANGE.min}
+                max={WEEKLY_GOAL_RANGE.max}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              <Button type="submit" variant="primary">
+                Enregistrer
+              </Button>
+            </div>
+          </m.form>
+        ) : (
+          <m.div
+            key="ring"
+            className="goal-view"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0, transition: SPRING_ENTER }}
+            exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }}
+          >
+            <div
+              className="goal-ring"
+              role="progressbar"
+              aria-labelledby="goal-title"
+              aria-valuenow={done}
+              aria-valuemin={0}
+              aria-valuemax={goal}
+              aria-valuetext={`${done} exercice${done > 1 ? "s" : ""} sur ${goal} cette semaine`}
+            >
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                {/* Blue to violet along the arc, the brand pair. The id is made
                   from useId without its punctuation, which url(#…) would not
                   accept. */}
-              <defs>
-                <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="var(--brand-blue)" />
-                  <stop offset="1" stopColor="var(--brand-violet)" />
-                </linearGradient>
-              </defs>
-              <circle className="goal-ring-track" cx="50" cy="50" r={RADIUS} />
-              {/* --circ lets the CSS draw the arc in from empty on mount. */}
-              <circle
-                className="goal-ring-arc"
-                cx="50"
-                cy="50"
-                r={RADIUS}
-                stroke={`url(#${gradientId})`}
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={CIRCUMFERENCE * (1 - ratio)}
-                style={{ "--circ": CIRCUMFERENCE }}
-              />
-            </svg>
-            <span className="goal-ring-center" aria-hidden="true">
-              <span className="goal-count">
-                {done}/{goal}
+                <defs>
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="var(--brand-blue)" />
+                    <stop offset="1" stopColor="var(--brand-violet)" />
+                  </linearGradient>
+                </defs>
+                <circle className="goal-ring-track" cx="50" cy="50" r={RADIUS} />
+                {/* Drawn in from empty with a spring, and springs to the new
+                  length when the count or the goal changes. */}
+                <m.circle
+                  className="goal-ring-arc"
+                  cx="50"
+                  cy="50"
+                  r={RADIUS}
+                  stroke={`url(#${gradientId})`}
+                  strokeDasharray={CIRCUMFERENCE}
+                  initial={{ strokeDashoffset: CIRCUMFERENCE }}
+                  animate={{
+                    strokeDashoffset: CIRCUMFERENCE * (1 - ratio),
+                    transition: {
+                      ...SPRING_ENTER,
+                      visualDuration: 1,
+                      bounce: 0.1,
+                      delay: 0.3,
+                    },
+                  }}
+                />
+              </svg>
+              <span className="goal-ring-center" aria-hidden="true">
+                <span className="goal-count">
+                  <CountUp value={done} delay={0.35} />/{goal}
+                </span>
+                <span className="goal-unit">exercices</span>
               </span>
-              <span className="goal-unit">exercices</span>
-            </span>
-          </div>
+            </div>
 
-          <p className="widget-note">
-            {remaining > 0
-              ? `Plus que ${remaining} exercice${remaining > 1 ? "s" : ""} pour atteindre ton objectif.`
-              : "Objectif atteint pour cette semaine."}
-          </p>
-        </>
-      )}
-    </section>
+            <p className="widget-note">
+              {remaining > 0
+                ? `Plus que ${remaining} exercice${remaining > 1 ? "s" : ""} pour atteindre ton objectif.`
+                : "Objectif atteint pour cette semaine."}
+            </p>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </m.section>
   );
 }

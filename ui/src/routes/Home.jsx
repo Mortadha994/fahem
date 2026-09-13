@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import * as m from "motion/react-m";
+import { rise, stagger } from "../lib/motion.js";
 import { fetchChapters, fetchExercises, UnauthorizedError } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
@@ -89,10 +91,20 @@ export default function Home() {
     // with no height of its own, so every row is as tall as its content.
     <main className="page page-home">
       <div className="home">
-        <div className="home-main">
+        {/* Sections rise in one after another (lib/motion.js). */}
+        <m.div
+          className="home-main"
+          variants={stagger(0.08)}
+          initial="hidden"
+          animate="show"
+        >
           <HomeWelcome />
 
-          <section className="home-section" aria-labelledby="chapters-title">
+          <m.section
+            className="home-section"
+            aria-labelledby="chapters-title"
+            variants={rise}
+          >
             <header className="section-head">
               <div>
                 <h2 id="chapters-title" className="section-title">
@@ -122,31 +134,46 @@ export default function Home() {
               </p>
             )}
 
-            <ul className="chapter-grid">
-              {/* Three placeholders because that is the catalogue today. */}
-              {chapters === null &&
-                !failed &&
-                [0, 1, 2].map((i) => <ChapterCardSkeleton key={`skeleton-${i}`} />)}
-              {(chapters ?? []).map((c, i) => (
-                <ChapterCard
-                  key={c.id}
-                  chapter={c}
-                  progress={started[c.id]}
-                  index={i}
-                />
-              ))}
-            </ul>
-          </section>
+            {/* Skeletons are a plain list; the real cards get their own
+                staggered list once the data lands, so they animate in when
+                they exist rather than while the placeholders are showing. */}
+            {chapters === null && !failed && (
+              <ul className="chapter-grid">
+                {/* Three placeholders because that is the catalogue today. */}
+                {[0, 1, 2].map((i) => (
+                  <ChapterCardSkeleton key={`skeleton-${i}`} />
+                ))}
+              </ul>
+            )}
+            {chapters && (
+              <m.ul
+                className="chapter-grid"
+                variants={stagger(0.07)}
+                initial="hidden"
+                animate="show"
+              >
+                {chapters.map((c) => (
+                  <ChapterCard key={c.id} chapter={c} progress={started[c.id]} />
+                ))}
+              </m.ul>
+            )}
+          </m.section>
 
           <RecentSessions />
-        </div>
+        </m.div>
 
         {/* Progress, derived from this browser's own chat history - see
             lib/progress.js on why that is temporary. */}
-        <aside className="home-side" aria-label="Ta progression">
+        <m.aside
+          className="home-side"
+          aria-label="Ta progression"
+          variants={stagger(0.1, 0.15)}
+          initial="hidden"
+          animate="show"
+        >
           <StreakCard />
           <WeeklyGoalCard />
-        </aside>
+        </m.aside>
       </div>
     </main>
   );

@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { ago } from "../lib/relativeTime.js";
+import * as m from "motion/react-m";
+import { rise, stagger } from "../lib/motion.js";
 
 /**
  * The last few discussions, one tap from the home screen.
@@ -29,7 +31,7 @@ export default function RecentSessions() {
   const recent = useMemo(
     () =>
       sessions
-        .filter((s) => s.messages?.some((m) => m.role === "user"))
+        .filter((s) => s.messages?.some((msg) => msg.role === "user"))
         .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
         .slice(0, LIMIT),
     [sessions]
@@ -38,7 +40,7 @@ export default function RecentSessions() {
   if (recent.length === 0) return null;
 
   return (
-    <section className="home-section" aria-labelledby="recent-title">
+    <m.section className="home-section" aria-labelledby="recent-title" variants={rise}>
       <header className="section-head">
         <h2 id="recent-title" className="section-title">
           Tes dernières discussions
@@ -47,13 +49,15 @@ export default function RecentSessions() {
       {/* One panel with dividers rather than a bordered box per row: three
           stacked outlines read as three separate things competing for
           attention, when this is one short list. */}
-      <ul className="recent-list">
-        {recent.map((s, i) => {
-          const last = [...s.messages].reverse().find((m) => m.role === "assistant");
+      <m.ul className="recent-list" variants={stagger(0.06, 0.1)}>
+        {recent.map((s) => {
+          const last = [...s.messages]
+            .reverse()
+            .find((msg) => msg.role === "assistant");
           const solved = SOLVED.has(last?.status);
           const when = s.updatedAt ? ago(s.updatedAt) : "";
           return (
-            <li key={s.id} style={{ "--i": i }}>
+            <m.li key={s.id} variants={rise}>
               <button
                 type="button"
                 className="recent-item"
@@ -78,10 +82,10 @@ export default function RecentSessions() {
                   →
                 </span>
               </button>
-            </li>
+            </m.li>
           );
         })}
-      </ul>
-    </section>
+      </m.ul>
+    </m.section>
   );
 }
