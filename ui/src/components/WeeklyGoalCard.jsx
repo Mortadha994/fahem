@@ -96,6 +96,7 @@ export default function WeeklyGoalCard() {
           <div
             className="goal-ring"
             role="progressbar"
+            aria-labelledby="goal-title"
             aria-valuenow={done}
             aria-valuemin={0}
             aria-valuemax={goal}

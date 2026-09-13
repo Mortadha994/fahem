@@ -151,14 +151,10 @@ export default function Home() {
                     <span className="chapter-progress-text">
                       {progress.done} / {progress.total} exercices commencés
                     </span>
-                    <span
-                      className="chapter-bar"
-                      role="progressbar"
-                      aria-label="Exercices commencés"
-                      aria-valuemin={0}
-                      aria-valuemax={progress.total}
-                      aria-valuenow={progress.done}
-                    >
+                    {/* Hidden from screen readers: the line above already says
+                        it in words, and a progressbar inside a link leaked its
+                        bare value into the link's name ("… commencés 0"). */}
+                    <span className="chapter-bar" aria-hidden="true">
                       <span className="chapter-bar-fill" style={{ "--ratio": ratio }} />
                     </span>
                   </span>

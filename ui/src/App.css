@@ -1681,6 +1681,16 @@ body {
 .appnav-link-on:focus-visible {
   box-shadow: var(--focus-ring);
 }
+/* The app's light --fg-dim (#6b7280) measured 4.4:1 on --side - under AA for
+   the small text it colours in the sidebar (links, scope, e-mail) and in the
+   verification reminder that shares that ground. The same one-step-darker
+   value the public pages use, light mode only: dark mode already passes. */
+@media (prefers-color-scheme: light) {
+  .appnav,
+  .verify-banner {
+    --fg-dim: #4b5563;
+  }
+}
 
 /* --- arrival ---------------------------------------------------------------- */
 
@@ -2113,6 +2123,11 @@ body {
     right: var(--space-3);
     top: var(--space-4);
     translate: none;
+  }
+  /* The arrow sits on the greeting's line up here: keep the text clear of it,
+     so a long first name never runs underneath the watermark. */
+  .welcome-title {
+    padding-right: 3.5rem;
   }
   .welcome-actions > * {
     flex: 1 1 100%;
