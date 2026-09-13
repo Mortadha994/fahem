@@ -6137,3 +6137,30 @@ h3 {
     padding: var(--space-5) var(--space-4);
   }
 }
+/* The form in the app's own colours: a solid accent button with no glow or
+   light sweep, plain fields, and a smaller tab switch. */
+.signin-simple .btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.signin-simple .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  transform: none;
+  box-shadow: none;
+}
+.signin-simple .btn-primary::after {
+  display: none;
+}
+.signin-simple .field-input {
+  background: var(--bg);
+  border-color: var(--line);
+}
+.signin-simple .field-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.signin-simple .auth-toggle .btn {
+  min-height: 2.25rem;
+  font-size: var(--text-sm);
+}
