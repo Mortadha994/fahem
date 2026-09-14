@@ -154,9 +154,11 @@ def aging_for(kind: str) -> tuple[float, int]:
     The kind tier alone let classifications jump a waiting solve for as long
     as they kept arriving - under sustained overload, no solve was ever served.
     So a solve or transcription still waiting after GROQ_QUEUE_AGING_SECONDS
-    drops to the classification tier, scored from that moment: it can no
-    longer be jumped by a classification that arrives later. Classifications
-    are already in the top tier and do not age.
+    drops to the classification tier, scored at its own arrival time: every
+    classification that arrived after it, even one still waiting from its aging
+    window, now queues behind it. The extra wait jumps can cause is bounded by
+    the aging time (plus the hold in progress). Classifications are already in
+    the top tier and do not age.
     """
     tier = KIND_TIER.get(kind, KIND_TIER[KIND_DEFAULT])
     if tier == 0:
@@ -313,11 +315,19 @@ return enqueued
 #
 # Aging runs here, in the same atomic script as the admission decision, before
 # any rank is read: a ticket past its aging deadline is re-scored to
-# (priority - drop, deadline). So an aged solve ranks exactly like a
-# classification that arrived at the solve's deadline - every classification
-# that arrived before that moment stays ahead of it, none that arrives after can
-# jump it. Every waiter runs this script each poll, so promotion is prompt, and
-# no other code writes scores, so there is nothing to race.
+# (priority - drop, its own arrival time). So an aged solve ranks exactly like a
+# classification that arrived when the solve did: classifications that arrived
+# before it stay ahead, and every classification that arrived after it - even
+# one that arrived during its aging window and is still waiting - now queues
+# behind it. Only jumps already admitted during those first seconds delayed it,
+# so the extra wait a solve suffers from jumps is bounded by the aging time
+# (plus the hold in progress), however fast classifications keep arriving.
+# Scoring at the deadline instead let every classification from the window stay
+# ahead, and under sustained overload those took 28-103s to serve.
+# The arrival is read back from the score itself (priority * SPAN + arrival), so
+# a re-enqueued ticket keeps it. Every waiter runs this script each poll, so
+# promotion is prompt, and no other code writes scores, so there is nothing to
+# race.
 _ADMIT = f"""
 {_NOW_MS}
 local ticket = ARGV[1]
@@ -335,11 +345,13 @@ local due = redis.call('ZRANGEBYSCORE', KEYS[4], '-inf', now)
 for _, member in ipairs(due) do
   local score = redis.call('ZSCORE', KEYS[1], member)
   if score then
+    score = tonumber(score)
     local drop = tonumber(redis.call('HGET', KEYS[5], member)) or 0
-    local deadline = tonumber(redis.call('ZSCORE', KEYS[4], member))
-    local priority = math.floor(tonumber(score) / {_PRIORITY_SPAN}) - drop
+    local current = math.floor(score / {_PRIORITY_SPAN})
+    local arrival = score - current * {_PRIORITY_SPAN}
+    local priority = current - drop
     if priority < 0 then priority = 0 end
-    redis.call('ZADD', KEYS[1], 'XX', priority * {_PRIORITY_SPAN} + deadline, member)
+    redis.call('ZADD', KEYS[1], 'XX', priority * {_PRIORITY_SPAN} + arrival, member)
   end
   redis.call('ZREM', KEYS[4], member)
   redis.call('HDEL', KEYS[5], member)
@@ -534,7 +546,7 @@ async def acquire(
     line" message. `kind` feeds the per-kind wait estimate.
 
     Aging: with `age_after_seconds` and `aging_drop`, a ticket still waiting
-    that long gains `aging_drop` priority levels, scored from that moment - see
+    that long gains `aging_drop` priority levels, scored at its arrival - see
     _ADMIT.
     """
     if max_concurrent < 1:

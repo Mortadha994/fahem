@@ -879,13 +879,15 @@ AGING = 1.0  # seconds; the real queue uses GROQ_QUEUE_AGING_SECONDS (20s)
 
 
 def aging_order(key: str) -> None:
-    """A solve can be jumped by classifications that arrive before its aging
-    mark, never by one arriving after it."""
+    """Once promoted, a solve ranks at its own arrival time: a classification
+    that arrived before it stays ahead, and every classification that arrived
+    after it - including one from its aging window still waiting - is behind."""
     qp = llm_queue.queue_priority
     drop = llm_queue.KIND_TIER_SPAN
     holding = threading.Event()
     release = threading.Event()
     order: list[str] = []
+    waiting_key, _active, _seen, _stats = llm_queue._keys(key)
 
     def holder():
         with llm_queue.acquire_sync(key, qp("solve", 1), 1, 20, kind="solve"):
@@ -904,29 +906,62 @@ def aging_order(key: str) -> None:
             order.append(name)
             time.sleep(0.05)
 
+    def start(target, *args) -> threading.Thread:
+        n = llm_queue.snapshot_sync(key).waiting
+        th = threading.Thread(target=target, args=args)
+        th.start()
+        _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == n + 1)
+        return th
+
     t = threading.Thread(target=holder)
     t.start()
     holding.wait(5)
-    threads = [threading.Thread(target=solve)]
-    threads[0].start()
-    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 1)
+    threads = [start(classification, "arrived before the solve")]
+    threads.append(start(solve))
     time.sleep(0.3)
-    early = threading.Thread(target=classification, args=("before the mark",))
-    early.start()
-    threads.append(early)
-    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 2)
-    time.sleep(AGING)  # the solve is now past its mark (polls promote it)
-    late = threading.Thread(target=classification, args=("after the mark",))
-    late.start()
-    threads.append(late)
-    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 3)
+    # Arrives inside the solve's aging window, and is still waiting when the
+    # solve is promoted.
+    threads.append(start(classification, "arrived during the aging window"))
+    time.sleep(AGING)  # past the solve's aging time: the next poll promotes it
+    threads.append(start(classification, "arrived after it aged"))
     release.set()
     for th in (t, *threads):
         th.join(20)
     check(
-        "aging: classification before the mark stays ahead, one after it queues behind the solve",
-        order == ["before the mark", "solve", "after the mark"],
+        "aging: a promoted solve ranks at its arrival - ahead of every later classification, "
+        "including one still waiting from its aging window",
+        order
+        == [
+            "arrived before the solve",
+            "solve",
+            "arrived during the aging window",
+            "arrived after it aged",
+        ],
         order,
+    )
+
+    # The stored score itself: promotion drops exactly one kind tier and keeps
+    # the arrival time the solve was enqueued with.
+    holding.clear()
+    release.clear()
+    t = threading.Thread(target=holder)
+    t.start()
+    holding.wait(5)
+    s = start(solve)
+    client = llm_queue._sync_client()
+    [(ticket, before)] = client.zrange(waiting_key, 0, -1, withscores=True)
+    time.sleep(AGING + 0.3)
+    after = client.zscore(waiting_key, ticket)
+    span = 10**13
+    release.set()
+    for th in (t, s):
+        th.join(20)
+    check(
+        "aging: promotion re-scores to (priority - drop) with the original arrival time",
+        after is not None
+        and int(after) // span == int(before) // span - drop
+        and int(after) % span == int(before) % span,
+        (before, after),
     )
 
     # A young solve (not yet at its mark) is still jumped, as before.
@@ -955,7 +990,9 @@ def aging_order(key: str) -> None:
 def aging_ends_starvation(key: str) -> None:
     """The sustained-overload case that used to starve solves: classifications
     arriving twice as fast as the slot serves them. With aging the solve is
-    served, and only classifications that arrived before its mark got ahead."""
+    served, and the only classifications that got ahead of it are those
+    admitted while it was young - so jumps delayed it by at most the aging time
+    plus one hold, however many classifications kept arriving."""
     qp = llm_queue.queue_priority
     drop = llm_queue.KIND_TIER_SPAN
     hold, every = 0.1, 0.05
@@ -1009,20 +1046,21 @@ def aging_ends_starvation(key: str) -> None:
 
     with lock:
         jumpers = [
-            a
+            (a, adm)
             for a, adm in admitted
             if a > solve_arrived and solve_admitted and adm < solve_admitted
         ]
-    latest_jump = max((a - solve_arrived for a in jumpers), default=0.0)
+    latest_jump_admitted = max((adm - solve_arrived for _, adm in jumpers), default=0.0)
     check(
         "overload: the solve is served despite classifications arriving 2x faster than served",
         solve_admitted is not None,
         solve_admitted,
     )
     check(
-        "overload: no classification arriving after the solve's mark got ahead of it",
-        latest_jump <= AGING + 0.15,
-        (round(latest_jump, 3), len(jumpers)),
+        "overload: every classification that jumped the solve was admitted within its aging time "
+        "(+ one hold) - none got ahead after it aged",
+        latest_jump_admitted <= AGING + hold + 0.3,
+        (round(latest_jump_admitted, 3), len(jumpers)),
     )
     # Drain what is left, so the line does not leak into the next case.
     _wait_sync(lambda: llm_queue.snapshot_sync(key, client=client).waiting == 0, timeout=20)

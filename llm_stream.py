@@ -73,8 +73,9 @@ def stream_groq(
     with llm_queue.SyncWaiter(
         llm_queue.groq_queue_key(GROQ_MODEL),
         # A solve queues behind any classification waiting, then by plan -
-        # until it has waited GROQ_QUEUE_AGING_SECONDS; after that no newly
-        # arriving classification can jump it (llm_queue.aging_for).
+        # until it has waited GROQ_QUEUE_AGING_SECONDS; after that it ranks
+        # ahead of every classification that arrived after it
+        # (llm_queue.aging_for).
         llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
         llm_queue.groq_max_concurrent(GROQ_MODEL),
         GROQ_QUEUE_TIMEOUT_SECONDS,
