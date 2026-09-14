@@ -17,7 +17,16 @@ export const BUSY_ERROR =
  */
 export async function streamSolve(
   { problem, niveau, chapitre, note, k = 5 },
-  { onMeta, onDelta, onDone, onError, onUnauthorized, onRateLimited, signal } = {}
+  {
+    onMeta,
+    onWaiting,
+    onDelta,
+    onDone,
+    onError,
+    onUnauthorized,
+    onRateLimited,
+    signal,
+  } = {}
 ) {
   let response;
   try {
@@ -101,6 +110,10 @@ export async function streamSolve(
         }
 
         if (event === "meta") onMeta?.(payload);
+        // Fahem is saturated: the request is in Groq's queue (position), or
+        // holding its slot while Groq's rate limit resets (reason
+        // "rate_limited"). Always before the first delta.
+        else if (event === "waiting") onWaiting?.(payload);
         else if (event === "delta") onDelta?.(payload.t);
         else if (event === "done") onDone?.(payload);
         else if (event === "error") {

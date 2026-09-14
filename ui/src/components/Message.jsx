@@ -116,11 +116,13 @@ export default function Message({ message, streaming, onRetry }) {
                   />
                 ))}
                 <span className="thinking-text">
-                  {status === "reading"
-                    ? message.readingKind === "pdf"
-                      ? "Lecture de ton PDF…"
-                      : "Lecture de ta photo…"
-                    : "Recherche dans le chapitre…"}
+                  {status === "waiting"
+                    ? waitingText(message.waiting)
+                    : status === "reading"
+                      ? message.readingKind === "pdf"
+                        ? "Lecture de ton PDF…"
+                        : "Lecture de ta photo…"
+                      : "Recherche dans le chapitre…"}
                 </span>
               </p>
             )
@@ -196,6 +198,24 @@ export default function Message({ message, streaming, onRetry }) {
       )}
     </m.div>
   );
+}
+
+/**
+ * The line shown while the request waits in Groq's queue. The position counts
+ * requests ahead of this one; a rate-limited wait carries Groq's own estimate.
+ */
+function waitingText(waiting) {
+  const base = "Fahem est très sollicité, ta demande est en file d'attente…";
+  if (!waiting) return base;
+  const seconds = waiting.seconds ? Math.max(1, Math.round(waiting.seconds)) : null;
+  if (waiting.reason === "rate_limited") {
+    return seconds ? `${base} reprise dans environ ${seconds} s.` : base;
+  }
+  if (waiting.position > 0) {
+    const ahead = waiting.position;
+    return `${base} ${ahead} demande${ahead > 1 ? "s" : ""} avant la tienne.`;
+  }
+  return `${base} c'est bientôt ton tour.`;
 }
 
 /** Copies the whole answer as the markdown it arrived as, and says so. */

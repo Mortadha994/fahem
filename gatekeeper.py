@@ -38,6 +38,7 @@ import re
 import urllib.error
 import urllib.request
 
+import llm_queue
 from config import (
     GATEKEEPER_MAX_INPUT_CHARS,
     GATEKEEPER_META_MAX_TOKENS,
@@ -167,12 +168,25 @@ Ta réponse doit rester courte (quelques phrases au maximum) et strictement
 dans le périmètre décrit ci-dessus."""
 
 
-def _call_groq_cheap(messages: list[dict], *, max_tokens: int, temperature: float) -> str:
+class Busy(Exception):
+    """Groq is saturated: no queue slot came in time, or its 429 outlasted the
+    retries. Not a classification - the caller answers "le service est très
+    sollicité". Still fail-closed: the message reaches no pipeline."""
+
+
+def _call_groq_cheap(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float,
+    priority: int = llm_queue.PRIORITY_FREE,
+) -> str:
     """Minimal Groq chat-completion call, capped for a short, cheap reply.
 
     30s timeout, not generate.py's 300s: a routing/scope call should fail
     fast, not hang the request waiting on a call that was never meant to be
-    expensive.
+    expensive. The wait for a slot is separate from that timeout: the call
+    shares GROQ_MODEL's queue with the solves (llm_queue.groq_call).
     """
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
@@ -194,8 +208,11 @@ def _call_groq_cheap(messages: list[dict], *, max_tokens: int, temperature: floa
             "User-Agent": "algo-rag/0.1",
         },
     )
-    with urllib.request.urlopen(request, timeout=GATEKEEPER_TIMEOUT_SECONDS) as response:
-        body = json.loads(response.read().decode("utf-8"))
+    def send() -> dict:
+        with urllib.request.urlopen(request, timeout=GATEKEEPER_TIMEOUT_SECONDS) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    body = llm_queue.groq_call(GROQ_MODEL, priority, send)
     message = body["choices"][0]["message"]
     # Reasoning models can put even a one-word answer in `reasoning` and
     # leave `content` empty - same fallback generate.py's call_groq uses.
@@ -214,7 +231,7 @@ _VALID_ROUTES = {"PROBLEM", "CODE", "QUESTION", "META", "OFF_TOPIC"}
 GROUNDED_ROUTES = frozenset({"PROBLEM", "CODE", "QUESTION"})
 
 
-def classify(message: str) -> str:
+def classify(message: str, priority: int = llm_queue.PRIORITY_FREE) -> str:
     """Classify a raw student message into PROBLEM / CODE / QUESTION / META /
     OFF_TOPIC.
 
@@ -224,14 +241,28 @@ def classify(message: str) -> str:
     network error - resolves to OFF_TOPIC, the only branch that makes zero
     further LLM calls and never reaches curriculum content or the
     meta-responder's identity disclosure.
+
+    One exception, which is not a classification at all: Groq being saturated
+    (a queue timeout, or a 429 that outlasted the retries) raises Busy. It
+    used to resolve to OFF_TOPIC, which told a student with a real exercise
+    that it was off topic. Busy is just as closed - the message goes nowhere -
+    but the student is told to retry.
     """
     messages = [
         {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
         {"role": "user", "content": f"<user_message>\n{message}\n</user_message>"},
     ]
     try:
-        raw = _call_groq_cheap(messages, max_tokens=ROUTER_MAX_TOKENS, temperature=0.0)
-    except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
+        raw = _call_groq_cheap(
+            messages, max_tokens=ROUTER_MAX_TOKENS, temperature=0.0, priority=priority
+        )
+    except llm_queue.QueueTimeout as exc:
+        raise Busy() from exc
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise Busy() from exc
+        return "OFF_TOPIC"
+    except (urllib.error.URLError, KeyError):
         return "OFF_TOPIC"
 
     first_line = raw.splitlines()[0].strip() if raw.strip() else ""
@@ -303,7 +334,12 @@ CHAPTER_1_TOPICS = (
 )
 
 
-def respond_meta(message: str, chapitre: str = "1", topics: str = CHAPTER_1_TOPICS) -> str:
+def respond_meta(
+    message: str,
+    chapitre: str = "1",
+    topics: str = CHAPTER_1_TOPICS,
+    priority: int = llm_queue.PRIORITY_FREE,
+) -> str:
     """Answer a META-classified message.
 
     The messages list built here is this call's *entire* context - no
@@ -330,8 +366,16 @@ def respond_meta(message: str, chapitre: str = "1", topics: str = CHAPTER_1_TOPI
         },
     ]
     try:
-        raw = _call_groq_cheap(messages, max_tokens=META_MAX_TOKENS, temperature=0.2)
-    except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
+        raw = _call_groq_cheap(
+            messages, max_tokens=META_MAX_TOKENS, temperature=0.2, priority=priority
+        )
+    except llm_queue.QueueTimeout as exc:
+        raise Busy() from exc
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise Busy() from exc
+        return DECLINE_MESSAGE
+    except (urllib.error.URLError, KeyError):
         return DECLINE_MESSAGE
 
     return raw if is_safe_meta_output(raw) else DECLINE_MESSAGE

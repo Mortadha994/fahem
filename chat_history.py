@@ -47,7 +47,7 @@ MAX_EXCERPTS = 40
 # Statuses that only make sense while the page that started them is open. A
 # discussion saved in one of them (a tab closed mid-answer) comes back as
 # stopped, which is what it is.
-_TRANSIENT = {"streaming", "reading", "checking"}
+_TRANSIENT = {"streaming", "reading", "checking", "waiting"}
 
 
 class MessageIn(BaseModel):

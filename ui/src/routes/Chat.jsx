@@ -326,8 +326,35 @@ export default function Chat() {
               pinned: meta.pinned ?? [],
               retrieved: meta.retrieved ?? [],
             }),
+          // In the queue: shown in place of "Recherche dans le chapitre…"
+          // until the first fragment arrives.
+          onWaiting: (waiting) => {
+            setAnnouncement(
+              "Fahem est très sollicité, ta demande est en file d'attente."
+            );
+            patchLast(sessionId, (msg) =>
+              msg.content
+                ? msg
+                : {
+                    ...msg,
+                    status: "waiting",
+                    waiting: {
+                      position: waiting.position ?? 0,
+                      seconds: waiting.seconds ?? null,
+                      reason: waiting.reason ?? "queue",
+                    },
+                  }
+            );
+          },
           onDelta: (t) =>
-            patchLast(sessionId, (msg) => ({ ...msg, content: msg.content + t })),
+            patchLast(sessionId, (msg) => {
+              const next = { ...msg, content: msg.content + t };
+              if (msg.status === "waiting") {
+                next.status = "streaming";
+                delete next.waiting;
+              }
+              return next;
+            }),
           onDone: (done) => {
             setAnnouncement(
               done.warnings?.length
@@ -384,14 +411,14 @@ export default function Chat() {
           // A stream that ended without a done frame still needs to leave the
           // pending badge behind - same real-content gate as onDone, since an
           // aborted stream's partial content has no real solution either.
-          patchLast(sessionId, (msg) =>
-            msg.status === "streaming"
-              ? {
-                  ...msg,
-                  status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
-                }
-              : msg
-          );
+          patchLast(sessionId, (msg) => {
+            if (msg.status !== "streaming" && msg.status !== "waiting") return msg;
+            const { waiting: _waiting, ...rest } = msg;
+            return {
+              ...rest,
+              status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
+            };
+          });
         });
     },
     [patchLast, setSessions, onUnauthorized]

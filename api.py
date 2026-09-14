@@ -40,6 +40,7 @@ import chapter_store
 import chapters
 import chat_history
 import gatekeeper
+import llm_queue
 import models
 import password_auth
 import ratelimit
@@ -312,7 +313,13 @@ def solve(
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
-    route = gatekeeper.classify(gate_text(payload))
+    # Queue priority from the account's plan (llm_queue.priority_for): every
+    # Groq call this request makes waits its turn at this priority.
+    priority = llm_queue.priority_for(user.plan)
+    try:
+        route = gatekeeper.classify(gate_text(payload), priority=priority)
+    except gatekeeper.Busy as exc:
+        raise HTTPException(status_code=429, detail="model backend busy") from exc
 
     if route == "OFF_TOPIC":
         return SolveResponse(
@@ -327,7 +334,12 @@ def solve(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(gate_text(payload), meta_chapitre, meta_topics)
+        try:
+            answer = gatekeeper.respond_meta(
+                gate_text(payload), meta_chapitre, meta_topics, priority=priority
+            )
+        except gatekeeper.Busy as exc:
+            raise HTTPException(status_code=429, detail="model backend busy") from exc
         return SolveResponse(
             solution=answer,
             niveau=payload.niveau,
@@ -373,7 +385,9 @@ def solve(
     )
 
     try:
-        answer = generate(messages, pick_backend(None))
+        answer = generate(messages, pick_backend(None), priority=priority)
+    except llm_queue.QueueTimeout as exc:
+        raise HTTPException(status_code=429, detail="model backend busy") from exc
     except urllib.error.HTTPError as exc:
         # 429 from the upstream token-per-minute cap is the common one; pass the
         # status through rather than reporting it as a server fault.
@@ -406,6 +420,13 @@ def solve(
 def _sse(event: str, payload: dict) -> str:
     """One Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _busy_stream():
+    """The error frame for a request Groq is too saturated to classify: the
+    same "busy" error the stream sends for Groq's own 429, so the chat shows
+    "le service est très sollicité" with its retry."""
+    yield _sse("error", {"message": "busy", "status": 429})
 
 
 def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, started: float):
@@ -494,7 +515,15 @@ def solve_stream(
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
-    route = gatekeeper.classify(gate_text(payload))
+    priority = llm_queue.priority_for(user.plan)
+    try:
+        route = gatekeeper.classify(gate_text(payload), priority=priority)
+    except gatekeeper.Busy:
+        return StreamingResponse(
+            _busy_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     if route == "OFF_TOPIC":
         return StreamingResponse(
@@ -504,7 +533,16 @@ def solve_stream(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(gate_text(payload), meta_chapitre, meta_topics)
+        try:
+            answer = gatekeeper.respond_meta(
+                gate_text(payload), meta_chapitre, meta_topics, priority=priority
+            )
+        except gatekeeper.Busy:
+            return StreamingResponse(
+                _busy_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
         return StreamingResponse(
             _gatekeeper_stream(answer, GROQ_MODEL, payload, started),
             media_type="text/event-stream",
@@ -569,9 +607,27 @@ def solve_stream(
 
         parts: list[str] = []
         try:
-            for fragment in stream_groq(messages):
+            for fragment in stream_groq(messages, priority=priority):
+                # Still waiting - for a slot, or on Groq's Retry-After inside
+                # it. Sent before any delta, so the student sees why nothing
+                # is arriving yet.
+                if isinstance(fragment, llm_queue.Waiting):
+                    yield _sse(
+                        "waiting",
+                        {
+                            "position": fragment.position,
+                            "seconds": round(fragment.estimated_seconds, 1),
+                            "reason": fragment.reason,
+                        },
+                    )
+                    continue
                 parts.append(fragment)
                 yield _sse("delta", {"t": fragment})
+        except llm_queue.QueueTimeout:
+            # Waited as long as the queue allows: the same "busy" the student
+            # already gets for Groq's own 429, with its retry.
+            yield _sse("error", {"message": "busy", "status": 429})
+            return
         except urllib.error.HTTPError as exc:
             yield _sse(
                 "error",
@@ -632,7 +688,9 @@ async def solve_extract(
     try:
         # PDF parsing, image decoding and the model call all block; off the
         # event loop so one upload does not stall every other request.
-        result = await run_in_threadpool(attachments.extract, data)
+        result = await run_in_threadpool(
+            attachments.extract, data, llm_queue.priority_for(user.plan)
+        )
     except attachments.AttachmentError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.message) from exc
     except KeyError as exc:

@@ -56,7 +56,7 @@ export function titleFrom(text) {
 /** A message still being written: saving it now would store half an answer. */
 export function isBusy(session) {
   return session.messages.some(
-    (m) => m.status === "streaming" || m.status === "reading"
+    (m) => m.status === "streaming" || m.status === "reading" || m.status === "waiting"
   );
 }
 
