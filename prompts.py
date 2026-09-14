@@ -38,6 +38,12 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    sans annotation de type — jamais `Lire variable ← type` ni aucune
    variante fusionnant lecture et déclaration, car cette forme n'existe
    dans aucun exemple du contexte.
+   Il en va de même pour les formules, partout dans ta réponse (résumé,
+   trace, explications) : n'utilise JAMAIS de LaTeX ni aucune notation
+   mathématique balisée — pas de `\\frac`, `\\times`, `\\text`, `\\cdot`, ni
+   de `$...$` ou `\\[ ... \\]`. Écris toute fraction, division ou formule en
+   arithmétique simple avec les opérateurs du cours, par exemple
+   `(a + b) / 3`, ou en toutes lettres : « la somme divisée par 3 ».
 
 2. Avant l'algorithme, présente un tableau de déclaration séparé pour
    toutes les variables utilisées, au format exact du contexte :
@@ -149,7 +155,12 @@ Règles :
    c'est l'inscrire avec son type dans le tableau de déclaration du cours
    (colonnes Objet et Nature/type) ; affecter, c'est lui donner une valeur
    avec ←. Si la question porte sur la déclaration, montre ce tableau de
-   déclaration, pas une affectation."""
+   déclaration, pas une affectation.
+6. Si ton explication contient une formule ou une division, écris-la en
+   arithmétique simple avec les opérateurs du cours, par exemple
+   `(a + b) / 2`, ou en toutes lettres (« la somme divisée par 2 »).
+   N'utilise jamais de LaTeX ni de notation balisée : pas de `\\frac`,
+   `\\times`, `\\text`, ni de `$...$` ou `\\[ ... \\]`."""
 
 QUESTION_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
@@ -199,7 +210,11 @@ Règles :
    les noms sont conservés puis les renommer). Si tu proposes de renommer
    des variables, fais-le dans « À corriger » et applique-le dans la
    version corrigée.
-7. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève."""
+7. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève.
+8. Quand tu expliques un calcul ou une formule de l'élève, écris-le en
+   arithmétique simple, comme dans son programme : `(note1 + note2) / 2`,
+   ou en toutes lettres. N'utilise jamais de LaTeX ni de notation balisée :
+   pas de `\\frac`, `\\times`, `\\text`, ni de `$...$` ou `\\[ ... \\]`."""
 
 CODE_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
