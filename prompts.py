@@ -123,7 +123,10 @@ Sinon, réponds avec :
 2. Le tableau de déclaration (Objet | Nature/type)
 3. La solution (Algorithme | Python, côte à côte)
 4. La trace d'exécution sur un exemple concret
-5. Le résultat final"""
+5. Le résultat final
+
+Partout dans la réponse, écris les calculs et les formules en arithmétique
+simple, par exemple (a + b) / 3 - jamais en LaTeX (règle 1)."""
 
 
 # --- QUESTION: a question about a notion of the course --------------------------
@@ -276,10 +279,19 @@ def build_messages(
         system_content += PROFILE_NOTE.format(profile=profile)
     user_content = user.format(context=context, query=query)
     if note:
+        # A named closing section, not a parenthetical: folded into one long
+        # aside, the request to answer the note was skipped in live runs. The
+        # explanation it asks for is also where the model reaches for LaTeX
+        # ("\[ \text{moyenne} = \frac{...} \]" in a live answer), so the
+        # plain-arithmetic rule sits in this instruction, not only in the
+        # system prompt.
         user_content += (
-            "\n\nQuestion précise de l'élève à propos de cet exercice "
-            "(réponds-y explicitement dans ton explication, ne te contente "
-            f"pas de donner la solution) :\n{note}"
+            "\n\nL'élève a aussi posé cette question à propos de l'exercice :\n"
+            f"« {note} »\n\n"
+            "À la fin de ta réponse, ajoute une section « Réponse à ta question » "
+            "qui y répond directement, en quelques phrases simples. Écris-y "
+            "toute formule en arithmétique simple, par exemple (a + 2 * b) / 3, "
+            "jamais en LaTeX."
         )
     return [
         {"role": "system", "content": system_content},
