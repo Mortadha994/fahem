@@ -57,6 +57,17 @@ ROLE_STUDENT = "student"
 ROLE_ADMIN = "admin"
 ROLES = (ROLE_STUDENT, ROLE_ADMIN)
 
+# --- plans --------------------------------------------------------------------
+#
+# The account's subscription tier. Nothing is billed yet and every account is
+# free; the column exists so the Groq queue (llm_queue.py) can already read a
+# priority from it, and a paid tier can later jump the queue without a schema
+# change. Same closed-set pattern as the role.
+
+PLAN_FREE = "free"
+PLAN_PAID = "paid"
+PLANS = (PLAN_FREE, PLAN_PAID)
+
 
 # --- student profile ------------------------------------------------------------
 #
@@ -124,6 +135,14 @@ class User(Base):
         Text, nullable=False, default=ROLE_STUDENT, server_default=ROLE_STUDENT
     )
 
+    # The subscription tier (see PLANS). Defaults to free in the database as
+    # well as here, for the same reason the role does: a row written by
+    # anything that does not know about plans must land on the unprivileged
+    # value. Read by llm_queue.priority_for; not enforced anywhere yet.
+    plan: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=PLAN_FREE, server_default=PLAN_FREE
+    )
+
     # Set when the address owner clicks Fahem's verification link, or completes
     # a password reset (which proves the same thing). Tracked, deliberately not
     # enforced anywhere. Google accounts stay false: Fahem never sent them a link,
@@ -172,6 +191,11 @@ class User(Base):
         CheckConstraint(
             "role IN ('student', 'admin')",
             name="ck_users_role",
+        ),
+        # The plan set, closed in the database like the role.
+        CheckConstraint(
+            "plan IN ('free', 'paid')",
+            name="ck_users_plan",
         ),
         CheckConstraint(
             "niveau IS NULL OR niveau IN ('2eme', '3eme', 'bac')",
