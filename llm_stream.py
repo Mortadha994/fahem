@@ -24,6 +24,7 @@ import urllib.request
 from typing import Iterator
 
 import llm_queue
+import llm_usage
 from config import GROQ_QUEUE_TIMEOUT_SECONDS
 from generate import GROQ_MODEL, GROQ_URL
 
@@ -70,48 +71,62 @@ def stream_groq(
     # disconnects and the generator is closed - releases the slot or leaves
     # the line.
     age_after_seconds, aging_drop = llm_queue.aging_for(llm_queue.KIND_SOLVE)
-    with llm_queue.SyncWaiter(
-        llm_queue.groq_queue_key(GROQ_MODEL),
-        # A solve queues behind any classification waiting, then by plan -
-        # until it has waited GROQ_QUEUE_AGING_SECONDS; after that it ranks
-        # ahead of every classification that arrived after it
-        # (llm_queue.aging_for).
-        llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
-        llm_queue.groq_max_concurrent(GROQ_MODEL),
-        GROQ_QUEUE_TIMEOUT_SECONDS,
-        kind=llm_queue.KIND_SOLVE,
-        budget=budget,
-        age_after_seconds=age_after_seconds,
-        aging_drop=aging_drop,
-    ) as waiter:
-        yield from waiter.wait()
-
-        # A 429 arrives before any byte of the stream, so retrying here never
-        # repeats text the student has already seen.
-        response = yield from llm_queue.retry_steps(
-            GROQ_MODEL,
-            lambda: urllib.request.urlopen(request, timeout=timeout),
-            budget,
+    # What this solve cost, for the admin console (llm_usage).
+    record = llm_usage.CallRecord(model=GROQ_MODEL, kind=llm_queue.KIND_SOLVE)
+    try:
+        with llm_queue.SyncWaiter(
+            llm_queue.groq_queue_key(GROQ_MODEL),
+            # A solve queues behind any classification waiting, then by plan -
+            # until it has waited GROQ_QUEUE_AGING_SECONDS; after that it ranks
+            # ahead of every classification that arrived after it
+            # (llm_queue.aging_for).
+            llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
+            llm_queue.groq_max_concurrent(GROQ_MODEL),
+            GROQ_QUEUE_TIMEOUT_SECONDS,
             kind=llm_queue.KIND_SOLVE,
-        )
+            budget=budget,
+            age_after_seconds=age_after_seconds,
+            aging_drop=aging_drop,
+        ) as waiter:
+            yield from waiter.wait()
+            record.mark_admitted()
 
-        with response:
-            for raw in response:
-                line = raw.decode("utf-8").strip()
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                choices = chunk.get("choices") or []
-                if not choices:
-                    continue
-                delta = choices[0].get("delta") or {}
-                # `reasoning` is deliberately ignored - see the module docstring.
-                fragment = delta.get("content")
-                if fragment:
-                    yield fragment
+            # A 429 arrives before any byte of the stream, so retrying here never
+            # repeats text the student has already seen.
+            response = yield from llm_queue.retry_steps(
+                GROQ_MODEL,
+                lambda: urllib.request.urlopen(request, timeout=timeout),
+                budget,
+                kind=llm_queue.KIND_SOLVE,
+                record=record,
+            )
+
+            with response:
+                for raw in response:
+                    line = raw.decode("utf-8").strip()
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    # Groq reports the usage on the last chunk, under x_groq.
+                    usage = chunk.get("usage") or (chunk.get("x_groq") or {}).get("usage")
+                    if usage:
+                        record.add_usage(usage)
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    # `reasoning` is deliberately ignored - see the module docstring.
+                    fragment = delta.get("content")
+                    if fragment:
+                        yield fragment
+    except BaseException as exc:
+        llm_usage.classify_failure(record, exc, queue_timeout=llm_queue.QueueTimeout)
+        raise
+    finally:
+        record.finish()

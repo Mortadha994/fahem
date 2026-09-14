@@ -23,7 +23,12 @@ import redis as sync_redis
 import redis.asyncio as aioredis
 
 import llm_queue
+import llm_usage
 from config import REDIS_URL
+
+# The fake models here must not show up in the admin console's monitoring;
+# recording itself is covered by test_llm_usage.py.
+llm_usage.LLM_USAGE_RECORDING = False
 
 results: list[bool] = []
 

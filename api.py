@@ -35,6 +35,7 @@ from slowapi.errors import RateLimitExceeded
 
 import admin
 import admin_chapters
+import admin_monitoring
 import attachments
 import auth
 import chapter_store
@@ -148,6 +149,9 @@ app.include_router(admin.router)
 
 # Uploaded chapters (Phase 9): upload, review, publish. Same router-level gate.
 app.include_router(admin_chapters.router)
+
+# AI monitoring: Groq load and usage, chat activity. Same router-level gate.
+app.include_router(admin_monitoring.router)
 
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.

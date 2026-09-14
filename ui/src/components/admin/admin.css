@@ -1425,3 +1425,299 @@
     flex: 1;
   }
 }
+
+/* --- Surveillance IA (AdminMonitoring.jsx) ------------------------------------------ */
+.mon-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mon-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--adm-ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--adm-ok) 50%, transparent);
+  animation: mon-pulse 2s ease-out infinite;
+}
+.mon-pulse.is-paused {
+  background: var(--adm-dim);
+  animation: none;
+}
+@keyframes mon-pulse {
+  to {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+.adm-callout.is-danger {
+  background: var(--adm-danger-bg);
+  color: var(--adm-danger);
+}
+.mon-banner {
+  margin: 0;
+}
+.mon-skeleton {
+  display: grid;
+  gap: 16px;
+}
+
+/* One card per model: the gauge, then its meters. The state colours the card. */
+.mon-models {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 16px;
+}
+.mon-model {
+  --mon-tone: var(--adm-ok);
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  border-top: 3px solid var(--mon-tone);
+}
+.mon-model.is-warm {
+  --mon-tone: var(--adm-accent);
+}
+.mon-model.is-hot {
+  --mon-tone: var(--adm-warn);
+}
+.mon-model.is-saturated {
+  --mon-tone: var(--adm-danger);
+}
+.mon-gauge-wrap {
+  position: relative;
+  flex: none;
+  width: 132px;
+  height: 132px;
+}
+.mon-gauge {
+  width: 100%;
+  height: 100%;
+}
+.mon-gauge-track,
+.mon-gauge-fill {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+.mon-gauge-track {
+  stroke: var(--adm-surface-2);
+}
+.mon-gauge-fill {
+  stroke: var(--mon-tone);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mon-tone) 45%, transparent));
+}
+.mon-gauge-core {
+  fill: color-mix(in srgb, var(--mon-tone) 7%, var(--adm-surface));
+}
+.mon-gauge-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.mon-gauge-pct {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.mon-gauge-state {
+  color: var(--mon-tone);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mon-model-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.mon-model-body header code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.mon-state-hint {
+  margin: 2px 0 0;
+  color: var(--mon-tone);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.mon-meter {
+  --mon-fill: var(--adm-brand-grad);
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.mon-meter.is-warm {
+  --mon-fill: var(--adm-accent);
+}
+.mon-meter.is-hot {
+  --mon-fill: var(--adm-warn);
+}
+.mon-meter.is-full {
+  --mon-fill: var(--adm-danger);
+}
+.mon-meter-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--adm-dim);
+}
+.mon-meter-value {
+  color: var(--adm-fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.mon-meter-track {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--adm-surface-2);
+  box-shadow: inset 0 0 0 1px var(--adm-line);
+}
+.mon-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mon-fill);
+  transform-origin: 0 50%;
+}
+.mon-meter-note {
+  font-size: 11.5px;
+}
+.adm-stat.is-warn::before {
+  background: var(--adm-warn);
+}
+.mon-kpis-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* Bar charts: plain flex bars, scaled from the bottom by Motion. */
+.mon-chart {
+  margin: 0;
+}
+.mon-bars {
+  position: relative;
+  height: 150px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding-top: 6px;
+  border-bottom: 1px solid var(--adm-line);
+}
+.mon-bar {
+  flex: 1;
+  height: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--adm-accent);
+  opacity: 0.85;
+  transform-origin: 50% 100%;
+}
+.mon-bar:hover {
+  opacity: 1;
+}
+.mon-bar.is-over {
+  background: var(--adm-danger);
+}
+.mon-limit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--adm-danger);
+  pointer-events: none;
+}
+.mon-limit span {
+  position: absolute;
+  right: 0;
+  top: -16px;
+  color: var(--adm-danger);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.mon-bars-hours {
+  gap: 4px;
+}
+.mon-stack {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.mon-stack-fill {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+  background: var(--adm-accent-2);
+  transform-origin: 50% 100%;
+}
+.mon-stack-fail {
+  display: block;
+  background: var(--adm-danger);
+}
+.mon-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--adm-dim);
+  font-size: 11.5px;
+}
+.mon-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--adm-dim);
+}
+.mon-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--adm-accent-2);
+}
+.mon-dot.is-fail {
+  margin-left: 8px;
+  background: var(--adm-danger);
+}
+.mon-table td,
+.mon-table th {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mon-failure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--adm-line);
+}
+.mon-failure:last-child {
+  border-bottom: 0;
+}
+.mon-failure-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+@media (max-width: 520px) {
+  .mon-model {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mon-gauge-wrap {
+    align-self: center;
+  }
+  .mon-head-actions,
+  .mon-live {
+    flex-wrap: wrap;
+  }
+  .mon-bars-hours {
+    gap: 2px;
+  }
+}

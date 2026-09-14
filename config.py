@@ -79,6 +79,24 @@ GROQ_RETRY_MAX = int(os.environ.get("GROQ_RETRY_MAX", "3"))
 # forever.
 GROQ_QUEUE_AGING_SECONDS = float(os.environ.get("GROQ_QUEUE_AGING_SECONDS", "20"))
 
+# --- AI monitoring (llm_usage.py, /admin/monitoring) ----------------------------
+#
+# The limits the console measures load against. Per minute: from the response
+# headers above. Per day: only a 429's body reveals it - on 2026-09-14 the
+# queue probes used gpt-oss-120b's whole 200,000 tokens per day (TPD) and every
+# student request was refused for hours, with the per-minute headers still
+# showing a full budget. That is the limit that actually ran out, so it is the
+# one the console watches first. 0 means unknown (not shown as a ratio).
+GROQ_TPM_LIMIT = int(os.environ.get("GROQ_TPM_LIMIT", "8000"))
+GROQ_TPD_LIMIT = int(os.environ.get("GROQ_TPD_LIMIT", "200000"))
+GROQ_VISION_TPM_LIMIT = int(os.environ.get("GROQ_VISION_TPM_LIMIT", "8000"))
+GROQ_VISION_TPD_LIMIT = int(os.environ.get("GROQ_VISION_TPD_LIMIT", "0"))
+# Every Groq call is recorded (tokens, latency, queue wait, 429s) unless this is
+# "0" - the queue's unit tests turn it off so fake models never reach the
+# console. Rows older than the retention are pruned when the console reads.
+LLM_USAGE_RECORDING = os.environ.get("LLM_USAGE_RECORDING", "1") != "0"
+LLM_USAGE_RETENTION_DAYS = int(os.environ.get("LLM_USAGE_RETENTION_DAYS", "7"))
+
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 

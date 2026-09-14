@@ -73,6 +73,7 @@ from typing import Any, AsyncIterator, Callable, Generator, Iterator, TypeVar
 import redis as sync_redis
 import redis.asyncio as aioredis
 
+import llm_usage
 from config import (
     GROQ_MAX_CONCURRENT,
     GROQ_QUEUE_AGING_SECONDS,
@@ -947,16 +948,20 @@ def retry_steps(
     *,
     kind: str = KIND_DEFAULT,
     sleep: Callable[[float], None] = time.sleep,
+    record: llm_usage.CallRecord | None = None,
 ) -> Generator[Waiting, None, T]:
     """Call `send`, sleeping and retrying on 429 per next_retry_delay; each
     sleep is charged to `budget` and announced as a rate_limited Waiting.
     Meant to run while a slot is held. Returns send()'s result, or raises the
-    last HTTPError once retrying is not allowed."""
+    last HTTPError once retrying is not allowed. Each 429 is counted on
+    `record`, for the console."""
     attempts = 0
     while True:
         try:
             return send()
         except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                llm_usage.note_429(record, model, exc)
             delay = next_retry_delay(exc, attempts, budget.remaining())
             if delay is None:
                 if exc.code == 429:
@@ -1011,18 +1016,31 @@ def groq_call_steps(
     retrying is not allowed."""
     budget = budget if budget is not None else WaitBudget()
     age_after_seconds, aging_drop = aging_for(kind)
-    with SyncWaiter(
-        groq_queue_key(model),
-        queue_priority(kind, priority),
-        groq_max_concurrent(model),
-        budget.total,
-        kind=kind,
-        budget=budget,
-        age_after_seconds=age_after_seconds,
-        aging_drop=aging_drop,
-    ) as waiter:
-        yield from waiter.wait()
-        return (yield from retry_steps(model, send, budget, kind=kind, sleep=sleep))
+    record = llm_usage.CallRecord(model=model, kind=kind)
+    try:
+        with SyncWaiter(
+            groq_queue_key(model),
+            queue_priority(kind, priority),
+            groq_max_concurrent(model),
+            budget.total,
+            kind=kind,
+            budget=budget,
+            age_after_seconds=age_after_seconds,
+            aging_drop=aging_drop,
+        ) as waiter:
+            yield from waiter.wait()
+            record.mark_admitted()
+            result = yield from retry_steps(
+                model, send, budget, kind=kind, sleep=sleep, record=record
+            )
+            if isinstance(result, dict):
+                record.add_usage(result.get("usage"))
+            return result
+    except BaseException as exc:
+        llm_usage.classify_failure(record, exc, queue_timeout=QueueTimeout)
+        raise
+    finally:
+        record.finish()
 
 
 def groq_call(
