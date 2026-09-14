@@ -321,10 +321,21 @@ export default function Chat() {
         },
         {
           signal: controller.signal,
+          // meta arrives once the gatekeeper has classified the message: if that
+          // classification was waiting in Groq's queue, the wait is over, so the
+          // bubble goes back to "Recherche dans le chapitre…".
           onMeta: (meta) =>
-            patchLast(sessionId, {
-              pinned: meta.pinned ?? [],
-              retrieved: meta.retrieved ?? [],
+            patchLast(sessionId, (msg) => {
+              const next = {
+                ...msg,
+                pinned: meta.pinned ?? [],
+                retrieved: meta.retrieved ?? [],
+              };
+              if (msg.status === "waiting") {
+                next.status = "streaming";
+                delete next.waiting;
+              }
+              return next;
             }),
           // In the queue: shown in place of "Recherche dans le chapitre…"
           // until the first fragment arrives.
@@ -342,6 +353,7 @@ export default function Chat() {
                       position: waiting.position ?? 0,
                       seconds: waiting.seconds ?? null,
                       reason: waiting.reason ?? "queue",
+                      kind: waiting.kind ?? null,
                     },
                   }
             );

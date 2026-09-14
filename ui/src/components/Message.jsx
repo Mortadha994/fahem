@@ -201,8 +201,11 @@ export default function Message({ message, streaming, onRetry }) {
 }
 
 /**
- * The line shown while the request waits in Groq's queue. The position counts
- * requests ahead of this one; a rate-limited wait carries Groq's own estimate.
+ * The line shown while the request waits in Groq's queue - for the
+ * gatekeeper's classification or for the solve, the same words for both. The
+ * position counts requests ahead of this one. A rate-limited wait shows
+ * Groq's own Retry-After; a queue wait never shows the queue's estimate,
+ * which is not yet trusted (llm_queue.estimate_seconds).
  */
 function waitingText(waiting) {
   const base = "Fahem est très sollicité, ta demande est en file d'attente…";

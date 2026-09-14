@@ -15,10 +15,14 @@ the backend would not start.
 Every Groq call goes through it: generate.call_groq, llm_stream.stream_groq,
 gatekeeper's classifier and meta-responder, and attachments' transcription.
 They are synchronous, so they use the synchronous twin (SyncWaiter,
-acquire_sync, groq_call) - same keys, same Lua scripts as the async
+groq_call_steps / groq_call) - same keys, same Lua scripts as the async
 `acquire`. Groq limits each model separately, so each model has its own line
 (groq_queue_key), and a slot holder that gets a 429 sleeps Groq's Retry-After
 and retries in place (next_retry_delay) before the error reaches a student.
+
+One deadline per student request (WaitBudget): the time spent in any queue
+and every 429 sleep all come out of the same GROQ_QUEUE_TIMEOUT_SECONDS, so a
+request that classifies, then solves, never waits longer than that in total.
 
 How it works - three sorted sets per key, all touched only by the Lua scripts
 below, so every decision is atomic across processes:
@@ -33,6 +37,12 @@ below, so every decision is atomic across processes:
   seen     ticket -> waiter expiry (ms). A waiter refreshes this every time it
            polls; one that stops (crash, dropped client) is purged, so a dead
            request never blocks the line.
+
+Beside them, for the wait estimate only: `kinds` (ticket -> what the request
+is: gatekeeper, solve, transcription), `starts` (ticket -> when it got its
+slot) and `stats` (a running average hold time per kind). A gatekeeper call
+holds a slot for ~0.2s and a solve for ~5-35s, so one shared average made a
+~30s wait look like 1-2s; the estimate now adds up the actual kinds ahead.
 
 Time comes from Redis (TIME inside the scripts), not from each process, so
 several backend processes agree on who arrived first and when a lease expires.
@@ -50,7 +60,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-import math
 import re
 import threading
 import time
@@ -58,8 +67,8 @@ import urllib.error
 import uuid
 import weakref
 from contextlib import asynccontextmanager, contextmanager, suppress
-from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, Iterator, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Callable, Generator, Iterator, TypeVar
 
 import redis as sync_redis
 import redis.asyncio as aioredis
@@ -79,6 +88,12 @@ T = TypeVar("T")
 PRIORITY_PAID = 0
 PRIORITY_FREE = 1
 
+# What a request is, for the per-kind wait estimate.
+KIND_GATEKEEPER = "gatekeeper"
+KIND_SOLVE = "solve"
+KIND_TRANSCRIPTION = "transcription"
+KIND_DEFAULT = "default"
+
 # A held slot whose heartbeat stops is reclaimed after this long. Longer than
 # any heartbeat gap, shorter than a student will wait for nothing.
 LEASE_SECONDS = 60.0
@@ -87,6 +102,11 @@ WAITER_TTL_SECONDS = 15.0
 POLL_SECONDS = 0.1
 # Used for the wait estimate until real hold times have been measured.
 DEFAULT_HOLD_SECONDS = 8.0
+DEFAULT_HOLD_BY_KIND = {
+    KIND_GATEKEEPER: 1.0,
+    KIND_SOLVE: 8.0,
+    KIND_TRANSCRIPTION: 2.0,
+}
 
 _KEY_PREFIX = "llmq"
 _PRIORITY_SPAN = 10**13
@@ -100,7 +120,7 @@ def priority_for(plan: str | None) -> int:
 
 
 class QueueTimeout(Exception):
-    """Waited longer than `timeout` without getting a slot. The caller turns
+    """Waited longer than allowed without getting a slot. The caller turns
     this into the "le service est très sollicité" message."""
 
     def __init__(self, key: str, waited: float, position: int | None):
@@ -108,6 +128,28 @@ class QueueTimeout(Exception):
         self.key = key
         self.waited = waited
         self.position = position
+
+
+class WaitBudget:
+    """How long one student request may spend waiting, in total.
+
+    Shared by every Groq call the request makes (the classifier, then the
+    solve) and charged for both kinds of wait: time in a queue, and every
+    sleep on a 429. The Groq calls themselves - generating an answer - are not
+    waiting and are not charged. Once it is spent, the next queue wait times
+    out at once and no 429 is retried, so the student gets the busy error
+    within GROQ_QUEUE_TIMEOUT_SECONDS rather than twice that.
+    """
+
+    def __init__(self, total: float | None = None):
+        self.total = GROQ_QUEUE_TIMEOUT_SECONDS if total is None else total
+        self.spent = 0.0
+
+    def remaining(self) -> float:
+        return max(0.0, self.total - self.spent)
+
+    def charge(self, seconds: float) -> None:
+        self.spent += max(0.0, seconds)
 
 
 @dataclass
@@ -123,12 +165,39 @@ class Slot:
 class Snapshot:
     waiting: int
     active: int
-    avg_hold_seconds: float
+    # Measured average hold per kind; a kind not yet measured is absent.
+    avg_hold: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class Waiting:
+    """Yielded while a request cannot proceed yet.
+
+    `reason` is "queue" (another request holds the slot; `position` is the
+    0-based place in line) or "rate_limited" (this request holds the slot but
+    Groq answered 429; `estimated_seconds` is Groq's Retry-After). `kind` is
+    what is waiting: the gatekeeper's classification, the solve, a
+    transcription."""
+
+    position: int
+    estimated_seconds: float
+    reason: str = "queue"
+    kind: str = KIND_DEFAULT
 
 
 def _keys(key: str) -> tuple[str, str, str, str]:
     base = f"{_KEY_PREFIX}:{key}"
     return f"{base}:waiting", f"{base}:active", f"{base}:seen", f"{base}:stats"
+
+
+def _meta_keys(key: str) -> tuple[str, str]:
+    base = f"{_KEY_PREFIX}:{key}"
+    return f"{base}:kinds", f"{base}:starts"
+
+
+def all_keys(key: str) -> tuple[str, ...]:
+    """Every Redis key a queue uses - for tests and cleanup."""
+    return (*_keys(key), *_meta_keys(key))
 
 
 _NOW_MS = "local t = redis.call('TIME') local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)"
@@ -180,6 +249,53 @@ _RENEW = f"""
 return redis.call('ZADD', KEYS[1], 'XX', now + tonumber(ARGV[2]), ARGV[1])
 """
 
+
+# --- wait estimate (shared by the async and sync paths) ------------------------------
+
+
+def _avg_hold(avgs: dict[str, float], kind: str) -> float:
+    measured = avgs.get(kind)
+    if measured is not None:
+        return measured
+    return DEFAULT_HOLD_BY_KIND.get(kind, DEFAULT_HOLD_SECONDS)
+
+
+def estimate_seconds(
+    ahead_kinds: list[str],
+    active: list[tuple[str, float]],
+    avgs: dict[str, float],
+    max_concurrent: int,
+) -> float:
+    """Seconds until a waiter gets a slot: what is left of each current
+    holder's average hold (for its own kind), plus a full average hold for
+    each request ahead (for its own kind), spread over the slots. Exact in
+    expectation for one slot, which is what Groq's budget allows today."""
+    left_active = sum(max(0.0, _avg_hold(avgs, kind) - elapsed) for kind, elapsed in active)
+    ahead = sum(_avg_hold(avgs, kind) for kind in ahead_kinds)
+    return max(0.5, (left_active + ahead) / max(1, max_concurrent))
+
+
+def _parse_avgs(stats: dict[str, str]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for name, value in (stats or {}).items():
+        if name.startswith("avg_hold:"):
+            with suppress(ValueError):
+                out[name[len("avg_hold:") :]] = float(value)
+    return out
+
+
+def _new_average(previous: str | None, held: float) -> str:
+    average = held if previous is None else 0.8 * float(previous) + 0.2 * held
+    return f"{average:.3f}"
+
+
+def _now_ms_from(redis_time: tuple[int, int] | list[int]) -> int:
+    seconds, micros = redis_time
+    return int(seconds) * 1000 + int(micros) // 1000
+
+
+# --- async ---------------------------------------------------------------------------
+
 _clients: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, aioredis.Redis]" = (
     weakref.WeakKeyDictionary()
 )
@@ -205,36 +321,54 @@ async def snapshot(key: str, *, client: aioredis.Redis | None = None) -> Snapsho
     """How busy a queue is right now."""
     r = client or _client()
     waiting, active, _seen, stats = _keys(key)
-    n_waiting, n_active, avg = await asyncio.gather(
-        r.zcard(waiting), r.zcard(active), r.hget(stats, "avg_hold")
+    n_waiting, n_active, raw_stats = await asyncio.gather(
+        r.zcard(waiting), r.zcard(active), r.hgetall(stats)
     )
-    return Snapshot(int(n_waiting), int(n_active), float(avg) if avg else DEFAULT_HOLD_SECONDS)
+    return Snapshot(int(n_waiting), int(n_active), _parse_avgs(raw_stats))
 
 
 async def estimated_wait(
     key: str, position: int, max_concurrent: int, *, client: aioredis.Redis | None = None
 ) -> float:
-    """Rough seconds until a waiter at `position` (0-based) gets a slot: each
-    batch of `max_concurrent` ahead of it takes about one average hold."""
-    snap = await snapshot(key, client=client)
-    return snap.avg_hold_seconds * math.ceil((position + 1) / max(1, max_concurrent))
+    """Rough seconds until a waiter at `position` (0-based) gets a slot."""
+    r = client or _client()
+    waiting, active, _seen, stats = _keys(key)
+    kinds, starts = _meta_keys(key)
+    ahead = await r.zrange(waiting, 0, position - 1) if position > 0 else []
+    holders = await r.zrange(active, 0, -1)
+    tickets = [*ahead, *holders]
+    kind_values = await r.hmget(kinds, tickets) if tickets else []
+    start_values = await r.hmget(starts, holders) if holders else []
+    raw_stats, redis_time = await asyncio.gather(r.hgetall(stats), r.time())
+    now_ms = _now_ms_from(redis_time)
+    ahead_kinds = [k or KIND_DEFAULT for k in kind_values[: len(ahead)]]
+    holder_kinds = [k or KIND_DEFAULT for k in kind_values[len(ahead) :]]
+    elapsed = [max(0.0, (now_ms - int(s)) / 1000) if s else 0.0 for s in start_values]
+    return estimate_seconds(
+        ahead_kinds, list(zip(holder_kinds, elapsed)), _parse_avgs(raw_stats), max_concurrent
+    )
 
 
 async def _discard(r: aioredis.Redis, key: str, ticket: str) -> None:
     waiting, active, seen, _stats = _keys(key)
+    kinds, starts = _meta_keys(key)
     async with r.pipeline(transaction=True) as pipe:
         pipe.zrem(waiting, ticket).zrem(seen, ticket).zrem(active, ticket)
+        pipe.hdel(kinds, ticket).hdel(starts, ticket)
         await pipe.execute()
 
 
-async def _release(r: aioredis.Redis, key: str, ticket: str, held: float) -> None:
+async def _release(r: aioredis.Redis, key: str, ticket: str, kind: str, held: float) -> None:
     waiting, active, _seen, stats = _keys(key)
+    kinds, starts = _meta_keys(key)
     await r.zrem(active, ticket)
-    # A running average of hold times, for the wait estimate. Stats only, so a
-    # lost update between two processes is harmless.
-    previous = await r.hget(stats, "avg_hold")
-    average = held if previous is None else 0.8 * float(previous) + 0.2 * held
-    await r.hset(stats, "avg_hold", f"{average:.3f}")
+    await r.hdel(kinds, ticket)
+    await r.hdel(starts, ticket)
+    # A running average of hold times per kind, for the wait estimate. Stats
+    # only, so a lost update between two processes is harmless.
+    field_name = f"avg_hold:{kind}"
+    previous = await r.hget(stats, field_name)
+    await r.hset(stats, field_name, _new_average(previous, held))
     await r.pexpire(stats, _KEY_TTL_MS)
 
 
@@ -253,6 +387,7 @@ async def acquire(
     max_concurrent: int,
     timeout: float,
     *,
+    kind: str = KIND_DEFAULT,
     on_wait: Callable[[int, float], Any] | None = None,
     lease_seconds: float = LEASE_SECONDS,
     waiter_ttl_seconds: float = WAITER_TTL_SECONDS,
@@ -261,7 +396,7 @@ async def acquire(
 ) -> AsyncIterator[Slot]:
     """Wait for a slot on `key`, hold it for the `async with` block, release it.
 
-        async with llm_queue.acquire("groq", priority, max_concurrent=4, timeout=60):
+        async with llm_queue.acquire("groq:model", priority, max_concurrent=4, timeout=60):
             ...call Groq...
 
     Admitted when fewer than `max_concurrent` requests hold a slot and no
@@ -273,13 +408,14 @@ async def acquire(
 
     `on_wait(position, estimated_seconds)` - sync or async - is called each
     time the 0-based position changes while waiting, for a "you are Nth in
-    line" message.
+    line" message. `kind` feeds the per-kind wait estimate.
     """
     if max_concurrent < 1:
         raise ValueError("max_concurrent must be at least 1")
     r = client or _client()
     loop = asyncio.get_running_loop()
     waiting, active, seen, _stats = _keys(key)
+    kinds, starts = _meta_keys(key)
     enqueue = r.register_script(_ENQUEUE)
     admit = r.register_script(_ADMIT)
     ticket = uuid.uuid4().hex
@@ -291,6 +427,8 @@ async def acquire(
         enqueued_ms = await enqueue(
             keys=[waiting, seen], args=[ticket, priority, waiter_ttl_ms, _KEY_TTL_MS]
         )
+        await r.hset(kinds, ticket, kind)
+        await r.pexpire(kinds, _KEY_TTL_MS)
         last_position: int | None = None
         while True:
             result = int(
@@ -324,6 +462,8 @@ async def acquire(
                 eta = await estimated_wait(key, result, max_concurrent, client=r)
                 await _call(on_wait(result, eta))
             await asyncio.sleep(poll_seconds)
+        await r.hset(starts, ticket, _now_ms_from(await r.time()))
+        await r.pexpire(starts, _KEY_TTL_MS)
     except BaseException:
         if not admitted:
             # Also clears `active`: a cancellation can land after the script
@@ -341,7 +481,7 @@ async def acquire(
         # own exception; the release below still runs.
         with suppress(asyncio.CancelledError, Exception):
             await heartbeat
-        await asyncio.shield(_release(r, key, ticket, loop.time() - held_from))
+        await asyncio.shield(_release(r, key, ticket, kind, loop.time() - held_from))
 
 
 # --- synchronous twin ------------------------------------------------------------
@@ -350,20 +490,6 @@ async def acquire(
 # stream that FastAPI runs in a worker thread), so they need the same queue
 # without an event loop. Same keys, same Lua scripts: a sync waiter and an
 # async one share one line and one set of slots.
-
-
-@dataclass
-class Waiting:
-    """Yielded while a request cannot proceed yet.
-
-    `reason` is "queue" (another request holds the slot; `position` is the
-    0-based place in line) or "rate_limited" (this request holds the slot but
-    Groq answered 429; `estimated_seconds` is Groq's Retry-After)."""
-
-    position: int
-    estimated_seconds: float
-    reason: str = "queue"
-
 
 _sync_clients: dict[str, Any] = {}
 _sync_lock = threading.Lock()
@@ -384,10 +510,27 @@ def snapshot_sync(key: str, *, client=None) -> Snapshot:
     r = client or _sync_client()
     waiting, active, _seen, stats = _keys(key)
     with r.pipeline(transaction=False) as pipe:
-        n_waiting, n_active, avg = (
-            pipe.zcard(waiting).zcard(active).hget(stats, "avg_hold").execute()
-        )
-    return Snapshot(int(n_waiting), int(n_active), float(avg) if avg else DEFAULT_HOLD_SECONDS)
+        n_waiting, n_active, raw_stats = pipe.zcard(waiting).zcard(active).hgetall(stats).execute()
+    return Snapshot(int(n_waiting), int(n_active), _parse_avgs(raw_stats))
+
+
+def estimated_wait_sync(key: str, position: int, max_concurrent: int, *, client=None) -> float:
+    """`estimated_wait` for synchronous code."""
+    r = client or _sync_client()
+    waiting, active, _seen, stats = _keys(key)
+    kinds, starts = _meta_keys(key)
+    ahead = r.zrange(waiting, 0, position - 1) if position > 0 else []
+    holders = r.zrange(active, 0, -1)
+    tickets = [*ahead, *holders]
+    kind_values = r.hmget(kinds, tickets) if tickets else []
+    start_values = r.hmget(starts, holders) if holders else []
+    now_ms = _now_ms_from(r.time())
+    ahead_kinds = [k or KIND_DEFAULT for k in kind_values[: len(ahead)]]
+    holder_kinds = [k or KIND_DEFAULT for k in kind_values[len(ahead) :]]
+    elapsed = [max(0.0, (now_ms - int(s)) / 1000) if s else 0.0 for s in start_values]
+    return estimate_seconds(
+        ahead_kinds, list(zip(holder_kinds, elapsed)), _parse_avgs(r.hgetall(stats)), max_concurrent
+    )
 
 
 class SyncWaiter:
@@ -399,11 +542,13 @@ class SyncWaiter:
                 ...                          # e.g. forward it as an SSE event
             ...call Groq...                  # the slot is held here
 
-    `wait()` returns once admitted and raises QueueTimeout past `timeout`.
-    Leaving the `with` block releases the slot, or leaves the line if never
-    admitted - on success, exception, or a generator closed early (a student
-    who closes the page while waiting). A heartbeat thread renews the lease
-    while the slot is held, including while sleeping on a 429.
+    `wait()` returns once admitted and raises QueueTimeout past the timeout -
+    or past what is left of `budget`, if one is given, which is then charged
+    for the time spent in line. Leaving the `with` block releases the slot,
+    or leaves the line if never admitted - on success, exception, or a
+    generator closed early (a student who closes the page while waiting). A
+    heartbeat thread renews the lease while the slot is held, including while
+    sleeping on a 429.
     """
 
     def __init__(
@@ -413,6 +558,8 @@ class SyncWaiter:
         max_concurrent: int,
         timeout: float,
         *,
+        kind: str = KIND_DEFAULT,
+        budget: WaitBudget | None = None,
         lease_seconds: float = LEASE_SECONDS,
         waiter_ttl_seconds: float = WAITER_TTL_SECONDS,
         poll_seconds: float = POLL_SECONDS,
@@ -424,6 +571,8 @@ class SyncWaiter:
         self.priority = priority
         self.max_concurrent = max_concurrent
         self.timeout = timeout
+        self.kind = kind
+        self.budget = budget
         self.lease_seconds = lease_seconds
         self.waiter_ttl_ms = int(waiter_ttl_seconds * 1000)
         self.poll_seconds = poll_seconds
@@ -443,47 +592,64 @@ class SyncWaiter:
 
     def wait(self) -> Iterator[Waiting]:
         waiting, active, seen, _stats = _keys(self.key)
+        kinds, starts = _meta_keys(self.key)
         enqueue = self.r.register_script(_ENQUEUE)
         admit = self.r.register_script(_ADMIT)
+        limit = self.timeout if self.budget is None else min(self.timeout, self.budget.remaining())
         started = time.monotonic()
         enqueued_ms = enqueue(
             keys=[waiting, seen],
             args=[self.ticket, self.priority, self.waiter_ttl_ms, _KEY_TTL_MS],
         )
         self._queued = True
+        self.r.hset(kinds, self.ticket, self.kind)
+        self.r.pexpire(kinds, _KEY_TTL_MS)
         last_position: int | None = None
-        while True:
-            result = int(
-                admit(
-                    keys=[waiting, active, seen],
-                    args=[
-                        self.ticket,
-                        self.max_concurrent,
-                        int(self.lease_seconds * 1000),
-                        self.waiter_ttl_ms,
-                        _KEY_TTL_MS,
-                    ],
+        try:
+            while True:
+                result = int(
+                    admit(
+                        keys=[waiting, active, seen],
+                        args=[
+                            self.ticket,
+                            self.max_concurrent,
+                            int(self.lease_seconds * 1000),
+                            self.waiter_ttl_ms,
+                            _KEY_TTL_MS,
+                        ],
+                    )
                 )
-            )
-            if result == -1:
-                break
-            if result == -2:
-                enqueue(
-                    keys=[waiting, seen],
-                    args=[self.ticket, self.priority, self.waiter_ttl_ms, _KEY_TTL_MS, enqueued_ms],
-                )
-                continue
-            waited = time.monotonic() - started
-            if waited >= self.timeout:
-                raise QueueTimeout(self.key, waited, result)
-            if result != last_position:
-                last_position = result
-                snap = snapshot_sync(self.key, client=self.r)
-                eta = snap.avg_hold_seconds * math.ceil((result + 1) / self.max_concurrent)
-                yield Waiting(position=result, estimated_seconds=eta)
-            time.sleep(self.poll_seconds)
+                if result == -1:
+                    break
+                if result == -2:
+                    enqueue(
+                        keys=[waiting, seen],
+                        args=[
+                            self.ticket,
+                            self.priority,
+                            self.waiter_ttl_ms,
+                            _KEY_TTL_MS,
+                            enqueued_ms,
+                        ],
+                    )
+                    continue
+                waited = time.monotonic() - started
+                if waited >= limit:
+                    raise QueueTimeout(self.key, waited, result)
+                if result != last_position:
+                    last_position = result
+                    eta = estimated_wait_sync(self.key, result, self.max_concurrent, client=self.r)
+                    yield Waiting(
+                        position=result, estimated_seconds=eta, reason="queue", kind=self.kind
+                    )
+                time.sleep(self.poll_seconds)
+        finally:
+            if self.budget is not None:
+                self.budget.charge(time.monotonic() - started)
 
         self._held_from = time.monotonic()
+        self.r.hset(starts, self.ticket, _now_ms_from(self.r.time()))
+        self.r.pexpire(starts, _KEY_TTL_MS)
         self.slot = Slot(key=self.key, ticket=self.ticket, waited=self._held_from - started)
         self._heartbeat = threading.Thread(target=self._renew, name="llm-queue-lease", daemon=True)
         self._heartbeat.start()
@@ -497,15 +663,17 @@ class SyncWaiter:
 
     def close(self) -> None:
         waiting, active, seen, stats = _keys(self.key)
+        kinds, starts = _meta_keys(self.key)
         if self.slot is not None:
             self._stop.set()
             if self._heartbeat is not None:
                 self._heartbeat.join(timeout=2)
             held = time.monotonic() - self._held_from
+            field_name = f"avg_hold:{self.kind}"
             self.r.zrem(active, self.ticket)
-            previous = self.r.hget(stats, "avg_hold")
-            average = held if previous is None else 0.8 * float(previous) + 0.2 * held
-            self.r.hset(stats, "avg_hold", f"{average:.3f}")
+            self.r.hdel(kinds, self.ticket)
+            self.r.hdel(starts, self.ticket)
+            self.r.hset(stats, field_name, _new_average(self.r.hget(stats, field_name), held))
             self.r.pexpire(stats, _KEY_TTL_MS)
             self.slot = None
         elif self._queued:
@@ -513,6 +681,7 @@ class SyncWaiter:
             # an exception reached us.
             with self.r.pipeline(transaction=True) as pipe:
                 pipe.zrem(waiting, self.ticket).zrem(seen, self.ticket).zrem(active, self.ticket)
+                pipe.hdel(kinds, self.ticket).hdel(starts, self.ticket)
                 pipe.execute()
         self._queued = False
 
@@ -534,6 +703,16 @@ def acquire_sync(
                 on_wait(waiting.position, waiting.estimated_seconds)
         assert waiter.slot is not None
         yield waiter.slot
+
+
+def drain(steps: Generator[Waiting, None, T]) -> T:
+    """Run a step generator to its end, ignoring its Waiting markers, and
+    return its result - for callers with nowhere to report progress."""
+    while True:
+        try:
+            next(steps)
+        except StopIteration as stop:
+            return stop.value
 
 
 # --- Groq: one queue per model, 429 backoff inside the slot -------------------------
@@ -582,28 +761,88 @@ def retry_after_seconds(headers) -> float:
 def next_retry_delay(
     exc: Exception,
     attempts: int,
-    waited: float,
+    remaining: float,
     *,
     max_retries: int | None = None,
-    budget: float | None = None,
 ) -> float | None:
     """The retry policy, in one place: seconds to sleep before trying the same
     Groq call again, or None to give up and let the error through.
 
-    Only a 429 is retried; at most `max_retries` times; and never if the
-    total sleep would pass `budget` (the queue timeout) - a student is not
-    kept waiting longer than the queue itself would allow.
+    Only a 429 is retried; at most `max_retries` times; and only if Groq's
+    Retry-After fits in what is `remaining` of the request's WaitBudget. A
+    wait that does not fit fails at once rather than sleeping part of it and
+    failing anyway: the student hears "busy" as early as it is certain.
     """
     max_retries = GROQ_RETRY_MAX if max_retries is None else max_retries
-    budget = GROQ_QUEUE_TIMEOUT_SECONDS if budget is None else budget
     if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
         return None
     if attempts >= max_retries:
         return None
     delay = retry_after_seconds(exc.headers)
-    if waited + delay > budget:
+    if delay > remaining:
         return None
     return delay
+
+
+def retry_steps(
+    model: str,
+    send: Callable[[], T],
+    budget: WaitBudget,
+    *,
+    kind: str = KIND_DEFAULT,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Generator[Waiting, None, T]:
+    """Call `send`, sleeping and retrying on 429 per next_retry_delay; each
+    sleep is charged to `budget` and announced as a rate_limited Waiting.
+    Meant to run while a slot is held. Returns send()'s result, or raises the
+    last HTTPError once retrying is not allowed."""
+    attempts = 0
+    while True:
+        try:
+            return send()
+        except urllib.error.HTTPError as exc:
+            delay = next_retry_delay(exc, attempts, budget.remaining())
+            if delay is None:
+                raise
+            log.warning(
+                "groq 429 on %s (%s): retry %d/%d in %.1fs (holding the slot, %.0fs of wait left)",
+                model,
+                kind,
+                attempts + 1,
+                GROQ_RETRY_MAX,
+                delay,
+                budget.remaining(),
+            )
+            yield Waiting(position=0, estimated_seconds=delay, reason="rate_limited", kind=kind)
+            sleep(delay)
+            budget.charge(delay)
+            attempts += 1
+
+
+def groq_call_steps(
+    model: str,
+    priority: int,
+    send: Callable[[], T],
+    *,
+    kind: str = KIND_DEFAULT,
+    budget: WaitBudget | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Generator[Waiting, None, T]:
+    """One Groq request through its model's queue, as steps: yields Waiting
+    while in line or backing off on a 429, returns the response. Raises
+    QueueTimeout if no slot came within the budget, or the last HTTPError once
+    retrying is not allowed."""
+    budget = budget if budget is not None else WaitBudget()
+    with SyncWaiter(
+        groq_queue_key(model),
+        priority,
+        groq_max_concurrent(model),
+        budget.total,
+        kind=kind,
+        budget=budget,
+    ) as waiter:
+        yield from waiter.wait()
+        return (yield from retry_steps(model, send, budget, kind=kind, sleep=sleep))
 
 
 def groq_call(
@@ -611,29 +850,9 @@ def groq_call(
     priority: int,
     send: Callable[[], T],
     *,
+    kind: str = KIND_DEFAULT,
+    budget: WaitBudget | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> T:
-    """Run one Groq request through its model's queue, retrying a 429 inside
-    the held slot per next_retry_delay. Raises QueueTimeout if no slot came in
-    time, or the last HTTPError once retrying is not allowed."""
-    key = groq_queue_key(model)
-    with acquire_sync(key, priority, groq_max_concurrent(model), GROQ_QUEUE_TIMEOUT_SECONDS):
-        attempts = 0
-        waited = 0.0
-        while True:
-            try:
-                return send()
-            except urllib.error.HTTPError as exc:
-                delay = next_retry_delay(exc, attempts, waited)
-                if delay is None:
-                    raise
-                log.warning(
-                    "groq 429 on %s: retry %d/%d in %.1fs (holding the slot)",
-                    model,
-                    attempts + 1,
-                    GROQ_RETRY_MAX,
-                    delay,
-                )
-                sleep(delay)
-                waited += delay
-                attempts += 1
+    """`groq_call_steps` for callers with nowhere to report waiting."""
+    return drain(groq_call_steps(model, priority, send, kind=kind, budget=budget, sleep=sleep))

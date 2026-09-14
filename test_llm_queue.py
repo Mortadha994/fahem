@@ -49,7 +49,7 @@ async def waiting_count(r, key: str) -> int:
 
 
 async def cleanup(r, key: str) -> None:
-    await r.delete(*llm_queue._keys(key))
+    await r.delete(*llm_queue.all_keys(key))
 
 
 # --- cases ----------------------------------------------------------------------
@@ -504,36 +504,36 @@ def retry_policy() -> None:
     policy = llm_queue.next_retry_delay
     check(
         "429: Retry-After is used",
-        policy(_http_429(retry_after="7"), 0, 0, max_retries=3, budget=120) == 7.0,
+        policy(_http_429(retry_after="7"), 0, 120, max_retries=3) == 7.0,
     )
     check(
         "429: without Retry-After, the token reset is parsed (1m26.4s)",
-        policy(_http_429(x_ratelimit_reset_tokens="1m26.4s"), 0, 0, max_retries=3, budget=120)
-        == 86.4,
+        policy(_http_429(x_ratelimit_reset_tokens="1m26.4s"), 0, 120, max_retries=3) == 86.4,
     )
     check(
         "429: a millisecond reset is parsed (547ms -> 0.547s)",
-        policy(_http_429(x_ratelimit_reset_tokens="547ms"), 0, 0, max_retries=3, budget=120) == 0.547,
+        policy(_http_429(x_ratelimit_reset_tokens="547ms"), 0, 120, max_retries=3) == 0.547,
     )
     check(
         "429: a very short reset is floored to 0.5s (120ms)",
-        policy(_http_429(x_ratelimit_reset_tokens="120ms"), 0, 0, max_retries=3, budget=120) == 0.5,
+        policy(_http_429(x_ratelimit_reset_tokens="120ms"), 0, 120, max_retries=3) == 0.5,
     )
     check(
         "429: gives up after max_retries",
-        policy(_http_429(retry_after="1"), 3, 3, max_retries=3, budget=120) is None,
+        policy(_http_429(retry_after="1"), 3, 120, max_retries=3) is None,
     )
     check(
-        "429: gives up when the total wait would pass the queue timeout",
-        policy(_http_429(retry_after="30"), 1, 100, max_retries=3, budget=120) is None,
+        "429: a Retry-After longer than the remaining budget fails at once (30s > 20s left)",
+        policy(_http_429(retry_after="30"), 1, 20, max_retries=3) is None,
+    )
+    check(
+        "429: a Retry-After that fits the remaining budget is slept (20s <= 20s left)",
+        policy(_http_429(retry_after="20"), 1, 20, max_retries=3) == 20.0,
     )
     other = urllib.error.HTTPError(
         "https://api.groq.com", 500, "boom", email.message.Message(), None
     )
-    check(
-        "429: other errors are never retried",
-        policy(other, 0, 0, max_retries=3, budget=120) is None,
-    )
+    check("429: other errors are never retried", policy(other, 0, 120, max_retries=3) is None)
 
 
 def groq_call_retries_in_slot() -> None:
@@ -556,7 +556,8 @@ def groq_call_retries_in_slot() -> None:
         return {"ok": True}
 
     try:
-        result = llm_queue.groq_call(model, 1, flaky, sleep=fake_sleep)
+        budget = llm_queue.WaitBudget(120)
+        result = llm_queue.groq_call(model, 1, flaky, sleep=fake_sleep, budget=budget)
         check(
             "groq_call: succeeds after two 429s", result == {"ok": True} and calls["n"] == 3, calls
         )
@@ -565,6 +566,11 @@ def groq_call_retries_in_slot() -> None:
             "groq_call: the slot stays held while sleeping",
             active_during_sleep == [1, 1],
             active_during_sleep,
+        )
+        check(
+            "groq_call: both sleeps are charged to the request's budget",
+            4.0 <= budget.spent < 4.5,
+            round(budget.spent, 3),
         )
 
         slept.clear()
@@ -585,8 +591,185 @@ def groq_call_retries_in_slot() -> None:
         check(
             "groq_call: the slot is released afterwards", llm_queue.snapshot_sync(key).active == 0
         )
+
+        steps = llm_queue.groq_call_steps(
+            model, 1, flaky_once(), kind=llm_queue.KIND_SOLVE, sleep=lambda s: None
+        )
+        seen = []
+        try:
+            while True:
+                seen.append(next(steps))
+        except StopIteration as stop:
+            value = stop.value
+        check(
+            "groq_call_steps: a 429 is announced as a rate_limited Waiting of its kind",
+            value == "answer"
+            and [(w.reason, w.kind, w.estimated_seconds) for w in seen]
+            == [("rate_limited", "solve", 3.0)],
+            seen,
+        )
     finally:
-        llm_queue._sync_client().delete(*llm_queue._keys(key))
+        llm_queue._sync_client().delete(*llm_queue.all_keys(key))
+
+
+def flaky_once():
+    state = {"n": 0}
+
+    def send():
+        state["n"] += 1
+        if state["n"] == 1:
+            raise _http_429(retry_after="3")
+        return "answer"
+
+    return send
+
+
+def shared_deadline(key_prefix: str) -> None:
+    """One WaitBudget covers the queue wait and the 429 sleeps together, and
+    carries from one Groq call to the next within a request."""
+    model = f"{key_prefix}-{uuid.uuid4().hex[:8]}"
+    key = llm_queue.groq_queue_key(model)
+    holding = threading.Event()
+    release = threading.Event()
+
+    def holder():
+        with llm_queue.acquire_sync(key, 1, 1, 10):
+            holding.set()
+            release.wait(10)
+
+    try:
+        # 1. Most of the budget goes on the queue; the 429 that follows asks
+        #    for more than is left, so it fails at once - no sleep.
+        slept: list[float] = []
+        budget = llm_queue.WaitBudget(3.0)
+        t = threading.Thread(target=holder)
+        t.start()
+        holding.wait(5)
+        threading.Timer(2.0, release.set).start()
+        started = time.monotonic()
+        error = None
+        try:
+            llm_queue.groq_call(
+                model,
+                1,
+                lambda: (_ for _ in ()).throw(_http_429(retry_after="2")),
+                budget=budget,
+                sleep=slept.append,
+            )
+        except urllib.error.HTTPError as exc:
+            error = exc
+        elapsed = time.monotonic() - started
+        t.join(5)
+        check(
+            "deadline: 2s in queue + a 2s Retry-After on a 3s budget fails without sleeping",
+            error is not None and error.code == 429 and slept == [],
+            (getattr(error, "code", None), slept),
+        )
+        check(
+            "deadline: the request gave up within its 3s budget",
+            elapsed < 3.0,
+            round(elapsed, 3),
+        )
+        check(
+            "deadline: the budget was charged for the queue wait",
+            1.9 <= budget.spent < 2.6,
+            round(budget.spent, 3),
+        )
+
+        # 2. The budget carries to the next call: after a 0.6s backoff on a
+        #    1s budget, a busy queue gets only the ~0.4s that is left.
+        budget = llm_queue.WaitBudget(1.0)
+        llm_queue.groq_call(model, 1, flaky_after(0.6), budget=budget, sleep=time.sleep)
+        holding.clear()
+        release.clear()
+        t = threading.Thread(target=holder)
+        t.start()
+        holding.wait(5)
+        started = time.monotonic()
+        timed_out = False
+        try:
+            llm_queue.groq_call(model, 1, lambda: "never", budget=budget)
+        except llm_queue.QueueTimeout:
+            timed_out = True
+        waited = time.monotonic() - started
+        release.set()
+        t.join(5)
+        check(
+            "deadline: the second call times out on what the first left (~0.4s)",
+            timed_out and 0.3 <= waited < 0.8,
+            (timed_out, round(waited, 3)),
+        )
+        check(
+            "deadline: total waiting across both calls stays within the 1s budget (+ polling)",
+            budget.spent <= 1.0 + llm_queue.POLL_SECONDS + 0.05,
+            round(budget.spent, 3),
+        )
+    finally:
+        release.set()
+        llm_queue._sync_client().delete(*llm_queue.all_keys(key))
+
+
+def flaky_after(delay: float):
+    state = {"n": 0}
+
+    def send():
+        state["n"] += 1
+        if state["n"] == 1:
+            raise _http_429(retry_after=str(delay))
+        return "ok"
+
+    return send
+
+
+def per_kind_estimate(key: str) -> None:
+    """Hold times are averaged per kind, and the estimate adds up the kinds
+    actually ahead - a quick gatekeeper call does not make a solve look quick."""
+    pure = llm_queue.estimate_seconds(
+        ahead_kinds=[llm_queue.KIND_GATEKEEPER, llm_queue.KIND_SOLVE],
+        active=[(llm_queue.KIND_SOLVE, 10.0)],
+        avgs={llm_queue.KIND_GATEKEEPER: 0.2, llm_queue.KIND_SOLVE: 30.0},
+        max_concurrent=1,
+    )
+    check(
+        "estimate: 20s left on the solve holding + 0.2s gatekeeper + 30s solve ahead = 50.2s",
+        abs(pure - 50.2) < 1e-9,
+        pure,
+    )
+
+    for _ in range(3):
+        with llm_queue.acquire_sync(key, 1, 1, 5, kind=llm_queue.KIND_GATEKEEPER):
+            time.sleep(0.05)
+    with llm_queue.acquire_sync(key, 1, 1, 5, kind=llm_queue.KIND_SOLVE):
+        time.sleep(0.6)
+    avgs = llm_queue.snapshot_sync(key).avg_hold
+    check(
+        "estimate: a separate average is kept per kind",
+        0.04 <= avgs.get("gatekeeper", -1) < 0.2 and 0.55 <= avgs.get("solve", -1) < 0.9,
+        avgs,
+    )
+
+    holding = threading.Event()
+    release = threading.Event()
+
+    def solve_holder():
+        with llm_queue.acquire_sync(key, 1, 1, 5, kind=llm_queue.KIND_SOLVE):
+            holding.set()
+            release.wait(5)
+
+    t = threading.Thread(target=solve_holder)
+    t.start()
+    holding.wait(5)
+    eta = llm_queue.estimated_wait_sync(key, 0, 1)
+    release.set()
+    t.join(5)
+    # A waiter right behind a solve waits about one solve (~0.6s here). The old
+    # single blended average ((3 x 0.05 + 0.6) / 4 ~ 0.19s) would have said
+    # a fraction of that.
+    check(
+        "estimate: a waiter behind a solve is told about a solve's time, not a blend",
+        0.5 <= eta < 0.9,
+        round(eta, 3),
+    )
 
 
 def _wait_sync(predicate, timeout: float = 3.0) -> bool:
@@ -602,6 +785,7 @@ SYNC_CASES = [
     sync_fifo_and_positions,
     sync_timeout_and_release,
     sync_generator_closed_while_waiting,
+    per_kind_estimate,
 ]
 
 
@@ -629,12 +813,16 @@ def run_sync_cases() -> None:
         except Exception as exc:
             check(f"{case.__name__} ran to completion", False, repr(exc))
         finally:
-            client.delete(*llm_queue._keys(key))
+            client.delete(*llm_queue.all_keys(key))
     for case in (retry_policy, groq_call_retries_in_slot):
         try:
             case()
         except Exception as exc:
             check(f"{case.__name__} ran to completion", False, repr(exc))
+    try:
+        shared_deadline("test-deadline")
+    except Exception as exc:
+        check("shared_deadline ran to completion", False, repr(exc))
 
 
 if __name__ == "__main__":

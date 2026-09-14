@@ -19,18 +19,13 @@ student instead of pausing in silence.
 from __future__ import annotations
 
 import json
-import logging
 import os
-import time
-import urllib.error
 import urllib.request
 from typing import Iterator
 
 import llm_queue
-from config import GROQ_QUEUE_TIMEOUT_SECONDS, GROQ_RETRY_MAX
+from config import GROQ_QUEUE_TIMEOUT_SECONDS
 from generate import GROQ_MODEL, GROQ_URL
-
-log = logging.getLogger("fahem.llm_stream")
 
 
 def stream_groq(
@@ -38,13 +33,17 @@ def stream_groq(
     temperature: float = 0.2,
     timeout: int = 300,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> Iterator[str | llm_queue.Waiting]:
     """Yield answer-content fragments as they arrive, preceded by
     llm_queue.Waiting markers while the request waits. Reasoning is discarded.
 
-    Raises llm_queue.QueueTimeout if no slot came in time, or the Groq
-    HTTPError once the 429 retries are used up.
+    `budget` is the request's shared WaitBudget: whatever the gatekeeper's
+    classification already spent waiting is not available again here.
+    Raises llm_queue.QueueTimeout if no slot came within it, or the Groq
+    HTTPError once the 429 retries are used up or no longer fit.
     """
+    budget = budget if budget is not None else llm_queue.WaitBudget()
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
         {
@@ -75,32 +74,19 @@ def stream_groq(
         priority,
         llm_queue.groq_max_concurrent(GROQ_MODEL),
         GROQ_QUEUE_TIMEOUT_SECONDS,
+        kind=llm_queue.KIND_SOLVE,
+        budget=budget,
     ) as waiter:
         yield from waiter.wait()
 
         # A 429 arrives before any byte of the stream, so retrying here never
         # repeats text the student has already seen.
-        attempts = 0
-        waited = 0.0
-        while True:
-            try:
-                response = urllib.request.urlopen(request, timeout=timeout)
-                break
-            except urllib.error.HTTPError as exc:
-                delay = llm_queue.next_retry_delay(exc, attempts, waited)
-                if delay is None:
-                    raise
-                log.warning(
-                    "groq 429 on %s (stream): retry %d/%d in %.1fs (holding the slot)",
-                    GROQ_MODEL,
-                    attempts + 1,
-                    GROQ_RETRY_MAX,
-                    delay,
-                )
-                yield llm_queue.Waiting(position=0, estimated_seconds=delay, reason="rate_limited")
-                time.sleep(delay)
-                waited += delay
-                attempts += 1
+        response = yield from llm_queue.retry_steps(
+            GROQ_MODEL,
+            lambda: urllib.request.urlopen(request, timeout=timeout),
+            budget,
+            kind=llm_queue.KIND_SOLVE,
+        )
 
         with response:
             for raw in response:

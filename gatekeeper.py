@@ -37,6 +37,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from typing import Generator
 
 import llm_queue
 from config import (
@@ -180,13 +181,35 @@ def _call_groq_cheap(
     max_tokens: int,
     temperature: float,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> str:
-    """Minimal Groq chat-completion call, capped for a short, cheap reply.
+    """Minimal Groq chat-completion call, capped for a short, cheap reply."""
+    return llm_queue.drain(
+        _call_groq_cheap_steps(
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            priority=priority,
+            budget=budget,
+        )
+    )
+
+
+def _call_groq_cheap_steps(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float,
+    priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
+) -> Generator[llm_queue.Waiting, None, str]:
+    """The same call as steps: yields llm_queue.Waiting while it waits.
 
     30s timeout, not generate.py's 300s: a routing/scope call should fail
     fast, not hang the request waiting on a call that was never meant to be
     expensive. The wait for a slot is separate from that timeout: the call
-    shares GROQ_MODEL's queue with the solves (llm_queue.groq_call).
+    shares GROQ_MODEL's queue with the solves, and its waiting comes out of
+    the request's WaitBudget.
     """
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
@@ -212,7 +235,9 @@ def _call_groq_cheap(
         with urllib.request.urlopen(request, timeout=GATEKEEPER_TIMEOUT_SECONDS) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    body = llm_queue.groq_call(GROQ_MODEL, priority, send)
+    body = yield from llm_queue.groq_call_steps(
+        GROQ_MODEL, priority, send, kind=llm_queue.KIND_GATEKEEPER, budget=budget
+    )
     message = body["choices"][0]["message"]
     # Reasoning models can put even a one-word answer in `reasoning` and
     # leave `content` empty - same fallback generate.py's call_groq uses.
@@ -231,9 +256,23 @@ _VALID_ROUTES = {"PROBLEM", "CODE", "QUESTION", "META", "OFF_TOPIC"}
 GROUNDED_ROUTES = frozenset({"PROBLEM", "CODE", "QUESTION"})
 
 
-def classify(message: str, priority: int = llm_queue.PRIORITY_FREE) -> str:
+def classify(
+    message: str,
+    priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
+) -> str:
+    """classify_steps for callers with nowhere to report waiting (/solve)."""
+    return llm_queue.drain(classify_steps(message, priority, budget))
+
+
+def classify_steps(
+    message: str,
+    priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
+) -> Generator[llm_queue.Waiting, None, str]:
     """Classify a raw student message into PROBLEM / CODE / QUESTION / META /
-    OFF_TOPIC.
+    OFF_TOPIC, yielding llm_queue.Waiting while the call waits for Groq - so
+    /solve/stream can tell the student, instead of the old silence.
 
     Never raises on a malformed model reply and never lets an ambiguous
     result fall toward the real pipeline: anything that isn't cleanly one
@@ -253,8 +292,12 @@ def classify(message: str, priority: int = llm_queue.PRIORITY_FREE) -> str:
         {"role": "user", "content": f"<user_message>\n{message}\n</user_message>"},
     ]
     try:
-        raw = _call_groq_cheap(
-            messages, max_tokens=ROUTER_MAX_TOKENS, temperature=0.0, priority=priority
+        raw = yield from _call_groq_cheap_steps(
+            messages,
+            max_tokens=ROUTER_MAX_TOKENS,
+            temperature=0.0,
+            priority=priority,
+            budget=budget,
         )
     except llm_queue.QueueTimeout as exc:
         raise Busy() from exc
@@ -339,8 +382,21 @@ def respond_meta(
     chapitre: str = "1",
     topics: str = CHAPTER_1_TOPICS,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> str:
-    """Answer a META-classified message.
+    """respond_meta_steps for callers with nowhere to report waiting."""
+    return llm_queue.drain(respond_meta_steps(message, chapitre, topics, priority, budget))
+
+
+def respond_meta_steps(
+    message: str,
+    chapitre: str = "1",
+    topics: str = CHAPTER_1_TOPICS,
+    priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
+) -> Generator[llm_queue.Waiting, None, str]:
+    """Answer a META-classified message, yielding llm_queue.Waiting while the
+    call waits for Groq.
 
     The messages list built here is this call's *entire* context - no
     retrieval, no pinned syntax tables, no path to context.py/generate.py's
@@ -366,8 +422,12 @@ def respond_meta(
         },
     ]
     try:
-        raw = _call_groq_cheap(
-            messages, max_tokens=META_MAX_TOKENS, temperature=0.2, priority=priority
+        raw = yield from _call_groq_cheap_steps(
+            messages,
+            max_tokens=META_MAX_TOKENS,
+            temperature=0.2,
+            priority=priority,
+            budget=budget,
         )
     except llm_queue.QueueTimeout as exc:
         raise Busy() from exc
