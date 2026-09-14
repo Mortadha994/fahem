@@ -38,6 +38,12 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    sans annotation de type — jamais `Lire variable ← type` ni aucune
    variante fusionnant lecture et déclaration, car cette forme n'existe
    dans aucun exemple du contexte.
+   Il en va de même pour les formules, partout dans ta réponse (résumé,
+   trace, explications) : n'utilise JAMAIS de LaTeX ni aucune notation
+   mathématique balisée — pas de `\\frac`, `\\times`, `\\text`, `\\cdot`, ni
+   de `$...$` ou `\\[ ... \\]`. Écris toute fraction, division ou formule en
+   arithmétique simple avec les opérateurs du cours, par exemple
+   `(a + b) / 3`, ou en toutes lettres : « la somme divisée par 3 ».
 
 2. Avant l'algorithme, présente un tableau de déclaration séparé pour
    toutes les variables utilisées, au format exact du contexte :
@@ -117,7 +123,10 @@ Sinon, réponds avec :
 2. Le tableau de déclaration (Objet | Nature/type)
 3. La solution (Algorithme | Python, côte à côte)
 4. La trace d'exécution sur un exemple concret
-5. Le résultat final"""
+5. Le résultat final
+
+Partout dans la réponse, écris les calculs et les formules en arithmétique
+simple, par exemple (a + b) / 3 - jamais en LaTeX (règle 1)."""
 
 
 # --- QUESTION: a question about a notion of the course --------------------------
@@ -149,7 +158,12 @@ Règles :
    c'est l'inscrire avec son type dans le tableau de déclaration du cours
    (colonnes Objet et Nature/type) ; affecter, c'est lui donner une valeur
    avec ←. Si la question porte sur la déclaration, montre ce tableau de
-   déclaration, pas une affectation."""
+   déclaration, pas une affectation.
+6. Si ton explication contient une formule ou une division, écris-la en
+   arithmétique simple avec les opérateurs du cours, par exemple
+   `(a + b) / 2`, ou en toutes lettres (« la somme divisée par 2 »).
+   N'utilise jamais de LaTeX ni de notation balisée : pas de `\\frac`,
+   `\\times`, `\\text`, ni de `$...$` ou `\\[ ... \\]`."""
 
 QUESTION_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
@@ -199,7 +213,11 @@ Règles :
    les noms sont conservés puis les renommer). Si tu proposes de renommer
    des variables, fais-le dans « À corriger » et applique-le dans la
    version corrigée.
-7. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève."""
+7. S'il n'y a aucune erreur, dis-le clairement et félicite l'élève.
+8. Quand tu expliques un calcul ou une formule de l'élève, écris-le en
+   arithmétique simple, comme dans son programme : `(note1 + note2) / 2`,
+   ou en toutes lettres. N'utilise jamais de LaTeX ni de notation balisée :
+   pas de `\\frac`, `\\times`, `\\text`, ni de `$...$` ou `\\[ ... \\]`."""
 
 CODE_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 {context}
@@ -240,6 +258,7 @@ def build_messages(
     chapitre: str,
     kind: str = "PROBLEM",
     profile: str | None = None,
+    note: str | None = None,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
@@ -248,18 +267,33 @@ def build_messages(
     `profile` is the student's own year and section from their account
     ("3ème année, section Informatique"), when they have answered it. It only
     steers how the answer explains; `niveau`/`chapitre` still decide the
-    course the answer is grounded in and the syntax it must use."""
+    course the answer is grounded in and the syntax it must use.
+
+    `note` is the student's own words sent with an attached exercise ("je n'ai
+    pas compris comment calculer la moyenne"). It travels apart from the
+    exercise text, so the question in it is answered rather than drowned in
+    the statement. Appended after .format, so braces in it are harmless."""
     system, user = _PROMPTS.get(kind, _PROMPTS["PROBLEM"])
     system_content = system.format(niveau=niveau, chapitre=chapitre)
     if profile:
         system_content += PROFILE_NOTE.format(profile=profile)
+    user_content = user.format(context=context, query=query)
+    if note:
+        # A named closing section, not a parenthetical: folded into one long
+        # aside, the request to answer the note was skipped in live runs. The
+        # explanation it asks for is also where the model reaches for LaTeX
+        # ("\[ \text{moyenne} = \frac{...} \]" in a live answer), so the
+        # plain-arithmetic rule sits in this instruction, not only in the
+        # system prompt.
+        user_content += (
+            "\n\nL'élève a aussi posé cette question à propos de l'exercice :\n"
+            f"« {note} »\n\n"
+            "À la fin de ta réponse, ajoute une section « Réponse à ta question » "
+            "qui y répond directement, en quelques phrases simples. Écris-y "
+            "toute formule en arithmétique simple, par exemple (a + 2 * b) / 3, "
+            "jamais en LaTeX."
+        )
     return [
-        {
-            "role": "system",
-            "content": system_content,
-        },
-        {
-            "role": "user",
-            "content": user.format(context=context, query=query),
-        },
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
     ]

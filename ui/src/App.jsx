@@ -151,8 +151,8 @@ export default function App() {
     // the UI signed in with a session it cannot rely on is worse than showing
     // the sign-in screen.
     //
-    // localStorage chat history is deliberately NOT cleared - it is
-    // browser-scoped, not identity-scoped, in this phase.
+    // Chat history needs no clearing: it lives on the server, per account,
+    // and the list in memory goes away with the signed-in app that held it.
     clearVerifyBannerDismissals();
     setUser(null);
     setAuthState("out");

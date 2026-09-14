@@ -25,6 +25,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import llm_queue
 from checker import check_constraints
 
 # Config moved to config.py; re-exported here so existing imports keep
@@ -41,7 +42,11 @@ from context import build_context
 from prompts import build_messages
 
 
-def call_groq(messages: list[dict], temperature: float = 0.2) -> str:
+def call_groq(
+    messages: list[dict],
+    temperature: float = 0.2,
+    priority: int = llm_queue.PRIORITY_FREE,
+) -> str:
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
         {"model": GROQ_MODEL, "messages": messages, "temperature": temperature}
@@ -57,8 +62,14 @@ def call_groq(messages: list[dict], temperature: float = 0.2) -> str:
             "User-Agent": "algo-rag/0.1",
         },
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        body = json.loads(response.read().decode("utf-8"))
+
+    def send() -> dict:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    # Waits its turn in GROQ_MODEL's queue and retries a 429 inside the slot
+    # (llm_queue.groq_call); raises QueueTimeout if no slot came in time.
+    body = llm_queue.groq_call(GROQ_MODEL, priority, send)
     message = body["choices"][0]["message"]
     # Reasoning models (gpt-oss) put the chain of thought in `reasoning` and the
     # answer in `content`; fall back to reasoning only if content came back empty.
@@ -88,9 +99,14 @@ def pick_backend(requested: str | None) -> str:
     return "groq" if os.environ.get("GROQ_API_KEY") else "ollama"
 
 
-def generate(messages: list[dict], backend: str, temperature: float = 0.2) -> str:
+def generate(
+    messages: list[dict],
+    backend: str,
+    temperature: float = 0.2,
+    priority: int = llm_queue.PRIORITY_FREE,
+) -> str:
     if backend == "groq":
-        return call_groq(messages, temperature)
+        return call_groq(messages, temperature, priority)
     if backend == "ollama":
         return call_ollama(messages, temperature)
     raise SystemExit(f"unknown backend: {backend}")

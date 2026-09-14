@@ -1,5 +1,3 @@
-import { loadSessions } from "./sessions.js";
-
 /**
  * Making a list of seven énoncés readable.
  *
@@ -113,17 +111,12 @@ function normalise(text) {
 /**
  * The set of énoncés this browser has already sent to the chat.
  *
- * Read from the same localStorage history the sidebar uses - clicking an
+ * Read from the student's own chat history (the sessions context) - clicking an
  * exercise sends its text as the session's first student message, so an exact
- * match on that message is what "déjà commencé" means here. Browser-local,
- * like the history itself: it will not follow a student to another device, and
- * the page simply shows no markers then.
- *
- * Read-only: sessions.js owns that storage and is not touched. A caller that
- * already holds the live list (the home screen, via the sessions context)
- * passes it in, since storage is only written after the render that changed it.
+ * match on that message is what "déjà commencé" means here. Callers pass the
+ * live list in.
  */
-export function startedExerciseTexts(sessions = loadSessions()) {
+export function startedExerciseTexts(sessions = []) {
   const started = new Set();
   for (const session of sessions) {
     const first = session?.messages?.find((m) => m.role === "user");

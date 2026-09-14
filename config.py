@@ -47,6 +47,32 @@ GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 # measured on a photo of a handwritten-style exercise: qwen3.8-27b transcribed
 # it exactly in 0.8s with no reasoning text, qwen3.6-27b leaked <think> tags.
 GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
+
+# --- Groq queue (llm_queue.py) ------------------------------------------------
+#
+# Groq limits each model separately, so each model gets its own queue. Measured
+# on this key (response headers, 2026-09-14): both models allow 8,000 tokens
+# per minute and 1,000 requests per day (Groq exposes no per-minute request
+# limit). Measured costs: a solve 5,074 tokens (4,063 prompt + 1,011 answer; up
+# to ~7k with a long statement and answer), a gatekeeper classification 686, a
+# photo transcription 1,020 per image (a 3-page scan ~4k).
+#
+# max_concurrent is sized so the requests in flight at once can never exceed
+# the per-minute budget on their own: two solves (~10-14k) already would, so
+# 1; two 3-page scans (~8.4k) would too, so 1 for vision as well - a
+# transcription takes ~0.2s, so one slot costs it almost nothing. Sustained
+# load above the budget is then absorbed by the 429 backoff below.
+GROQ_MAX_CONCURRENT = int(os.environ.get("GROQ_MAX_CONCURRENT", "1"))
+GROQ_VISION_MAX_CONCURRENT = int(os.environ.get("GROQ_VISION_MAX_CONCURRENT", "1"))
+# How long a request may wait for a slot before the student sees "le service
+# est très sollicité". At ~1.5 solves a minute, 120s lets a burst of about
+# three students all be served; a shorter wait would fail the third.
+GROQ_QUEUE_TIMEOUT_SECONDS = float(os.environ.get("GROQ_QUEUE_TIMEOUT_SECONDS", "120"))
+# A slot holder that gets a 429 sleeps Groq's Retry-After and tries the same
+# call again, at most this many times, and never for longer in total than the
+# queue timeout.
+GROQ_RETRY_MAX = int(os.environ.get("GROQ_RETRY_MAX", "3"))
+
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 

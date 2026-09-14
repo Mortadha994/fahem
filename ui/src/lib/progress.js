@@ -1,17 +1,10 @@
-import { loadSessions } from "./sessions.js";
-
 /**
- * Practice history, derived from the chat sessions this browser already
- * stores.
+ * Practice history, derived from the student's chat sessions.
  *
- * *** Browser-local, deliberately and temporarily. ***
- * There is no server-side progress tracking yet: sessions.js keeps chat
- * history in localStorage, so a streak lives and dies with one browser
- * profile. Switch device, switch browser, or clear site data and the counts
- * start from zero. Persisting this properly means finally writing to the
- * chat_sessions / chat_messages tables that have been sitting unused since
- * Phase 0a, which is its own phase - not something to fake here. Every number
- * this module returns should be read as "what this browser has seen".
+ * The sessions are the account's own, loaded from the server
+ * (ChatSessionsProvider), so the streak and the week's count follow the
+ * student across devices and never mix two students on one browser. The
+ * callers pass the live list in.
  *
  * What counts as a solved exercise: an assistant message whose stored checker
  * status is "clean" or "warned". Both mean a real Algorithme solution existed
@@ -57,7 +50,7 @@ function startOfWeek(date) {
 }
 
 /** Timestamps of every solved exercise, oldest first. */
-export function solvedTimestamps(sessions = loadSessions()) {
+export function solvedTimestamps(sessions = []) {
   const stamps = [];
   for (const session of sessions) {
     for (const message of session?.messages ?? []) {
@@ -137,9 +130,14 @@ export function weeklySolved(byDay = solvedByDay(), now = Date.now()) {
   return weekMarkers(byDay, now).reduce((total, day) => total + day.count, 0);
 }
 
-export function loadWeeklyGoal() {
+// The target is a preference of this student on this browser, so its key
+// carries the account id: a second student on the same computer does not
+// inherit the first one's goal.
+const goalKey = (userId) => `${GOAL_KEY}.${userId ?? "anon"}`;
+
+export function loadWeeklyGoal(userId) {
   try {
-    const raw = Number(localStorage.getItem(GOAL_KEY));
+    const raw = Number(localStorage.getItem(goalKey(userId)));
     if (Number.isFinite(raw) && raw >= MIN_GOAL && raw <= MAX_GOAL) return raw;
   } catch {
     // Blocked storage: fall through to the default.
@@ -147,10 +145,10 @@ export function loadWeeklyGoal() {
   return DEFAULT_WEEKLY_GOAL;
 }
 
-export function saveWeeklyGoal(goal) {
+export function saveWeeklyGoal(goal, userId) {
   const clamped = Math.min(MAX_GOAL, Math.max(MIN_GOAL, Math.round(goal)));
   try {
-    localStorage.setItem(GOAL_KEY, String(clamped));
+    localStorage.setItem(goalKey(userId), String(clamped));
   } catch {
     // Not persisted; the chosen value still applies for this session.
   }

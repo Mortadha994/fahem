@@ -53,9 +53,8 @@ export async function signInWithGoogle(idToken) {
 /**
  * POST /auth/logout - clear the session cookie.
  *
- * Deliberately does not touch localStorage: chat history is browser-scoped in
- * this phase, not identity-scoped, so wiping it on logout would destroy the
- * student's transcripts for no reason. Revisit when history moves server-side.
+ * Chat history is not touched: it is stored on the server per account
+ * (/chat/sessions), so there is nothing in this browser to wipe.
  */
 export async function logout() {
   await fetch(`${API_URL}/auth/logout`, {

@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+import llm_queue
 from config import (
     ATTACHMENT_MAX_BYTES,
     ATTACHMENT_MAX_PDF_PAGES,
@@ -98,7 +99,7 @@ def sniff(data: bytes) -> str | None:
     return None
 
 
-def extract(data: bytes) -> Extraction:
+def extract(data: bytes, priority: int = llm_queue.PRIORITY_FREE) -> Extraction:
     if not data:
         raise AttachmentError("Le fichier est vide.")
     if len(data) > ATTACHMENT_MAX_BYTES:
@@ -112,14 +113,52 @@ def extract(data: bytes) -> Extraction:
             "Envoie une photo (JPEG, PNG ou WebP) ou un PDF.", status=415
         )
     if kind == "pdf":
-        return _from_pdf(data)
-    return Extraction(text=_finish(_transcribe([_prepare_image(data)])), source="image", pages=1)
+        return _from_pdf(data, priority)
+    return Extraction(
+        text=_finish(_transcribe([_prepare_image(data)], priority)), source="image", pages=1
+    )
 
 
 # --- PDF ---------------------------------------------------------------------
 
+# A line that carries its own meaning line by line: an algorithm, a program or
+# a table row copied into the exercise. Its line breaks are never joined.
+_CODE_LINE = re.compile(r"[←=(){}\[\]:<>|]|^\s")
+# A line the PDF wrapped because it reached the right margin is long; a table
+# row, a title or a list item is not.
+_WRAPPED_MIN_CHARS = 50
 
-def _from_pdf(data: bytes) -> Extraction:
+
+def _normalize_linebreaks(text: str) -> str:
+    """Rejoin sentences the PDF's own layout wrapped mid-line.
+
+    pdfplumber returns one line per visual line, so "…devoir de synthèse" /
+    "d'un élève…" arrive as two lines. Only that case is joined: a long line
+    with no closing punctuation, followed by a line that starts in lowercase,
+    neither looking like code. Everything else keeps its line break - joining
+    blindly would collapse a copied algorithm or a declaration table into one
+    line before the model reads it, which is worse than a ragged bubble.
+    """
+    lines = text.split("\n")
+    out: list[str] = lines[:1]
+    for line in lines[1:]:
+        prev = out[-1]
+        head = line.lstrip()[:1]
+        if (
+            len(prev.strip()) >= _WRAPPED_MIN_CHARS
+            and head.isalpha()
+            and head.islower()
+            and not prev.rstrip().endswith((".", ":", ";", "?", "!"))
+            and not _CODE_LINE.search(prev)
+            and not _CODE_LINE.search(line)
+        ):
+            out[-1] = f"{prev.rstrip()} {line.strip()}"
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _from_pdf(data: bytes, priority: int = llm_queue.PRIORITY_FREE) -> Extraction:
     import pdfplumber
 
     try:
@@ -127,6 +166,7 @@ def _from_pdf(data: bytes) -> Extraction:
             total = len(pdf.pages)
             pages = pdf.pages[:ATTACHMENT_MAX_PDF_PAGES]
             text = "\n\n".join((page.extract_text() or "").strip() for page in pages).strip()
+            text = _normalize_linebreaks(text)
             if len(text) >= _MIN_PDF_TEXT_CHARS:
                 return Extraction(text=_finish(text), source="pdf", pages=min(total, len(pages)))
             # No usable text layer: a scan. Render the pages and read them.
@@ -138,7 +178,9 @@ def _from_pdf(data: bytes) -> Extraction:
     except Exception as exc:  # corrupt or encrypted PDF
         raise AttachmentError("Impossible d'ouvrir ce PDF. Essaie une photo de l'exercice.") from exc
 
-    return Extraction(text=_finish(_transcribe(images)), source="pdf-scan", pages=len(images))
+    return Extraction(
+        text=_finish(_transcribe(images, priority)), source="pdf-scan", pages=len(images)
+    )
 
 
 # --- images ------------------------------------------------------------------
@@ -169,7 +211,7 @@ def _encode_jpeg(image) -> str:
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
-def _transcribe(images_b64: list[str]) -> str:
+def _transcribe(images_b64: list[str], priority: int = llm_queue.PRIORITY_FREE) -> str:
     content = [{"type": "text", "text": TRANSCRIBE_PROMPT}]
     for image in images_b64:
         content.append(
@@ -193,9 +235,17 @@ def _transcribe(images_b64: list[str]) -> str:
             "User-Agent": "algo-rag/0.1",
         },
     )
-    try:
+    def send() -> dict:
         with urllib.request.urlopen(request, timeout=60) as response:
-            body = json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8"))
+
+    try:
+        # The vision model's own queue; a 429 is retried inside the slot.
+        body = llm_queue.groq_call(GROQ_VISION_MODEL, priority, send)
+    except llm_queue.QueueTimeout as exc:
+        raise AttachmentError(
+            "Le service est très sollicité. Réessaie dans une minute.", status=429
+        ) from exc
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             raise AttachmentError(

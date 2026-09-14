@@ -16,8 +16,17 @@ export const BUSY_ERROR =
  * `signal` comes from an AbortController - that is what the stop button uses.
  */
 export async function streamSolve(
-  { problem, niveau, chapitre, k = 5 },
-  { onMeta, onDelta, onDone, onError, onUnauthorized, onRateLimited, signal } = {}
+  { problem, niveau, chapitre, note, k = 5 },
+  {
+    onMeta,
+    onWaiting,
+    onDelta,
+    onDone,
+    onError,
+    onUnauthorized,
+    onRateLimited,
+    signal,
+  } = {}
 ) {
   let response;
   try {
@@ -28,7 +37,9 @@ export async function streamSolve(
       // user since Phase 1, so without this every request is anonymous and
       // 401s.
       credentials: "include",
-      body: JSON.stringify({ problem, niveau, chapitre, k }),
+      // `note`: the student's own words sent with an attached exercise, kept
+      // apart from the exercise text so the question in it gets answered.
+      body: JSON.stringify({ problem, niveau, chapitre, note: note || undefined, k }),
       signal,
     });
   } catch (err) {
@@ -99,6 +110,10 @@ export async function streamSolve(
         }
 
         if (event === "meta") onMeta?.(payload);
+        // Fahem is saturated: the request is in Groq's queue (position), or
+        // holding its slot while Groq's rate limit resets (reason
+        // "rate_limited"). Always before the first delta.
+        else if (event === "waiting") onWaiting?.(payload);
         else if (event === "delta") onDelta?.(payload.t);
         else if (event === "done") onDone?.(payload);
         else if (event === "error") {
