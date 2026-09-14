@@ -118,6 +118,42 @@ def extract(data: bytes) -> Extraction:
 
 # --- PDF ---------------------------------------------------------------------
 
+# A line that carries its own meaning line by line: an algorithm, a program or
+# a table row copied into the exercise. Its line breaks are never joined.
+_CODE_LINE = re.compile(r"[←=(){}\[\]:<>|]|^\s")
+# A line the PDF wrapped because it reached the right margin is long; a table
+# row, a title or a list item is not.
+_WRAPPED_MIN_CHARS = 50
+
+
+def _normalize_linebreaks(text: str) -> str:
+    """Rejoin sentences the PDF's own layout wrapped mid-line.
+
+    pdfplumber returns one line per visual line, so "…devoir de synthèse" /
+    "d'un élève…" arrive as two lines. Only that case is joined: a long line
+    with no closing punctuation, followed by a line that starts in lowercase,
+    neither looking like code. Everything else keeps its line break - joining
+    blindly would collapse a copied algorithm or a declaration table into one
+    line before the model reads it, which is worse than a ragged bubble.
+    """
+    lines = text.split("\n")
+    out: list[str] = lines[:1]
+    for line in lines[1:]:
+        prev = out[-1]
+        head = line.lstrip()[:1]
+        if (
+            len(prev.strip()) >= _WRAPPED_MIN_CHARS
+            and head.isalpha()
+            and head.islower()
+            and not prev.rstrip().endswith((".", ":", ";", "?", "!"))
+            and not _CODE_LINE.search(prev)
+            and not _CODE_LINE.search(line)
+        ):
+            out[-1] = f"{prev.rstrip()} {line.strip()}"
+        else:
+            out.append(line)
+    return "\n".join(out)
+
 
 def _from_pdf(data: bytes) -> Extraction:
     import pdfplumber
@@ -127,6 +163,7 @@ def _from_pdf(data: bytes) -> Extraction:
             total = len(pdf.pages)
             pages = pdf.pages[:ATTACHMENT_MAX_PDF_PAGES]
             text = "\n\n".join((page.extract_text() or "").strip() for page in pages).strip()
+            text = _normalize_linebreaks(text)
             if len(text) >= _MIN_PDF_TEXT_CHARS:
                 return Extraction(text=_finish(text), source="pdf", pages=min(total, len(pages)))
             # No usable text layer: a scan. Render the pages and read them.

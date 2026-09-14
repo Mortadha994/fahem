@@ -200,7 +200,24 @@ class SolveRequest(BaseModel):
     problem: str = Field(min_length=1, description="The problem pasted by the student")
     niveau: str = Field(min_length=1, examples=["2eme"])
     chapitre: str = Field(min_length=1, examples=["1"])
+    note: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Student's own note sent with an attached exercise, kept "
+        "separate from the exercise text",
+    )
     k: int = Field(default=5, ge=1, le=20, description="Retrieved extras budget")
+
+
+def gate_text(payload: SolveRequest) -> str:
+    """What the gatekeeper checks: the note and the exercise together.
+
+    The note travels apart from the exercise so retrieval and the prompt can
+    treat it as a question, but it must not get past the length cap or the
+    classifier by doing so - an injection in a note is exactly as harmless as
+    one typed into the box, because the gatekeeper still reads it."""
+    note = (payload.note or "").strip()
+    return f"{note}\n\n{payload.problem}" if note else payload.problem
 
 
 class RetrievedChunk(BaseModel):
@@ -282,7 +299,7 @@ def solve(
     # PROBLEM falls through to the unchanged code below; META/OFF_TOPIC never
     # reach build_context/generate at all. See gatekeeper.py's module
     # docstring for why this is a separate layer, not a pipeline change.
-    if gatekeeper.is_input_too_long(payload.problem):
+    if gatekeeper.is_input_too_long(gate_text(payload)):
         return SolveResponse(
             solution=gatekeeper.DECLINE_MESSAGE,
             niveau=payload.niveau,
@@ -295,7 +312,7 @@ def solve(
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
-    route = gatekeeper.classify(payload.problem)
+    route = gatekeeper.classify(gate_text(payload))
 
     if route == "OFF_TOPIC":
         return SolveResponse(
@@ -310,7 +327,7 @@ def solve(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(payload.problem, meta_chapitre, meta_topics)
+        answer = gatekeeper.respond_meta(gate_text(payload), meta_chapitre, meta_topics)
         return SolveResponse(
             solution=answer,
             niveau=payload.niveau,
@@ -352,6 +369,7 @@ def solve(
         chapitre=payload.chapitre,
         kind=route,
         profile=student_profile(user),
+        note=(payload.note or "").strip() or None,
     )
 
     try:
@@ -468,7 +486,7 @@ def solve_stream(
 
     # Gatekeeper: same three-way split as /solve, before build_context ever
     # runs. See gatekeeper.py's module docstring and _gatekeeper_stream above.
-    if gatekeeper.is_input_too_long(payload.problem):
+    if gatekeeper.is_input_too_long(gate_text(payload)):
         return StreamingResponse(
             _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
             media_type="text/event-stream",
@@ -476,7 +494,7 @@ def solve_stream(
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
-    route = gatekeeper.classify(payload.problem)
+    route = gatekeeper.classify(gate_text(payload))
 
     if route == "OFF_TOPIC":
         return StreamingResponse(
@@ -486,7 +504,7 @@ def solve_stream(
         )
 
     if route == "META":
-        answer = gatekeeper.respond_meta(payload.problem, meta_chapitre, meta_topics)
+        answer = gatekeeper.respond_meta(gate_text(payload), meta_chapitre, meta_topics)
         return StreamingResponse(
             _gatekeeper_stream(answer, GROQ_MODEL, payload, started),
             media_type="text/event-stream",
@@ -522,6 +540,7 @@ def solve_stream(
         chapitre=payload.chapitre,
         kind=route,
         profile=student_profile(user),
+        note=(payload.note or "").strip() or None,
     )
 
     def events():

@@ -1603,6 +1603,20 @@ h3 {
   flex: none;
   color: var(--fg-dim);
 }
+/* The note sent with a file: the student's question, set apart from the
+   exercise text read out of the file below it. */
+.msg-note {
+  display: block;
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+.msg-note.is-alone {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 /* The shortcut line means nothing without a keyboard. */
 @media (hover: none), (pointer: coarse) {
   .composer-hint {

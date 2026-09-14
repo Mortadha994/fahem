@@ -240,6 +240,7 @@ def build_messages(
     chapitre: str,
     kind: str = "PROBLEM",
     profile: str | None = None,
+    note: str | None = None,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
@@ -248,18 +249,24 @@ def build_messages(
     `profile` is the student's own year and section from their account
     ("3ème année, section Informatique"), when they have answered it. It only
     steers how the answer explains; `niveau`/`chapitre` still decide the
-    course the answer is grounded in and the syntax it must use."""
+    course the answer is grounded in and the syntax it must use.
+
+    `note` is the student's own words sent with an attached exercise ("je n'ai
+    pas compris comment calculer la moyenne"). It travels apart from the
+    exercise text, so the question in it is answered rather than drowned in
+    the statement. Appended after .format, so braces in it are harmless."""
     system, user = _PROMPTS.get(kind, _PROMPTS["PROBLEM"])
     system_content = system.format(niveau=niveau, chapitre=chapitre)
     if profile:
         system_content += PROFILE_NOTE.format(profile=profile)
+    user_content = user.format(context=context, query=query)
+    if note:
+        user_content += (
+            "\n\nQuestion précise de l'élève à propos de cet exercice "
+            "(réponds-y explicitement dans ton explication, ne te contente "
+            f"pas de donner la solution) :\n{note}"
+        )
     return [
-        {
-            "role": "system",
-            "content": system_content,
-        },
-        {
-            "role": "user",
-            "content": user.format(context=context, query=query),
-        },
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
     ]

@@ -36,7 +36,11 @@ export default function Message({ message, streaming, onRetry }) {
               holds what was read from it, so the student can check the
               transcription before trusting the answer. */}
           {message.attachment && (
-            <span className={`msg-attachment${message.content ? "" : " is-alone"}`}>
+            <span
+              className={`msg-attachment${
+                message.content || message.note ? "" : " is-alone"
+              }`}
+            >
               <span className="msg-attachment-icon" aria-hidden="true">
                 {message.attachment.kind === "pdf" ? "PDF" : "IMG"}
               </span>
@@ -44,6 +48,13 @@ export default function Message({ message, streaming, onRetry }) {
               <span className="msg-attachment-state">
                 {message.reading ? "lecture…" : message.content ? "texte lu" : ""}
               </span>
+            </span>
+          )}
+          {/* The student's own question about the attached exercise, above
+              what was read from the file. */}
+          {message.note && (
+            <span className={`msg-note${message.content ? "" : " is-alone"}`}>
+              {message.note}
             </span>
           )}
           {message.content}

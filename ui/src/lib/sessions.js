@@ -41,16 +41,39 @@ export function newSession({ niveau, chapitre }) {
   };
 }
 
-/** First student message becomes the discussion's title. */
+/**
+ * First student message becomes the discussion's title. An exercise's own
+ * heading gets a separator, so "Exercice 3" does not run into its statement.
+ */
 export function titleFrom(text) {
   const clean = text.trim().replace(/\s+/g, " ");
-  return clean.length > 48 ? `${clean.slice(0, 48)}…` : clean || "Nouvelle discussion";
+  const withSeparator = clean.replace(/^(Exercice\s*\d+)\s+/i, "$1 — ");
+  return withSeparator.length > 48
+    ? `${withSeparator.slice(0, 48)}…`
+    : withSeparator || "Nouvelle discussion";
 }
 
 /** A message still being written: saving it now would store half an answer. */
 export function isBusy(session) {
   return session.messages.some(
     (m) => m.status === "streaming" || m.status === "reading"
+  );
+}
+
+/**
+ * A discussion that is nothing but a file Fahem could not read: one attached
+ * message with no text read from it, and its error. Kept on screen, so the
+ * student sees what went wrong, but never saved - it would only come back as
+ * an empty "photo.png" entry in their history.
+ */
+export function isFailedReadOnly(session) {
+  const [first, second, ...rest] = session.messages;
+  return (
+    rest.length === 0 &&
+    Boolean(first?.attachment) &&
+    !first.content &&
+    second?.role === "assistant" &&
+    second.status === "error"
   );
 }
 
@@ -71,6 +94,7 @@ export function sessionPayload(session) {
       retrieved: m.retrieved ?? [],
       error: m.error ?? null,
       attachment: m.attachment ?? null,
+      note: m.note ?? null,
       readingKind: m.readingKind ?? null,
     })),
   };

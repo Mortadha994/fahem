@@ -60,6 +60,7 @@ class MessageIn(BaseModel):
     retrieved: list[Any] = Field(default_factory=list, max_length=MAX_EXCERPTS)
     error: str | None = Field(default=None, max_length=500)
     attachment: dict[str, Any] | None = None
+    note: str | None = Field(default=None, max_length=500)
     readingKind: str | None = Field(default=None, max_length=16)
 
 
@@ -99,6 +100,8 @@ def _session_out(row: ChatSession) -> dict:
             msg["error"] = extra["error"]
         if extra.get("attachment"):
             msg["attachment"] = extra["attachment"]
+        if extra.get("note"):
+            msg["note"] = extra["note"]
         messages.append(msg)
     return {
         "id": str(row.id),
@@ -206,6 +209,7 @@ def save_session(
                     "id": m.id,
                     "error": m.error,
                     "attachment": _attachment(m.attachment),
+                    "note": m.note,
                     "readingKind": m.readingKind,
                 }.items()
                 if v

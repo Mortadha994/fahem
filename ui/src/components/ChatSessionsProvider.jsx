@@ -7,6 +7,7 @@ import {
   fetchSessions,
   HistoryUnauthorized,
   isBusy,
+  isFailedReadOnly,
   newSession,
   saveSession,
   sessionPayload,
@@ -84,7 +85,8 @@ export default function ChatSessionsProvider({ children }) {
     ({ keepalive = false } = {}) => {
       if (!loaded.current) return;
       for (const session of latest.current) {
-        if (!session.messages.length || isBusy(session)) continue;
+        if (!session.messages.length || isBusy(session) || isFailedReadOnly(session))
+          continue;
         const snapshot = JSON.stringify(sessionPayload(session));
         if (saved.current.get(session.id) === snapshot) continue;
         saved.current.set(session.id, snapshot);

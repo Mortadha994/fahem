@@ -251,7 +251,7 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session, { reuse } = {}) => {
+    (problem, session, { reuse, note, attachment } = {}) => {
       const sessionId = session.id;
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
@@ -285,7 +285,14 @@ export default function Chat() {
             updatedAt: Date.now(),
             messages: [
               ...s.messages,
-              { id: `u_${Date.now()}`, role: "user", content: problem },
+              {
+                id: `u_${Date.now()}`,
+                role: "user",
+                content: problem,
+                // A retried attachment keeps its note and its file chip.
+                ...(note ? { note } : {}),
+                ...(attachment ? { attachment } : {}),
+              },
               {
                 id: `a_${Date.now()}`,
                 role: "assistant",
@@ -310,6 +317,7 @@ export default function Chat() {
           problem,
           niveau: session.niveau ?? NIVEAU,
           chapitre: session.chapitre ?? CHAPITRE,
+          note,
         },
         {
           signal: controller.signal,
@@ -394,7 +402,9 @@ export default function Chat() {
    * state, turn the file into the exercise's text (POST /solve/extract), then
    * hand that text to send() like a typed message - so the gatekeeper, the
    * grounded answer and the checker all apply unchanged. The student's own
-   * words, if any, travel in front of the transcription.
+   * words, if any, travel beside the transcription as `note` - shown in the
+   * bubble, and sent apart so the model answers the question in them instead
+   * of treating them as more of the statement.
    */
   const sendAttachment = useCallback(
     async (file, kind, name, note, session) => {
@@ -417,7 +427,11 @@ export default function Chat() {
                   {
                     id: userId,
                     role: "user",
-                    content: note,
+                    // Filled with the exercise text once the file is read;
+                    // left empty when it cannot be, so no retry is offered
+                    // for a file that has to be attached again.
+                    content: "",
+                    ...(note ? { note } : {}),
                     attachment: { name, kind },
                     reading: true,
                   },
@@ -476,8 +490,8 @@ export default function Chat() {
         return;
       }
 
-      const problem = [note, result.text].filter(Boolean).join("\n\n").slice(0, 2000);
-      send(problem, session, { reuse: { userId, assistantId } });
+      const problem = result.text.slice(0, 2000);
+      send(problem, session, { reuse: { userId, assistantId }, note });
     },
     [patchLast, setSessions, onUnauthorized, send]
   );
@@ -525,13 +539,19 @@ export default function Chat() {
     const msgs = active.messages;
     const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
     if (lastUserIndex < 0) return;
-    const question = msgs[lastUserIndex].content;
+    const lastUserMsg = msgs[lastUserIndex];
+    const question = lastUserMsg.content;
     if (!question) return;
     const kept = msgs.slice(0, lastUserIndex);
     setSessions((prev) =>
       prev.map((s) => (s.id === active.id ? { ...s, messages: kept } : s))
     );
-    send(question, { ...active, messages: kept });
+    // The file chip and the note come back with the retried question.
+    send(
+      question,
+      { ...active, messages: kept },
+      { attachment: lastUserMsg.attachment, note: lastUserMsg.note }
+    );
   }, [active, streaming, setSessions, send]);
 
   // Retry is offered on the last answer only, and only once nothing is
