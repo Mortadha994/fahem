@@ -200,6 +200,17 @@ def student_profile(user: models.User) -> str | None:
     return f"{niveau}, section {section}"
 
 
+def meta_niveau(user: models.User, payload: "SolveRequest") -> str:
+    """The student's class, for the meta-responder's "je suis à quel niveau ?".
+
+    The account's own niveau and section when the student has answered the
+    profile question - that is their class. Otherwise the niveau this
+    discussion is scoped to, in its display form: the request's niveau is the
+    corpus scope (2ème by default), not necessarily the student's class, so it
+    is only the fallback."""
+    return student_profile(user) or niveau_label(payload.niveau)
+
+
 class SolveRequest(BaseModel):
     problem: str = Field(min_length=1, description="The problem pasted by the student")
     niveau: str = Field(min_length=1, examples=["2eme"])
@@ -341,7 +352,12 @@ def solve(
     if route == "META":
         try:
             answer = gatekeeper.respond_meta(
-                gate_text(payload), meta_chapitre, meta_topics, priority=priority, budget=budget
+                gate_text(payload),
+                meta_chapitre,
+                meta_topics,
+                priority=priority,
+                budget=budget,
+                niveau=meta_niveau(user, payload),
             )
         except gatekeeper.Busy as exc:
             raise HTTPException(status_code=429, detail="model backend busy") from exc
@@ -581,7 +597,12 @@ def solve_stream(
             if route == "META":
                 answer = yield from _relay(
                     gatekeeper.respond_meta_steps(
-                        gate_text(payload), meta_chapitre, meta_topics, priority, budget
+                        gate_text(payload),
+                        meta_chapitre,
+                        meta_topics,
+                        priority,
+                        budget,
+                        niveau=meta_niveau(user, payload),
                     )
                 )
                 yield from _gatekeeper_stream(answer, GROQ_MODEL, payload, started)
@@ -612,7 +633,9 @@ def solve_stream(
             yield _sse("error", {"message": "backend", "status": 422})
             return
         if not context.pinned:
-            log.error("no pinned syntax core for niveau=%s chapitre=%s", payload.niveau, payload.chapitre)
+            log.error(
+                "no pinned syntax core for niveau=%s chapitre=%s", payload.niveau, payload.chapitre
+            )
             yield _sse("error", {"message": "backend", "status": 422})
             return
 
@@ -694,6 +717,7 @@ def solve_stream(
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
+
 class ExtractResponse(BaseModel):
     text: str = Field(description="The exercise as read from the file")
     source: str = Field(description="image | pdf (text layer) | pdf-scan")
@@ -720,7 +744,9 @@ async def solve_extract(
     """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > attachments.ATTACHMENT_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Le fichier est trop volumineux (maximum 10 Mo).")
+        raise HTTPException(
+            status_code=413, detail="Le fichier est trop volumineux (maximum 10 Mo)."
+        )
     data = await request.body()
     try:
         # PDF parsing, image decoding and the model call all block; off the

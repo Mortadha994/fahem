@@ -374,6 +374,16 @@ GATEKEEPER_OUTPUT_MAX_CHARS = int(os.environ.get("GATEKEEPER_OUTPUT_MAX_CHARS", 
 # real generation legitimately can (generate.py uses 300s).
 GATEKEEPER_TIMEOUT_SECONDS = int(os.environ.get("GATEKEEPER_TIMEOUT_SECONDS", "30"))
 
+# Sent as Groq's `reasoning_effort` on both gatekeeper calls (classifier and
+# meta-responder); empty to omit it. Measured on 8 real META messages at
+# max_tokens=250 (2026-09-14): with gpt-oss's default reasoning, reasoning took
+# median 92 tokens, max 248 - one reply came back with empty `content` (the
+# bug that showed a student raw reasoning) and three were cut off mid-sentence.
+# With "low": reasoning 12-20 tokens, the longest reply 181 tokens, none cut
+# off, all four transcript messages answered correctly. So "low", and the
+# 250-token caps above keep their headroom.
+GATEKEEPER_REASONING_EFFORT = os.environ.get("GATEKEEPER_REASONING_EFFORT", "low")
+
 # --- chat attachments (attachments.py) ------------------------------------------
 
 # A phone photo is typically 2-6 MB; a one-to-three page exercise PDF well
