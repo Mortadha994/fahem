@@ -210,6 +210,12 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 # forces Secure).
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
 
+# The header carrying the real client address when a trusted edge sits in
+# front (share mode: Cloudflare's CF-Connecting-IP). Empty = trust nothing and
+# use the socket's address - see ratelimit.client_ip for why this must stay
+# empty whenever the backend is reachable without going through that edge.
+TRUSTED_CLIENT_IP_HEADER = os.environ.get("TRUSTED_CLIENT_IP_HEADER", "").strip()
+
 
 # --- password accounts + transactional email (Phase 4) ----------------------
 

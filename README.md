@@ -273,6 +273,28 @@ Everything tunable is in `config.py`, read from env with working defaults:
 Inside compose, `DATABASE_URL`, `QDRANT_URL` and `REDIS_URL` are overridden to
 point at the sibling containers.
 
+### Sharing a test link (free)
+
+To let friends try Fahem without renting a server, run the stack on your own
+PC and publish it through a free Cloudflare quick tunnel (no account, no
+domain):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File share.ps1
+```
+
+It rebuilds the frontend to call the API on the same address (`/api`, proxied
+by nginx), starts a `cloudflared` container, and prints a
+`https://<random>.trycloudflare.com` link. Friends sign up with e-mail and
+password; Google sign-in does not work on that address (it is not an
+authorised origin). The link lives as long as your PC and Docker are on, and
+changes when the tunnel restarts. Stop sharing with
+`docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel`;
+go back to local-only with a plain `docker compose up -d --build`.
+
+Mind Groq's free tier: about 200,000 tokens a day for the text model, roughly
+35 solves shared by everyone. Admin → Surveillance IA shows how much is left.
+
 ---
 
 ## Tests
