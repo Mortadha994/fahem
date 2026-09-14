@@ -38,9 +38,9 @@ export function onAlgoHighlighterReady(cb) {
 /**
  * Tokenizes one Algorithme-column line into segments carrying both theme
  * colors, so the same output works in light and dark mode without
- * re-tokenizing on a theme change (the app follows prefers-color-scheme via
- * CSS, not a JS-visible state, so re-tokenizing on theme change isn't
- * practical anyway).
+ * re-tokenizing on a theme change: the CSS picks --algo-light or --algo-dark
+ * from <html data-theme> (lib/theme.js), so switching themes recolours every
+ * rendered line instantly with no JavaScript involved.
  *
  * Returns null when the highlighter isn't ready yet - callers fall back to
  * plain text, which is always correct, just temporarily uncolored.

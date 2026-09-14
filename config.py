@@ -42,6 +42,11 @@ load_env()
 
 GROQ_URL = os.environ.get("GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+# Reads photos and scanned PDFs of an exercise (attachments.py). GROQ_MODEL is
+# text-only; of the models this key can use, the Qwen 3.x ones accept images -
+# measured on a photo of a handwritten-style exercise: qwen3.8-27b transcribed
+# it exactly in 0.8s with no reasoning text, qwen3.6-27b leaked <think> tags.
+GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 
@@ -336,3 +341,15 @@ GATEKEEPER_OUTPUT_MAX_CHARS = int(os.environ.get("GATEKEEPER_OUTPUT_MAX_CHARS", 
 # Fail fast: a routing/scope call should not hang the request the way a
 # real generation legitimately can (generate.py uses 300s).
 GATEKEEPER_TIMEOUT_SECONDS = int(os.environ.get("GATEKEEPER_TIMEOUT_SECONDS", "30"))
+
+# --- chat attachments (attachments.py) ------------------------------------------
+
+# A phone photo is typically 2-6 MB; a one-to-three page exercise PDF well
+# under that. 10 MB leaves room without accepting whole scanned textbooks.
+ATTACHMENT_MAX_BYTES = int(os.environ.get("ATTACHMENT_MAX_BYTES", str(10 * 1024 * 1024)))
+# An exercise sheet, not a chapter: only the first pages are read.
+ATTACHMENT_MAX_PDF_PAGES = int(os.environ.get("ATTACHMENT_MAX_PDF_PAGES", "3"))
+# Kept under GATEKEEPER_MAX_INPUT_CHARS: the transcription is sent through
+# /solve/stream like typed text, and anything over that cap is declined
+# before the classifier - with room left for a note the student types.
+ATTACHMENT_MAX_TEXT_CHARS = int(os.environ.get("ATTACHMENT_MAX_TEXT_CHARS", "1800"))

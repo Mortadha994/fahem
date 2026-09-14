@@ -20,6 +20,7 @@ export const AuthContext = createContext({
   user: null,
   logout: () => {},
   onUnauthorized: () => {},
+  editProfile: () => {},
 });
 
 export function useAuth() {

@@ -20,22 +20,36 @@ curriculum text it was built on.
 
 ## What a student gets
 
-- **Sign in with Google.** Every screen sits behind the sign-in; there is no
-  anonymous access.
-- **Chapters.** The home page lists the curriculum's chapters — including the
-  ones not ready yet, marked *À venir*, so the list never overstates coverage.
+- **Sign in with Google or an email and password.** Every screen sits behind
+  the sign-in; there is no anonymous access. Email accounts get address
+  verification and password reset by email.
+- **A one-time class question.** On the first sign-in a student picks their
+  **niveau** (2ème, 3ème, Bac) and **section** (Informatique, Mathématiques,
+  Sciences expérimentales, Sciences techniques, Économie et gestion, Lettres);
+  it is kept on the account and changeable later from the sidebar.
+- **Chapters, filtered to the student's year.** The home page lists the
+  chapters of the student's own niveau — including the ones not ready yet,
+  marked *À venir*, so the list never overstates coverage. A year whose corpus
+  is not in yet gets an honest empty state rather than a bare grid.
 - **A chapter page** with two tabs: the lesson itself (the course PDF, in the
   browser's own viewer) and its exercise series. Clicking an exercise sends it
   straight to the tutor.
-- **A chat** for any exercise the student pastes in. Answers stream in as
-  they are written and arrive as a declaration table, an
+- **A chat** for anything the student brings — an exercise pasted in, a
+  question about the course, or their own half-written program to be corrected.
+  Answers stream in as they are written and arrive as a declaration table, an
   *Algorithme | Python* solution side by side, and an execution trace.
+- **A photo or a PDF of an exercise.** Attach one (paperclip, `Ctrl+V` a
+  screenshot, or drag-and-drop); Fahem reads the statement out of it and solves
+  it like a typed message.
 - **A syntax verdict** under each answer — *Syntaxe du chapitre respectée* or
   *Syntaxe à vérifier* with the exact lines — from a mechanical checker.
 - **A grounding strip** that opens to show the pinned syntax tables and the
   retrieved excerpts the answer was built on.
-- **Discussions kept in the browser**, with a confirm step before one is
-  deleted.
+- **Discussions kept in the browser**, in a Historique panel, with a confirm
+  step before one is deleted.
+- **A light / dark theme toggle**, defaulting to the OS setting.
+
+Admins get a separate console (users and uploaded chapters) — see *History*.
 
 ---
 
@@ -59,9 +73,11 @@ made the top-k. So the context is built in two parts:
    vector search runs, so bac-level material can never leak into a 2ème
    session.
 
-Before any of that, a **gatekeeper** decides whether a message is an exercise
-at all (see *Notes*), and after it a **constraint checker** scans the answer
-for syntax the chapter has not taught.
+Before any of that, a **gatekeeper** decides what a message is — an exercise,
+the student's own code, a course question, small talk, or off-topic (see
+*Notes*) — and after it a **constraint checker** scans the answer for syntax
+the chapter has not taught. An attached photo or PDF is transcribed first and
+then goes through the same gatekeeper.
 
 ### The pipeline
 
@@ -71,10 +87,11 @@ for syntax the chapter has not taught.
 | **Correction** | `patch_chunks.py` applies pinned, hand-verified fixes. The PDFs draw the assignment arrow `←` with a custom font glyph that decodes as `-`, turning an assignment into a subtraction. This is deliberately **not** automated — a regex would also rewrite genuine subtraction in the same tables. |
 | **Embedding + retrieval** | `rag_store.py` embeds with a multilingual model into Qdrant; `retrieval.py` filters by scope, then searches semantically inside it. |
 | **Context assembly** | `context.py` builds the pinned core + retrieved extras, with a build check that fails loudly if a pinned table is missing or its arrows were lost. |
-| **Gatekeeper** | `gatekeeper.py` routes each message: `PROBLEM`, `META` or `OFF_TOPIC`. |
-| **Generation** | `prompts.py` holds the teaching constraints; `generate.py` / `llm_stream.py` call the model (Groq, `openai/gpt-oss-120b`) and stream the answer. |
+| **Gatekeeper** | `gatekeeper.py` routes each message: `PROBLEM`, `CODE`, `QUESTION`, `META` or `OFF_TOPIC`. The three grounded routes each get their own prompt. |
+| **Attachments** | `attachments.py` turns a photo or PDF into the exercise text — `pdfplumber` for a PDF with a text layer, a Groq vision model (`GROQ_VISION_MODEL`) for photos and scans, asked only to transcribe — then it re-enters the pipeline as if typed. |
+| **Generation** | `prompts.py` holds the teaching constraints (a prompt per grounded route, plus a per-student "profil de l'élève" note that steers tone only); `generate.py` / `llm_stream.py` call the model (Groq, `openai/gpt-oss-120b`) and stream the answer. |
 | **Checking** | `checker.py` runs a mechanical constraint check over the finished answer. |
-| **API** | `api.py` (FastAPI) — solving, plus the auth and chapter routers. |
+| **API** | `api.py` (FastAPI) — solving and attachment reading, plus the auth, chapter and admin routers. |
 | **UI** | `ui/` — React 19 + Vite, served by nginx in Docker. |
 
 ### Platform
@@ -82,10 +99,10 @@ for syntax the chapter has not taught.
 | Concern | How |
 | --- | --- |
 | **Vector store** | Qdrant (replaced an on-disk ChromaDB in Phase 0b). |
-| **Relational store** | PostgreSQL via SQLAlchemy, schema managed by Alembic: users, chat sessions, chat messages. |
-| **Auth** | Google Identity Services on the frontend; the backend verifies the Google ID token against Google's keys, then issues its own signed session in an `httpOnly` cookie (PyJWT). The Google token is never treated as a session. |
-| **Rate limiting** | slowapi over Redis. Solving is limited **per user** (`10/minute;100/hour` by default); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
-| **Chapters** | `chapters.py` serves the catalogue, each chapter's exercises and the lesson PDF — all behind sign-in. |
+| **Relational store** | PostgreSQL via SQLAlchemy, schema managed by Alembic: users (with role, niveau, section), chat sessions, chat messages, emailed auth tokens, and uploaded chapters. |
+| **Auth** | Two ways in. Google Identity Services on the frontend, verified server-side against Google's keys; and email + password (Argon2id), with emailed verification and reset links. Either way the backend issues its own signed session in an `httpOnly` cookie (PyJWT); the Google token is never treated as a session. A closed `role` (`student` / `admin`) gates the console; the admin role is granted only out of band by `promote_admin.py`. |
+| **Rate limiting** | slowapi over Redis. Solving and attachment reading are limited **per user** (`10/minute;100/hour` by default, a shared budget); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
+| **Chapters** | `chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `admin_chapters.py` + `chapter_store.py` back the admin upload/publish workflow; `course_markdown.py` reads a Markdown-authored chapter. |
 
 ### API at a glance
 
@@ -93,13 +110,16 @@ for syntax the chapter has not taught.
 | --- | --- | --- |
 | `GET /health` | — | `{"status":"ok","model":"…"}` |
 | `POST /auth/google` | — (IP-limited) | Exchange a Google ID token for a session cookie |
-| `GET /auth/me` | cookie | The signed-in user, or 401 |
+| `POST /auth/signup` · `/login` | — (IP-limited) | Email + password account creation / sign-in |
+| `POST /auth/forgot-password` · `/reset-password` · `/resend-verification` · `GET /auth/verify-email` | — | The emailed verification and reset flow |
+| `GET /auth/me` | cookie | The signed-in user (incl. niveau/section), or 401 |
+| `PUT /auth/me/profile` | cookie | Set the student's niveau and section |
 | `POST /auth/logout` | cookie | Clear the session |
-| `GET /chapters` | cookie | Chapter catalogue, including *coming soon* ones |
-| `GET /chapters/{id}/exercises` | cookie | That chapter's exercise series |
-| `GET /chapters/{id}/pdf` | cookie | The lesson PDF |
-| `POST /solve` | cookie (user-limited) | One-shot solution, JSON |
-| `POST /solve/stream` | cookie (user-limited) | The same, as server-sent events — what the UI uses |
+| `GET /chapters` | cookie | Chapter catalogue for the student's year, including *coming soon* ones |
+| `GET /chapters/{id}/exercises` · `/pdf` | cookie | A chapter's exercise series / lesson PDF |
+| `POST /solve` · `/solve/stream` | cookie (user-limited) | One-shot / streamed (SSE) solution — the UI uses the stream |
+| `POST /solve/extract` | cookie (user-limited) | Read the exercise text out of an attached photo or PDF |
+| `/admin/*` · `/admin/chapters/*` | cookie + admin | The console: users, stats, and the chapter upload/publish workflow |
 
 Request/response shapes, the SSE event contract and the pre-launch checklist
 are in [`README_API.md`](README_API.md).
@@ -231,6 +251,7 @@ Everything tunable is in `config.py`, read from env with working defaults:
 |---|---|---|
 | `GROQ_API_KEY` | *(required)* | |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | |
+| `GROQ_VISION_MODEL` | `qwen/qwen3.8-27b` | reads attached photos / scanned PDFs |
 | `GOOGLE_CLIENT_ID` | *(required for sign-in)* | also baked into the frontend |
 | `SESSION_SECRET_KEY` | a **published** dev string | **must** be set to a random value in any deployment |
 | `SESSION_TTL_SECONDS` | `604800` (7 days) | |
@@ -245,6 +266,9 @@ Everything tunable is in `config.py`, read from env with working defaults:
 | `CHUNKS_PATH` / `PROBLEMS_PATH` | `chunks.json` / `sample_problems.json` | |
 | `GATEKEEPER_MAX_INPUT_CHARS` | `2000` | |
 | `GATEKEEPER_ROUTER_MAX_TOKENS` / `_META_MAX_TOKENS` | `250` / `250` | |
+| `ATTACHMENT_MAX_BYTES` | `10485760` (10 MB) | per attached photo / PDF |
+| `ATTACHMENT_MAX_PDF_PAGES` | `3` | pages read from a PDF |
+| `ATTACHMENT_MAX_TEXT_CHARS` | `1800` | cap on the extracted text (kept under the gatekeeper input cap) |
 
 Inside compose, `DATABASE_URL`, `QDRANT_URL` and `REDIS_URL` are overridden to
 point at the sibling containers.
@@ -257,6 +281,9 @@ point at the sibling containers.
 docker compose exec backend python test_checker.py    # checker pass/fail suite
 docker compose exec backend python test_auth.py       # token verification, sessions, config guards
 docker compose exec backend python test_db.py         # models, constraints, cascades
+docker compose exec backend python test_admin.py      # admin role gate and user management
+docker compose exec backend python test_chapters_admin.py   # chapter upload/publish workflow
+docker compose exec backend python test_course_markdown.py  # Markdown chapter parsing
 docker compose exec backend python test_retrieval.py  # retrieval inspection (no assertions)
 docker compose exec backend python test_gatekeeper_adversarial.py   # adversarial transcripts; calls the model
 ```
@@ -292,15 +319,24 @@ before presenting it. Across every test round the trace has confirmed already
 correct work; it has never had an error to catch, so there is no evidence it
 would catch one.
 
-**Not every message reaches the pipeline.** `gatekeeper.py` classifies each
-incoming message first: `PROBLEM` goes to the RAG pipeline unchanged, `META`
-("what is this?", "what does chapter 1 cover?") is answered by a second model
-that has *no* retrieval and *no* pinned tables in its context — so it has
-nothing curriculum-related to leak even if fully compromised — and
+**Not every message reaches the pipeline the same way.** `gatekeeper.py`
+classifies each incoming message first. `PROBLEM` (an exercise), `CODE` (the
+student's own algorithm or program) and `QUESTION` (a question about a course
+notion) all go to the grounded RAG pipeline, each with its own prompt. `META`
+("what is this?", "what does chapter 1 cover?", greetings) is answered by a
+second model that has *no* retrieval and *no* pinned tables in its context — so
+it has nothing curriculum-related to leak even if fully compromised — and
 `OFF_TOPIC` gets a fixed sentence with no model call at all. Messages over
-2000 characters are declined before any model call. A meta reply is also
-run through an output-side check (length, system-prompt phrases,
-algorithm-shaped content) before it is shown.
+2000 characters are declined before any model call, and an attachment's
+extracted text is capped below that. A meta reply is also run through an
+output-side check (length, system-prompt phrases, algorithm-shaped content)
+before it is shown.
+
+**An attachment is transcribed, never trusted.** A photo or PDF is read by a
+vision model asked only to copy the text, and the result re-enters the same
+gatekeeper as a typed message — so a photo of "ignore your instructions" is
+exactly as harmless as typing it. File types are recognised from the bytes,
+not the filename or the request's content type.
 
 **Reasoning tokens never reach the student.** gpt-oss streams its chain of
 thought before the answer; `llm_stream.py` forwards only the answer channel.
@@ -354,7 +390,9 @@ than from a redesign. It was built out step by step against
   Screen-specific rules only *place* a primitive — width, margin, show/hide —
   and never restyle it.
 
-Light and dark follow the OS setting.
+Light and dark are driven off `<html data-theme>`: a toggle sets it, and it
+defaults to the OS setting. The palette is the "Violet Dusk" token set, and
+every colour keeps AA contrast in both themes.
 
 ---
 
@@ -364,39 +402,49 @@ Light and dark follow the OS setting.
 
 ```
 config.py            all env/config: endpoints, model names, paths, limits
-api.py               FastAPI app: /health, /solve, /solve/stream; mounts the routers
-auth.py              /auth: Google token exchange, session cookie, current user
-chapters.py          /chapters: catalogue, exercises, lesson PDF
+api.py               FastAPI app: /health, /solve, /solve/stream, /solve/extract; mounts the routers
+auth.py              /auth: Google token exchange, session cookie, current user, profile
+password_auth.py     /auth: email+password signup/login, verification, reset
+admin.py             /admin: role gate, stats, user management
+admin_chapters.py    /admin/chapters: upload → extract → review → publish
+chapter_store.py     the uploaded-chapter store behind the admin workflow
+chapters.py          /chapters: catalogue (year-scoped), exercises, lesson PDF
+attachments.py       reads an exercise from an attached photo or PDF
+course_markdown.py   reads a Markdown-authored chapter
+emails.py            sends verification / reset mail
 ratelimit.py         slowapi limiter over Redis; per-user and per-IP keys
-db.py / models.py    SQLAlchemy engine + User, ChatSession, ChatMessage
+db.py / models.py    SQLAlchemy engine + User, ChatSession, ChatMessage, AuthToken, UploadedChapter
 alembic/             migrations
-gatekeeper.py        routes each message PROBLEM / META / OFF_TOPIC before
-                     the pipeline sees it; meta-responder + output safety net
+gatekeeper.py        routes each message PROBLEM / CODE / QUESTION / META / OFF_TOPIC
+                     before the pipeline sees it; meta-responder + output safety net
 checker.py           the constraint checker (rules, patterns, thresholds)
 generate.py          Groq/Ollama HTTP clients + CLI harness
 llm_stream.py        streaming Groq call; filters the reasoning channel
-prompts.py           the teaching constraints (generation prompt)
+prompts.py           the teaching constraints (a prompt per grounded route)
 context.py           pinned syntax core + retrieved extras
 retrieval.py         scope-filtered semantic search
 rag_store.py         embedding + Qdrant storage
 extract_chapter.py   PDF → tagged chunks          (offline tool)
 patch_chunks.py      pinned corrections           (offline tool)
+promote_admin.py     grant/revoke the admin role  (offline tool)
 ```
 
 **Frontend** (`ui/src`)
 
 ```
 config.js            NIVEAU / CHAPITRE / SCOPE_LABEL / API_URL / GOOGLE_CLIENT_ID
-App.jsx              auth gate (checking / signed out / signed in) + routes
+App.jsx              auth gate (checking / signed out / signed in / needs-profile) + routes
 App.css              tokens, primitives, then per-screen placement
-routes/              Home, ChapterPage, Chat
-components/          AppLayout (app bar), Sidebar, Message, Composer,
-                     Markdown, AlgoCode, GroundingStrip,
-                     SignInScreen, GoogleSignIn
+routes/              Home, ChapterPage, Chat, ResetPassword, admin/*
+components/          AppLayout, AppSidebar, Message, Composer, Markdown,
+                     AlgoCode, GroundingStrip, HistoryPanel, ThemeToggle,
+                     SignInScreen, PasswordAuthForm, GoogleSignIn,
+                     AuthShell, ProfileSetup, admin/*
 components/ui/       Button, Badge, Alert, Skeleton, EmptyState
-lib/                 api.js (SSE client), auth.js, authContext.js,
-                     chapters.js, sessions.js (localStorage),
-                     algoHighlighter.js, remarkAlgoTable.js, hasRealSolution.js
+lib/                 api.js (SSE client + attachment upload), auth.js,
+                     authContext.js, profile.js, theme.js, chapters.js,
+                     sessions.js (localStorage), algoHighlighter.js,
+                     alignAlgoTable.js, remarkAlgoTable.js, hasRealSolution.js
 grammar/             algoPseudocode.json (TextMate grammar), algoThemes.js
 ```
 
@@ -432,11 +480,18 @@ older imports elsewhere keep working.
 | **Phase 3a** | Chapter catalogue, exercises and the lesson PDF on the backend. |
 | **Phase 3b** | Home, chapter pages and routing around the chat; streams abort on leaving it; the PDF keeps its page across tab switches. |
 | **Frontend audit, steps 1–4** | Design tokens; the accessibility set; delete confirmation and 44px targets; the six UI primitives. |
+| **Phases 4–5** | Email + password accounts (Argon2id), with emailed verification and password reset. |
+| **Phase 6** | The app sidebar as navigation and identity; discussions moved into a Historique panel; the landing page. |
+| **Phase 7** | An enforced `student` / `admin` role, granted out of band by `promote_admin.py`. |
+| **Phase 8** | The admin console: users, stats, session revocation. |
+| **Phase 9** | Uploaded chapters — an admin upload → extract → review → publish workflow (9b: Markdown-authored chapters). |
+| **This batch (PR #11)** | Solve from a photo or PDF; `CODE` / `QUESTION` gatekeeper routes and line-by-line answers; a slimmed sign-in screen; a light/dark toggle; the student profile (niveau + section) that scopes the chapter list and steers the tutor's tone. |
 
 ## Status and what's next
 
-The product works end to end: sign in, pick a chapter, read the lesson, click
-an exercise or paste one, get a grounded, checked answer.
+The product works end to end: sign in, answer the one-time class question,
+pick a chapter for your year, read the lesson, click an exercise or paste one
+(or send a photo of it), get a grounded, checked answer.
 
 Next, roughly in order:
 
@@ -444,11 +499,14 @@ Next, roughly in order:
   `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS`; enable Qdrant's API key;
   and close the items in `README_API.md`'s pre-launch list (generic error
   bodies, and who may receive curriculum excerpts).
-- **Responsive layout** (audit step 5) — one breakpoint set and a narrow app
-  bar, once the layout has been checked by hand at phone widths.
-- **States and polish** (audit step 6) — retry buttons on failed loads, an
-  icon set, a home page that picks up where the student left off.
+- **More chapters, more years** — the profile already scopes the chapter list
+  by niveau, so a 3ème/Bac student currently lands on an honest empty state.
+  Each new chapter needs its PDF (or Markdown), its pinned-table anchors in
+  `context.py`, and a check with `test_retrieval.py`. This is the main unlock.
+- **Scope the chat to the profile** — the freeform chat still defaults to the
+  2ème corpus; point it at the student's own niveau once that year has content.
+- **Section-aware chapters** — tag chapters with a section so the catalogue can
+  filter on it too, not only the niveau (`catalogue(niveau=…)` is written for
+  this).
 - **Server-side history** — write discussions to the Postgres chat tables so
   they follow the account rather than the browser.
-- **More chapters** — each needs its PDF, its pinned-table anchors in
-  `context.py`, and a check with `test_retrieval.py`.

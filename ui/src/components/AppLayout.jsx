@@ -3,6 +3,7 @@ import { Link, Outlet } from "react-router-dom";
 import AppSidebar from "./AppSidebar.jsx";
 import ChatSessionsProvider from "./ChatSessionsProvider.jsx";
 import MotionProvider from "./MotionProvider.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
 import Button from "./ui/Button.jsx";
 
@@ -64,6 +65,9 @@ export default function AppLayout() {
               </span>
               Fahem
             </Link>
+            {/* The sidebar's copy is inside the drawer on a phone; this one
+                is reachable without opening it. */}
+            <ThemeToggle className="mobilebar-theme" />
           </header>
 
           <div

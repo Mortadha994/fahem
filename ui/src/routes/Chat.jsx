@@ -2,11 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { HOVER_LIFT, PRESS, rise, stagger } from "../lib/motion.js";
+import { HOVER_LIFT, PRESS, SPRING_HOVER, rise, stagger } from "../lib/motion.js";
 import Message from "../components/Message.jsx";
 import Composer from "../components/Composer.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
-import { streamSolve, GENERIC_ERROR } from "../lib/api.js";
+import {
+  streamSolve,
+  extractAttachment,
+  GENERIC_ERROR,
+  ATTACHMENT_TYPES,
+  ATTACHMENT_MAX_BYTES,
+} from "../lib/api.js";
 import { titleFrom } from "../lib/sessions.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
@@ -45,6 +51,37 @@ export default function Chat() {
 
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
+
+  /* A photo or PDF of an exercise waiting in the composer:
+     { file, url, name, size, kind: "image" | "pdf" }. `url` is an object URL
+     for the thumbnail, revoked whenever the attachment changes or goes. */
+  const [attachment, setAttachment] = useState(null);
+  const [attachError, setAttachError] = useState("");
+  useEffect(() => {
+    const url = attachment?.url;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [attachment]);
+  const acceptFile = useCallback((file) => {
+    if (!ATTACHMENT_TYPES.includes(file.type)) {
+      setAttachError("Envoie une photo (JPEG, PNG ou WebP) ou un PDF.");
+      return;
+    }
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      setAttachError("Le fichier est trop volumineux (maximum 10 Mo).");
+      return;
+    }
+    const kind = file.type === "application/pdf" ? "pdf" : "image";
+    setAttachError("");
+    setAttachment({
+      file,
+      kind,
+      name: file.name || (kind === "image" ? "capture.png" : "exercice.pdf"),
+      size: file.size,
+      url: kind === "image" ? URL.createObjectURL(file) : null,
+    });
+  }, []);
 
   /* One short line, replaced once per finished answer. See the live region in
      the markup for why this is not driven off the streaming text. */
@@ -171,11 +208,27 @@ export default function Chat() {
 
   // Only autoscroll when the student is already at the bottom, so scrolling up
   // to re-read the declaration table mid-stream is not fought by the app.
+  // The same measure drives the "back to the latest message" button: it shows
+  // exactly when autoscroll has let go.
+  const [showJump, setShowJump] = useState(false);
   const onScroll = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setShowJump(!pinnedToBottom.current);
   }, []);
+  const jumpToLatest = () => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedToBottom.current = true;
+    setShowJump(false);
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  };
 
   useEffect(() => {
     if (pinnedToBottom.current && listRef.current) {
@@ -198,7 +251,7 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session) => {
+    (problem, session, { reuse } = {}) => {
       const sessionId = session.id;
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
@@ -206,29 +259,45 @@ export default function Chat() {
       setStreaming(true);
       pinnedToBottom.current = true;
 
+      // `reuse`: the exchange is already on screen - an attachment was read
+      // first (sendAttachment) - so its two messages are filled in rather
+      // than appended again.
       setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sessionId
-            ? {
-                ...s,
-                title: s.messages.length === 0 ? titleFrom(problem) : s.title,
-                updatedAt: Date.now(),
-                messages: [
-                  ...s.messages,
-                  { id: `u_${Date.now()}`, role: "user", content: problem },
-                  {
-                    id: `a_${Date.now()}`,
-                    role: "assistant",
-                    content: "",
-                    pinned: [],
-                    retrieved: [],
-                    warnings: [],
-                    status: "streaming",
-                  },
-                ],
-              }
-            : s
-        )
+        prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          if (reuse) {
+            return {
+              ...s,
+              title: s.messages.length <= 2 ? titleFrom(problem) : s.title,
+              updatedAt: Date.now(),
+              messages: s.messages.map((msg) =>
+                msg.id === reuse.userId
+                  ? { ...msg, content: problem, reading: false }
+                  : msg.id === reuse.assistantId
+                    ? { ...msg, status: "streaming" }
+                    : msg
+              ),
+            };
+          }
+          return {
+            ...s,
+            title: s.messages.length === 0 ? titleFrom(problem) : s.title,
+            updatedAt: Date.now(),
+            messages: [
+              ...s.messages,
+              { id: `u_${Date.now()}`, role: "user", content: problem },
+              {
+                id: `a_${Date.now()}`,
+                role: "assistant",
+                content: "",
+                pinned: [],
+                retrieved: [],
+                warnings: [],
+                status: "streaming",
+              },
+            ],
+          };
+        })
       );
 
       const controller = new AbortController();
@@ -320,13 +389,159 @@ export default function Chat() {
     [patchLast, setSessions, onUnauthorized]
   );
 
+  /**
+   * Send a photo or PDF: show the exchange straight away with a "reading"
+   * state, turn the file into the exercise's text (POST /solve/extract), then
+   * hand that text to send() like a typed message - so the gatekeeper, the
+   * grounded answer and the checker all apply unchanged. The student's own
+   * words, if any, travel in front of the transcription.
+   */
+  const sendAttachment = useCallback(
+    async (file, kind, name, note, session) => {
+      const sessionId = session.id;
+      const stamp = Date.now();
+      const userId = `u_${stamp}`;
+      const assistantId = `a_${stamp}`;
+      setAnnouncement("");
+      setStreaming(true);
+      pinnedToBottom.current = true;
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                title: s.messages.length === 0 ? titleFrom(note || name) : s.title,
+                updatedAt: stamp,
+                messages: [
+                  ...s.messages,
+                  {
+                    id: userId,
+                    role: "user",
+                    content: note,
+                    attachment: { name, kind },
+                    reading: true,
+                  },
+                  {
+                    id: assistantId,
+                    role: "assistant",
+                    content: "",
+                    pinned: [],
+                    retrieved: [],
+                    warnings: [],
+                    status: "reading",
+                    readingKind: kind,
+                  },
+                ],
+              }
+            : s
+        )
+      );
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const result = await extractAttachment(file, { signal: controller.signal });
+      const markRead = () =>
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  messages: s.messages.map((msg) =>
+                    msg.id === userId ? { ...msg, reading: false } : msg
+                  ),
+                }
+              : s
+          )
+        );
+
+      // Stopped while reading: handleStop already marked the answer.
+      if (result.aborted || abortRef.current !== controller) {
+        markRead();
+        return;
+      }
+      abortRef.current = null;
+
+      if (!result.ok) {
+        markRead();
+        setStreaming(false);
+        let error = result.error ?? GENERIC_ERROR;
+        if (result.unauthorized) {
+          error = "Ta session a expiré. Reconnecte-toi pour continuer.";
+          onUnauthorized();
+        } else if (result.rateLimited) {
+          error = rateLimitMessage(result.retryAfter);
+        }
+        setAnnouncement("Lecture du fichier impossible.");
+        patchLast(sessionId, { error, status: "error" });
+        return;
+      }
+
+      const problem = [note, result.text].filter(Boolean).join("\n\n").slice(0, 2000);
+      send(problem, session, { reuse: { userId, assistantId } });
+    },
+    [patchLast, setSessions, onUnauthorized, send]
+  );
+
   const handleSend = useCallback(() => {
     const problem = draft.trim();
-    if (!problem || streaming) return;
+    if (streaming) return;
+    if (attachment) {
+      const session = active ?? createSession(chapterChoice);
+      setDraft("");
+      setAttachment(null);
+      setAttachError("");
+      sendAttachment(
+        attachment.file,
+        attachment.kind,
+        attachment.name,
+        problem,
+        session
+      );
+      return;
+    }
+    if (!problem) return;
     const session = active ?? createSession(chapterChoice);
     setDraft("");
     send(problem, session);
-  }, [draft, streaming, active, createSession, send, chapterChoice]);
+  }, [
+    draft,
+    streaming,
+    active,
+    createSession,
+    send,
+    sendAttachment,
+    attachment,
+    chapterChoice,
+  ]);
+
+  /**
+   * "Réessayer" on a failed answer: drop the failed exchange (the question
+   * and its error) and send the same question again, through the same send()
+   * as everything else. Dropping first keeps the thread from showing the
+   * question twice.
+   */
+  const retryLast = useCallback(() => {
+    if (!active || streaming) return;
+    const msgs = active.messages;
+    const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
+    if (lastUserIndex < 0) return;
+    const question = msgs[lastUserIndex].content;
+    if (!question) return;
+    const kept = msgs.slice(0, lastUserIndex);
+    setSessions((prev) =>
+      prev.map((s) => (s.id === active.id ? { ...s, messages: kept } : s))
+    );
+    send(question, { ...active, messages: kept });
+  }, [active, streaming, setSessions, send]);
+
+  // Retry is offered on the last answer only, and only once nothing is
+  // streaming - an older failure further up has been superseded.
+  const lastMessageId = messages[messages.length - 1]?.id;
+  // A photo that could not be read left no text to resend; the student
+  // attaches it again (or a better one) instead.
+  const lastUserHasText = Boolean(
+    messages.findLast((msg) => msg.role === "user")?.content
+  );
 
   /**
    * An exercise clicked on a chapter page arrives as router state and is sent
@@ -425,108 +640,149 @@ export default function Chat() {
         {announcement}
       </p>
 
-      <div className="messages" ref={listRef} onScroll={onScroll}>
-        {messages.length === 0 ? (
-          /* One column in normal flow: the prompt, the chapter, then a way in.
+      <div className="messages-wrap">
+        <div className="messages" ref={listRef} onScroll={onScroll}>
+          {messages.length === 0 ? (
+            /* One column in normal flow: the prompt, the chapter, then a way in.
              The picker used to be pulled up under the prompt with a negative
              margin, which laid it over the prompt's second line as soon as
              the text wrapped. */
-          <m.div
-            className="chat-welcome"
-            variants={stagger(0.08)}
-            initial="hidden"
-            animate="show"
-          >
-            {/* h2, not h1: the page-level h1 above is persistent, and this
+            <m.div
+              className="chat-welcome"
+              variants={stagger(0.08)}
+              initial="hidden"
+              animate="show"
+            >
+              {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
-            <m.div variants={rise}>
-              <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
-                Colle l'énoncé d'un exercice. Fahem le résout avec la syntaxe de ton
-                chapitre — et te montre exactement sur quelles parties du cours il
-                s'appuie.
-              </EmptyState>
-            </m.div>
+              <m.div variants={rise}>
+                {/* The three kinds of message the backend routes (gatekeeper.py):
+                    an exercise, a question on the course, the student's own
+                    program - said up front so a first-time student knows all
+                    three are welcome. */}
+                <EmptyState titleAs="h2" title="Pose ta question sur le chapitre">
+                  Colle l'énoncé d'un exercice — ou envoie sa photo ou son PDF —, pose
+                  une question sur le cours, ou colle ton propre programme pour le faire
+                  corriger. Fahem répond avec la syntaxe de ton chapitre — et te montre
+                  sur quelles parties du cours il s'appuie.
+                </EmptyState>
+              </m.div>
 
-            {chapterList.length > 1 && (
-              <m.label className="chat-chapter-pick" variants={rise}>
-                <span>Chapitre</span>
-                <select
-                  value={currentChapter}
-                  onChange={(e) => chooseChapter(e.target.value)}
-                >
-                  {chapterList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.id} — {c.title}
-                    </option>
-                  ))}
-                </select>
-              </m.label>
-            )}
+              {chapterList.length > 1 && (
+                <m.label className="chat-chapter-pick" variants={rise}>
+                  <span>Chapitre</span>
+                  <select
+                    value={currentChapter}
+                    onChange={(e) => chooseChapter(e.target.value)}
+                  >
+                    {chapterList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id} — {c.title}
+                      </option>
+                    ))}
+                  </select>
+                </m.label>
+              )}
 
-            <m.div variants={rise}>
-              <ChatResume />
-            </m.div>
+              <m.div variants={rise}>
+                <ChatResume />
+              </m.div>
 
-            {suggestions.length > 0 && (
-              <section className="chat-suggest" aria-labelledby="chat-suggest-title">
-                <h3 id="chat-suggest-title" className="chat-suggest-title">
-                  Ou commence par un exercice de la série
-                </h3>
-                {/* The suggestions arrive after the prompt (they are fetched),
+              {suggestions.length > 0 && (
+                <section className="chat-suggest" aria-labelledby="chat-suggest-title">
+                  <h3 id="chat-suggest-title" className="chat-suggest-title">
+                    Ou commence par un exercice de la série
+                  </h3>
+                  {/* The suggestions arrive after the prompt (they are fetched),
                     so they run their own stagger when they land. */}
-                <m.ul
-                  className="chat-suggest-list"
-                  variants={stagger(0.07)}
-                  initial="hidden"
-                  animate="show"
-                >
-                  {suggestions.map((q, i) => (
-                    <m.li
-                      key={q}
-                      variants={rise}
-                      whileHover={HOVER_LIFT}
-                      whileTap={PRESS}
-                    >
-                      {/* Fills the box rather than sending: the student sees
+                  <m.ul
+                    className="chat-suggest-list"
+                    variants={stagger(0.07)}
+                    initial="hidden"
+                    animate="show"
+                  >
+                    {suggestions.map((q, i) => (
+                      <m.li
+                        key={q}
+                        variants={rise}
+                        whileHover={HOVER_LIFT}
+                        whileTap={PRESS}
+                      >
+                        {/* Fills the box rather than sending: the student sees
                           the full énoncé in the composer and can edit it or
                           add their own attempt first. */}
-                      <button
-                        type="button"
-                        className="chat-suggest-item"
-                        onClick={() => {
-                          setDraft(q);
-                          composerRef.current?.focus();
-                        }}
-                      >
-                        <span className="chat-suggest-head">
-                          <span className="chat-suggest-index" aria-hidden="true">
-                            {String(i + 1).padStart(2, "0")}
+                        <button
+                          type="button"
+                          className="chat-suggest-item"
+                          onClick={() => {
+                            setDraft(q);
+                            composerRef.current?.focus();
+                          }}
+                        >
+                          <span className="chat-suggest-head">
+                            <span className="chat-suggest-index" aria-hidden="true">
+                              {String(i + 1).padStart(2, "0")}
+                            </span>
+                            <span className="chat-suggest-go" aria-hidden="true">
+                              ↵
+                            </span>
                           </span>
-                          <span className="chat-suggest-go" aria-hidden="true">
-                            ↵
-                          </span>
-                        </span>
-                        <span className="chat-suggest-name">{exerciseTitle(q)}</span>
-                        <span className="chat-suggest-q">{q}</span>
-                      </button>
-                    </m.li>
-                  ))}
-                </m.ul>
-              </section>
-            )}
-          </m.div>
-        ) : null}
-        {messages.length === 0 ? null : (
-          <>
-            {/* Keyed by discussion with initial={false}: opening a thread shows
+                          <span className="chat-suggest-name">{exerciseTitle(q)}</span>
+                          <span className="chat-suggest-q">{q}</span>
+                        </button>
+                      </m.li>
+                    ))}
+                  </m.ul>
+                </section>
+              )}
+            </m.div>
+          ) : null}
+          {messages.length === 0 ? null : (
+            <>
+              {/* Keyed by discussion with initial={false}: opening a thread shows
                 it as it is, and only messages added while watching animate. */}
-            <AnimatePresence initial={false} key={activeId}>
-              {messages.map((msg) => (
-                <Message key={msg.id} message={msg} streaming={streaming} />
-              ))}
-            </AnimatePresence>
-          </>
-        )}
+              <AnimatePresence initial={false} key={activeId}>
+                {messages.map((msg) => (
+                  <Message
+                    key={msg.id}
+                    message={msg}
+                    streaming={streaming}
+                    onRetry={
+                      msg.id === lastMessageId &&
+                      (msg.error || msg.status === "stopped") &&
+                      lastUserHasText &&
+                      !streaming
+                        ? retryLast
+                        : undefined
+                    }
+                  />
+                ))}
+              </AnimatePresence>
+            </>
+          )}
+        </div>
+
+        {/* Back to the latest message, once the student has scrolled away
+            from it - most useful while an answer is still streaming below. */}
+        <AnimatePresence>
+          {showJump && messages.length > 0 && (
+            <m.button
+              type="button"
+              className="chat-jump"
+              onClick={jumpToLatest}
+              aria-label="Aller au dernier message"
+              initial={{ opacity: 0, y: 12, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1, transition: SPRING_HOVER }}
+              exit={{ opacity: 0, y: 12, scale: 0.9, transition: { duration: 0.15 } }}
+              whileTap={PRESS}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5.5 12.5 12 19l6.5-6.5" />
+              </svg>
+              {streaming && <span className="chat-jump-label">Réponse en cours</span>}
+            </m.button>
+          )}
+        </AnimatePresence>
       </div>
 
       <Composer
@@ -536,6 +792,16 @@ export default function Chat() {
         onStop={handleStop}
         streaming={streaming}
         inputRef={composerRef}
+        followUp={!isEmpty}
+        chapterLabel={`Chapitre ${currentChapter}`}
+        attachment={attachment}
+        attachError={attachError}
+        onAttach={acceptFile}
+        onRemoveAttachment={() => {
+          setAttachment(null);
+          setAttachError("");
+          composerRef.current?.focus();
+        }}
       />
     </div>
   );

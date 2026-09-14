@@ -1,7 +1,9 @@
 import { Link, NavLink } from "react-router-dom";
 import Button from "./ui/Button.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import { useAuth } from "../lib/authContext.js";
 import { isAdmin } from "../lib/auth.js";
+import { profileLabel } from "../lib/profile.js";
 import { SCOPE_LABEL } from "../config.js";
 
 /**
@@ -18,7 +20,8 @@ import { SCOPE_LABEL } from "../config.js";
  * the product feel broken rather than small.
  */
 export default function AppSidebar({ onNavigate }) {
-  const { user, logout } = useAuth();
+  const { user, logout, editProfile } = useAuth();
+  const profile = profileLabel(user);
 
   const label = user?.display_name || user?.email || "Compte";
   const initial = label.trim().charAt(0).toUpperCase() || "?";
@@ -68,7 +71,27 @@ export default function AppSidebar({ onNavigate }) {
           both. */}
 
       <div className="appnav-foot">
-        <p className="appnav-scope">{SCOPE_LABEL}</p>
+        {/* The student's class, and the way to change it. An admin without
+            a profile keeps the corpus scope line instead. */}
+        {profile ? (
+          <button
+            type="button"
+            className="appnav-profile"
+            onClick={() => {
+              onNavigate?.();
+              editProfile();
+            }}
+            aria-label={`Ma classe : ${profile}. Modifier`}
+          >
+            <span className="appnav-profile-label">Ma classe</span>
+            <span className="appnav-profile-value">{profile}</span>
+            <span className="appnav-profile-edit" aria-hidden="true">
+              Modifier
+            </span>
+          </button>
+        ) : (
+          <p className="appnav-scope">{SCOPE_LABEL}</p>
+        )}
         <div className="account">
           <span className="account-avatar" aria-hidden="true">
             {initial}
@@ -78,14 +101,19 @@ export default function AppSidebar({ onNavigate }) {
             {user?.email && <span className="account-mail">{user.email}</span>}
           </span>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="appnav-logout"
-          onClick={logout}
-        >
-          Déconnexion
-        </Button>
+        {/* Theme beside sign-out: both are about this browser session, not
+            about where to go, so they share the account block's row. */}
+        <div className="appnav-actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="appnav-logout"
+            onClick={logout}
+          >
+            Déconnexion
+          </Button>
+          <ThemeToggle className="appnav-theme" />
+        </div>
       </div>
     </aside>
   );

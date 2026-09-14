@@ -51,7 +51,7 @@ from config import (
     SESSION_TTL_SECONDS,
 )
 from db import session_scope
-from models import ROLE_ADMIN, User
+from models import NIVEAUX, ROLE_ADMIN, SECTIONS_BY_NIVEAU, User
 
 # HS256, not RS256: the only party that signs these tokens is also the only
 # party that verifies them, so an asymmetric key pair would add key management
@@ -90,6 +90,10 @@ class UserOut(BaseModel):
     # again on the server for every admin-gated request (get_current_admin),
     # because anything the browser is told is something the browser can edit.
     role: str
+    # The student profile; both null until the one-time question is answered,
+    # which is what tells the client to ask it (see models.NIVEAUX).
+    niveau: str | None = None
+    section: str | None = None
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
@@ -100,6 +104,8 @@ class UserOut(BaseModel):
             email_verified=user.email_verified,
             auth_method="password" if user.password_hash else "google",
             role=user.role,
+            niveau=user.niveau,
+            section=user.section,
         )
 
 
@@ -361,6 +367,37 @@ def google_sign_in(request: Request, payload: GoogleSignInRequest, response: Res
 @router.get("/me", response_model=UserOut)
 def read_current_user(user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.of(user)
+
+
+class ProfileUpdate(BaseModel):
+    niveau: str = Field(examples=["3eme"])
+    section: str = Field(examples=["informatique"])
+
+
+@router.put("/me/profile", response_model=UserOut)
+def update_profile(payload: ProfileUpdate, user: User = Depends(get_current_user)) -> UserOut:
+    """Set the student's niveau and section - the one-time question after the
+    first sign-in, and the way to change it later.
+
+    The pair is validated here against the school system (a 2ème année has no
+    Math or Technique section); the database only closes each set on its own.
+    """
+    if payload.niveau not in NIVEAUX:
+        raise HTTPException(status_code=422, detail=f"niveau must be one of {list(NIVEAUX)}")
+    if payload.section not in SECTIONS_BY_NIVEAU[payload.niveau]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"section must be one of {list(SECTIONS_BY_NIVEAU[payload.niveau])} "
+            f"for niveau {payload.niveau}",
+        )
+    with session_scope() as session:
+        row = session.get(User, user.id)
+        if row is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        row.niveau = payload.niveau
+        row.section = payload.section
+        session.flush()
+        return UserOut.of(row)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

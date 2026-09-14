@@ -148,13 +148,19 @@ def load_exercises(chapter_id: str) -> list[Exercise]:
 router = APIRouter(prefix="/chapters", tags=["chapters"])
 
 
-def catalogue() -> list[Chapter]:
+def catalogue(niveau: str | None = None) -> list[Chapter]:
     """The built-in list merged with published uploads (Phase 9).
 
     A published upload replaces the built-in placeholder with the same id (the
     "à venir" chapter 2 becomes the real chapter 2), and any other published
     upload is added. Drafts never appear: students see the publish snapshot's
     title, not the one being edited.
+
+    `niveau` restricts the list to one year (a chapter carries the niveau its
+    corpus is scoped by). None returns every niveau - what an admin, who has no
+    profile, gets. Section is deliberately not a filter here: a chapter has no
+    section yet, and every current chapter is 2ème informatique; when chapters
+    carry a section the same idea extends to it.
     """
     merged = {c.id: c for c in CHAPTERS}
     for row in chapter_store.published_chapters():
@@ -163,13 +169,23 @@ def catalogue() -> list[Chapter]:
         merged[row.id] = Chapter(
             id=row.id, title=row.published_title, niveau=row.niveau, status=ACTIVE
         )
-    return sorted(merged.values(), key=lambda c: (len(c.id), c.id))
+    chapters = merged.values()
+    if niveau is not None:
+        key = niveau.strip().lower()
+        chapters = [c for c in chapters if c.niveau.strip().lower() == key]
+    return sorted(chapters, key=lambda c: (len(c.id), c.id))
 
 
 @router.get("", response_model=list[Chapter])
 def list_chapters(user: models.User = Depends(auth.get_current_user)) -> list[Chapter]:
-    """Every chapter, real and planned, with its status."""
-    return catalogue()
+    """The chapters for the signed-in student's year, real and planned.
+
+    Scoped to the student's own niveau (from their profile), so a Bac student
+    is not offered 2ème chapters and vice versa. The scope comes from the
+    server-verified account, never a query parameter - the student cannot ask
+    for another year's list. A user with no niveau (an admin) gets every year.
+    """
+    return catalogue(niveau=user.niveau)
 
 
 @router.get("/{chapter_id}/exercises", response_model=list[Exercise])

@@ -1,4 +1,5 @@
 import { visit } from "unist-util-visit";
+import { realignPairs } from "./alignAlgoTable.js";
 
 /**
  * Locates the "Algorithme | Python" solution table (prompts.py §6) in the
@@ -30,6 +31,8 @@ export default function remarkAlgoTable() {
       const algoIndex = headerTexts.indexOf("algorithme");
       const pythonIndex = headerTexts.indexOf("python");
       if (algoIndex === -1 || pythonIndex === -1) return;
+
+      realignPythonColumn(table, algoIndex, pythonIndex);
 
       // Collected first so the header cell can carry the whole column's
       // text - the copy button lives in the header (one button for the
@@ -66,6 +69,35 @@ export default function remarkAlgoTable() {
       }
     });
   };
+}
+
+/**
+ * When the model listed the Python lines out of step with the instructions,
+ * re-pair them (lib/alignAlgoTable.js decides whether that can be done with
+ * certainty). The Python cells' own nodes are moved, not rebuilt from text,
+ * so inline code or emphasis inside them survives the move.
+ */
+function realignPythonColumn(table, algoIndex, pythonIndex) {
+  const body = table.children.slice(1).filter((row) => row.type === "tableRow");
+  const rows = body.map((row) => ({
+    algo: extractCellText(row.children?.[algoIndex] ?? { children: [] }),
+    py: extractCellText(row.children?.[pythonIndex] ?? { children: [] }),
+  }));
+  const paired = realignPairs(rows);
+  if (!paired) return;
+
+  // The non-empty Python cells' contents, in their original order - the same
+  // queue realignPairs consumed.
+  const contents = body
+    .map((row) => row.children?.[pythonIndex])
+    .filter((cell) => cell && extractCellText(cell).trim())
+    .map((cell) => cell.children);
+
+  body.forEach((row, i) => {
+    const cell = row.children?.[pythonIndex];
+    if (!cell) return;
+    cell.children = paired[i] ? contents.shift() : [];
+  });
 }
 
 /**

@@ -14,6 +14,8 @@ import AdminChapters from "./routes/admin/AdminChapters.jsx";
 import AdminChapterDetail from "./routes/admin/AdminChapterDetail.jsx";
 import Chat from "./routes/Chat.jsx";
 import ResetPassword from "./routes/ResetPassword.jsx";
+import ProfileSetup from "./components/ProfileSetup.jsx";
+import { needsProfile } from "./lib/profile.js";
 import {
   fetchMe,
   signInWithGoogle,
@@ -179,6 +181,11 @@ export default function App() {
 
   const clearVerifyOutcome = useCallback(() => setVerifyOutcome(null), []);
 
+  // The profile screen, reopened from the sidebar to change niveau/section.
+  // (A student with no profile yet gets it without asking - see the gate.)
+  const [editingProfile, setEditingProfile] = useState(false);
+  const editProfile = useCallback(() => setEditingProfile(true), []);
+
   const auth = useMemo(
     () => ({
       user,
@@ -186,8 +193,16 @@ export default function App() {
       onUnauthorized: handleUnauthorized,
       verifyOutcome,
       clearVerifyOutcome,
+      editProfile,
     }),
-    [user, handleLogout, handleUnauthorized, verifyOutcome, clearVerifyOutcome]
+    [
+      user,
+      handleLogout,
+      handleUnauthorized,
+      verifyOutcome,
+      clearVerifyOutcome,
+      editProfile,
+    ]
   );
 
   // THE ONE ROUTE REACHABLE WITHOUT A SESSION.
@@ -254,6 +269,31 @@ export default function App() {
         busy={signinBusy}
         error={signinError}
         verifyOutcome={verifyOutcome}
+      />
+    );
+  }
+
+  // Signed in, but the student has not said their niveau and section yet:
+  // asked once, before the app opens, so every answer and chapter from here
+  // on can be aimed at their class. Same place as the sign-in gate and for
+  // the same reason - no route can be reached around it.
+  if (needsProfile(user) || editingProfile) {
+    return (
+      <ProfileSetup
+        user={user}
+        onSaved={(me) => {
+          setUser(me);
+          setEditingProfile(false);
+        }}
+        onCancel={needsProfile(user) ? undefined : () => setEditingProfile(false)}
+        onLogout={() => {
+          setEditingProfile(false);
+          handleLogout();
+        }}
+        onUnauthorized={() => {
+          setEditingProfile(false);
+          handleUnauthorized();
+        }}
       />
     );
   }

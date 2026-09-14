@@ -1,3 +1,4 @@
+import { useState } from "react";
 import * as m from "motion/react-m";
 import Markdown from "./Markdown.jsx";
 import GroundingStrip from "./GroundingStrip.jsx";
@@ -26,29 +27,61 @@ const enterAssistant = {
   animate: { opacity: 1, y: 0, transition: { ...SPRING_ENTER, delay: 0.08 } },
 };
 
-export default function Message({ message, streaming }) {
+export default function Message({ message, streaming, onRetry }) {
   if (message.role === "user") {
     return (
       <m.div className="msg msg-user" {...enterUser}>
-        <div className="bubble">{message.content}</div>
+        <div className="bubble">
+          {/* A photo or PDF the exercise came from. Once read, the bubble
+              holds what was read from it, so the student can check the
+              transcription before trusting the answer. */}
+          {message.attachment && (
+            <span className={`msg-attachment${message.content ? "" : " is-alone"}`}>
+              <span className="msg-attachment-icon" aria-hidden="true">
+                {message.attachment.kind === "pdf" ? "PDF" : "IMG"}
+              </span>
+              <span className="msg-attachment-name">{message.attachment.name}</span>
+              <span className="msg-attachment-state">
+                {message.reading ? "lecture…" : message.content ? "texte lu" : ""}
+              </span>
+            </span>
+          )}
+          {message.content}
+        </div>
       </m.div>
     );
   }
 
   const { content, pinned, retrieved, warnings, status, error } = message;
+  const writing = status === "streaming" && streaming;
+  const finished = content && !writing;
 
   return (
     <m.div className="msg msg-assistant" {...enterAssistant}>
       {/* Who is speaking, once per answer. Without it a long thread of
           unboxed answers and short bubbles is hard to scan back through.
           Decorative for screen readers, which already get each answer as its
-          own block after the student's question. */}
+          own block after the student's question - and hear "writing" through
+          the thinking indicator's status role and the chat's live region. */}
       <p className="msg-author" aria-hidden="true">
         <span className="brand-mark">←</span>
         Fahem
+        {writing && content && (
+          <span className="msg-writing">
+            <span className="msg-writing-dot" />
+            rédige…
+          </span>
+        )}
       </p>
       {error ? (
-        <Alert className="msg-error">{error}</Alert>
+        // "Réessayer" sends the same question again (Chat.jsx retryLast);
+        // offered on the latest answer only.
+        <Alert
+          className="msg-error"
+          action={onRetry ? { label: "Réessayer", onClick: onRetry } : undefined}
+        >
+          {error}
+        </Alert>
       ) : (
         <>
           {content ? (
@@ -71,7 +104,13 @@ export default function Message({ message, streaming }) {
                     }}
                   />
                 ))}
-                <span className="thinking-text">Recherche dans le chapitre…</span>
+                <span className="thinking-text">
+                  {status === "reading"
+                    ? message.readingKind === "pdf"
+                      ? "Lecture de ton PDF…"
+                      : "Lecture de ta photo…"
+                    : "Recherche dans le chapitre…"}
+                </span>
               </p>
             )
           )}
@@ -120,9 +159,72 @@ export default function Message({ message, streaming }) {
             </m.div>
           )}
 
+          {status === "stopped" && (
+            <p className="msg-stopped">Réponse arrêtée avant la fin.</p>
+          )}
+
           <GroundingStrip pinned={pinned} retrieved={retrieved} />
+
+          {/* Actions on a finished answer: copy all of it (the Algorithme
+              column has its own copy button for the pseudocode alone), and
+              ask again when it was cut short. */}
+          {finished && (
+            <div className="msg-actions">
+              <CopyAnswer text={content} />
+              {status === "stopped" && onRetry && (
+                <button type="button" className="msg-action" onClick={onRetry}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" />
+                  </svg>
+                  Régénérer
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
     </m.div>
+  );
+}
+
+/** Copies the whole answer as the markdown it arrived as, and says so. */
+function CopyAnswer({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Denied or insecure context: no confirmation rather than an error.
+    }
+  }
+
+  return (
+    <>
+      {/* Announced separately: a change to a button's own name is not read
+        out reliably, a status message is. */}
+      <span className="sr-only" role="status">
+        {copied ? "Réponse copiée" : ""}
+      </span>
+      <button
+        type="button"
+        className={`msg-action${copied ? " is-done" : ""}`}
+        onClick={copy}
+      >
+        {copied ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12.5 10 17l9-10" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" />
+            <path d="M5 15V6a2 2 0 0 1 2-2h8" />
+          </svg>
+        )}
+        {copied ? "Copié" : "Copier la réponse"}
+      </button>
+    </>
   );
 }

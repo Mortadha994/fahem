@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import * as m from "motion/react-m";
 import { rise, stagger } from "../lib/motion.js";
+import { useNavigate } from "react-router-dom";
 import { fetchChapters, fetchExercises, UnauthorizedError } from "../lib/chapters.js";
 import { useAuth } from "../lib/authContext.js";
+import { profileLabel } from "../lib/profile.js";
+import EmptyState from "../components/ui/EmptyState.jsx";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { isStarted, startedExerciseTexts } from "../lib/exercises.js";
 import Alert from "../components/ui/Alert.jsx";
@@ -15,10 +18,13 @@ import WeeklyGoalCard from "../components/WeeklyGoalCard.jsx";
 /**
  * Where a student lands after signing in.
  *
- * Renders whatever the backend says, including the chapters that are not
- * ready. Filtering those out client-side would undo the point of the backend
- * listing them: a short list reads as "this is all there is" rather than
- * "more is coming", and the app would be quietly overstating its coverage.
+ * The backend already scopes the list to the student's year (their profile
+ * niveau), so this renders whatever it returns, including the chapters of
+ * that year that are not ready yet. Filtering the coming_soon ones out
+ * client-side would undo the point of listing them: a short list reads as
+ * "this is all there is" rather than "more is coming". When the year has no
+ * chapters at all (its corpus is not in yet), an honest empty state says so
+ * rather than showing a bare grid.
  *
  * Layout: a main column (welcome, chapters, recent discussions) and a
  * supporting column (streak, weekly goal) that moves under the main one when
@@ -26,8 +32,10 @@ import WeeklyGoalCard from "../components/WeeklyGoalCard.jsx";
  * derived from the API or this browser's own history; none is decorative.
  */
 export default function Home() {
-  const { onUnauthorized } = useAuth();
+  const { user, onUnauthorized } = useAuth();
   const { sessions } = useChatSessions();
+  const navigate = useNavigate();
+  const klass = profileLabel(user);
   const [chapters, setChapters] = useState(null);
   const [failed, setFailed] = useState(false);
   // chapter id -> exercise énoncés, for the available chapters only.
@@ -111,7 +119,9 @@ export default function Home() {
                   Chapitres
                 </h2>
                 <p className="section-lead">
-                  Lis le cours et entraîne-toi sur les exercices de la série.
+                  {klass
+                    ? `Le programme de ta classe · ${klass}`
+                    : "Lis le cours et entraîne-toi sur les exercices de la série."}
                 </p>
               </div>
               {chapters && chapters.length > 0 && (
@@ -145,7 +155,23 @@ export default function Home() {
                 ))}
               </ul>
             )}
-            {chapters && (
+            {/* The student's year with no chapters in the corpus yet: an
+                honest message, not a bare grid. The chat still works, so it
+                is the way forward offered here. */}
+            {chapters && chapters.length === 0 && (
+              <EmptyState
+                title="Les chapitres de ta classe arrivent bientôt"
+                action={{
+                  label: "Poser une question",
+                  onClick: () => navigate("/chat"),
+                }}
+              >
+                {klass
+                  ? `Le programme de ${klass} n'est pas encore en ligne. En attendant, tu peux poser une question ou coller un exercice dans le chat.`
+                  : "En attendant, tu peux poser une question ou coller un exercice dans le chat."}
+              </EmptyState>
+            )}
+            {chapters && chapters.length > 0 && (
               <m.ul
                 className="chapter-grid"
                 variants={stagger(0.07)}

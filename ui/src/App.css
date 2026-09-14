@@ -1,13 +1,23 @@
 @import "highlight.js/styles/github.css";
 
+/* Palette: the 21st.dev "Violet Dusk" theme (serafimcloud), mapped onto this
+   app's own token names. Cool off-white canvas with white cards in light,
+   violet-black in dark; a violet primary as --accent; violet-tinted borders
+   and shadows. Two deliberate departures, both for AA: --fg-dim is a shade
+   darker than the theme's muted text (#6b7280 fell to 4.4:1 on its own muted
+   surface), and the dark accent is 70% lightness instead of 65% (4.1:1 as
+   small text on the dark muted surface). Status colours (--ok/--warn/--err)
+   stay the app's own, tuned earlier for contrast. */
 :root {
+  /* The page behind everything; cards and panels sit on it as --bg. */
+  --canvas: #f8fafc;
   --bg: #ffffff;
-  --bg-alt: #f7f7f8;
-  --side: #f4f4f5;
-  --line: #e4e4e7;
-  --fg: #18181b;
-  --fg-dim: #6b7280;
-  --accent: #3f6fb5;
+  --bg-alt: #f3f4f6;
+  --side: #ffffff;
+  --line: #e5e7eb;
+  --fg: #030712;
+  --fg-dim: #636b78;
+  --accent: #6b26d9;
   --accent-fg: #fff;
   --ok: #166534;
   --ok-bg: #e9f6ec;
@@ -40,10 +50,11 @@
   --space-7: 3rem;
   --space-8: 4rem;
 
-  /* Radius - the eleven values in this file collapse to these four. */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* Radius - the eleven values in this file collapse to these four. Violet
+     Dusk's 1rem is the large step; the others scale with it. */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
   --radius-full: 999px;
 
   /* Type. --text-base is 16px, not the 15px the file used: the one place
@@ -57,15 +68,20 @@
   --text-2xl: 1.75rem;
   --leading-tight: 1.3;
   --leading-normal: 1.55;
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Violet Dusk's typeface, self-hosted (main.jsx); system fonts behind it
+     until it loads. */
+  --font-sans:
+    "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --heading-tracking: -0.02em;
 
   /* Elevation. Nothing consumes these yet - the UI is deliberately flat and
      giving it depth is a later step. They are defined here so that when a
      dropdown or dialog needs to sit above the page there is one answer
      rather than an invented shadow. */
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.08);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.1);
+  /* Violet Dusk's soft, violet-tinted elevation (8px down, 30px blur). */
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 14px rgb(107 38 217 / 0.06);
+  --shadow-md: 0 8px 30px rgb(107 38 217 / 0.08), 0 1px 2px rgb(15 23 42 / 0.05);
 
   /* Motion. */
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
@@ -86,23 +102,36 @@
      ever padded up to the minimum. */
   --tap: 44px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1c1f;
-    --bg-alt: #232327;
-    --side: #161618;
-    --line: #33333a;
-    --fg: #ececf1;
-    --fg-dim: #9ca3af;
-    --accent: #5b8ad6;
-    --ok: #7ee2a8;
-    --ok-bg: #14321f;
-    --warn: #f0c674;
-    --warn-bg: #33280f;
-    --err: #ff8f87;
-    --err-bg: #3a1d1a;
+/* Dark theme. Keyed off <html data-theme>, not a prefers-color-scheme media
+   query: index.html resolves the device setting into the attribute before
+   first paint, and the theme button (ThemeToggle.jsx) can then override it -
+   which a media query cannot be. Every theme rule in this file follows the
+   same pattern. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  /* Violet Dusk dark: violet-black canvas, cards a step up, violet-tinted
+     borders. */
+  --canvas: #050408;
+  --bg: #09080d;
+  --bg-alt: #1c1825;
+  --side: #07060b;
+  --line: #241f2e;
+  --fg: #f8fafc;
+  --fg-dim: #b0abba;
+  --accent: #a371f3;
+  --ok: #7ee2a8;
+  --ok-bg: #14321f;
+  --warn: #f0c674;
+  --warn-bg: #33280f;
+  --err: #ff8f87;
+  --err-bg: #3a1d1a;
 
-    /* Ink on an accent fill is dark here, not white.
+  /* Ink on an accent fill is dark here, not white.
        --accent has two jobs: coloured text/borders on a dark page, and a
        filled background for .btn-send, .appbar-cta-on and .account-avatar.
        In dark mode those pull in opposite directions and cannot both be met
@@ -112,16 +141,15 @@
        the ink resolves it: white on #5b8ad6 was 3.47:1, --bg on #5b8ad6 is
        4.9:1. Reusing --bg rather than a new hex keeps the palette the size it
        was, and the filled chip reads as cut out of the page. */
-    --accent-fg: var(--bg);
+  --accent-fg: var(--bg);
 
-    /* Shadows are restated, not inherited. The light-mode values are tuned
+  /* Shadows are restated, not inherited. The light-mode values are tuned
        against a white page; at 6-8% on a #1c1c1f ground they are close to
        invisible, so a surface that is meant to float just looks smudged.
        Raising the opacity and the spread is what makes elevation read at
        all on a dark background. */
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
-    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.55);
-  }
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 20px -8px rgb(0 0 0 / 0.6);
+  --shadow-md: 0 20px 40px -10px rgb(0 0 0 / 0.6);
 }
 
 * {
@@ -134,7 +162,7 @@ body,
 }
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--canvas);
   color: var(--fg);
   /* Longhands, not the `font` shorthand, so the tokens can be used. The
      shorthand also reset font-weight/style, which nothing here relied on.
@@ -142,6 +170,15 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+/* Violet Dusk's tighter tracking, on headings only: body text keeps the
+   face's own spacing, which is what reads best at 16px. Rules that set their
+   own letter-spacing still win. */
+h1,
+h2,
+h3 {
+  letter-spacing: var(--heading-tracking);
 }
 
 /* ---------- primitives (Step 4) ----------
@@ -423,7 +460,9 @@ body {
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  /* The page's own ground, so the bar and the thread under it are one
+     surface divided by a line, not a white strip on the canvas. */
+  background: var(--canvas);
 }
 .chat-head-text {
   min-width: 0;
@@ -524,9 +563,12 @@ body {
   .chat-head {
     padding-inline: var(--space-3);
   }
+  /* Phone header: title first. The shortcut hint goes whatever the pointer -
+     a narrow window on a laptop has no room for it either. */
   .chat-history-label,
   .chat-new-label,
-  .chat-head-scope {
+  .chat-head-scope,
+  .chat-history-kbd {
     display: none;
   }
   .chat-history-btn,
@@ -1010,13 +1052,16 @@ body {
   display: flex;
   justify-content: flex-end;
 }
+/* The student's side: a violet-tinted bubble, squared off at the corner that
+   points to them, so "who said this" reads at a glance without a label. */
 .msg-user .bubble {
-  background: var(--bg-alt);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 0.6rem 0.85rem;
   max-width: 80%;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid rgb(106 79 224 / 0.22);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  background: rgb(106 79 224 / 0.1);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* "← Fahem" above each answer: small, so it labels the answer without
@@ -1313,48 +1358,56 @@ body {
 .algo-tok {
   color: var(--algo-light, inherit);
 }
-@media (prefers-color-scheme: dark) {
-  .algo-tok {
-    color: var(--algo-dark, inherit);
-  }
+:root[data-theme="dark"] .algo-tok {
+  color: var(--algo-dark, inherit);
 }
 
 /* ---------- composer ---------- */
+/* The thread's bottom edge fades into the composer instead of meeting it at a
+   hard border line, so the card reads as floating over the conversation. */
 .composer {
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-  padding: 0.7rem var(--space-4) var(--space-4);
+  position: relative;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--canvas);
 }
-/* Border, fill and radius from .surface. The padding is its own: tight on
-   three sides so Envoyer sits close to the edge, wider on the left where the
-   caret starts. */
-.composer-inner {
+.composer::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: var(--space-6);
+  background: linear-gradient(to top, var(--canvas), transparent);
+  pointer-events: none;
+}
+/* The card: the textarea on top, the context and the send control on a row
+   underneath - the layout chat apps have taught everyone. */
+.composer-card {
   max-width: 52rem;
   margin: 0 auto;
   display: flex;
-  gap: var(--space-2);
-  align-items: flex-end;
-  padding: 0.45rem 0.45rem 0.45rem 0.7rem;
-}
-.composer-inner {
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-lg) + 4px);
+  background: var(--bg);
+  box-shadow: var(--shadow-md);
   transition:
     border-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-base) var(--ease);
 }
 /* A soft halo on top of the accent border: the box being typed in is the
    one thing on this screen that should look active. */
-.composer-inner:focus-within {
+.composer-card:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(63 111 181 / 0.18);
-}
-@media (prefers-reduced-motion: reduce) {
-  .composer-inner {
-    transition: none;
-  }
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 3px rgb(63 111 181 / 0.18);
 }
 .composer textarea {
-  min-height: var(--tap);
-  flex: 1;
+  width: 100%;
+  min-height: 2.25rem;
+  max-height: 220px;
+  padding: var(--space-1) 0;
   border: 0;
   outline: 0;
   resize: none;
@@ -1362,41 +1415,394 @@ body {
   color: inherit;
   font: inherit;
   line-height: 1.5;
-  max-height: 220px;
-  padding: 0.3rem 0;
 }
-/* Placement only - Envoyer is .btn-primary, Arrêter is .btn-secondary. */
-.btn-composer {
-  flex-shrink: 0;
+.composer textarea::placeholder {
+  color: var(--fg-dim);
 }
-/* Motion's wrapper for the swap and press (Composer.jsx). */
-.composer-action {
-  display: inline-flex;
-  flex-shrink: 0;
+.composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
-/* Envoyer on the brand gradient once there is something to send - the same
-   white-on-gradient pairing as the home screen's primary action (5.1:1 at
-   its lightest end). Disabled, it keeps .btn-primary's own disabled look. */
-.btn-send:not(:disabled) {
-  background: var(--brand-grad);
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 10px 22px -14px var(--brand-violet);
-}
-.btn-send:not(:disabled):hover {
-  filter: brightness(1.08);
-}
-.stop-square {
-  width: 9px;
-  height: 9px;
-  background: currentColor;
-  border-radius: 2px;
-}
-.composer-hint {
-  max-width: 52rem;
-  margin: 0.4rem auto 0;
+.composer-context {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--fg-dim);
+}
+.composer-chip {
+  flex: none;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: rgb(106 79 224 / 0.12);
+  color: var(--fg);
+  font-weight: 600;
+}
+.composer-hint {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Attachments: the paperclip, the file waiting to be sent, the drop state. */
+.composer-card.is-dragging {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.composer-attach {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-left: calc(-1 * var(--space-2));
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.composer-attach:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--accent);
+}
+.composer-attach:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.composer-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.composer-attach svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.composer-attachment {
+  align-self: flex-start;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.composer-attachment-thumb,
+.composer-attachment-icon {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+.composer-attachment-thumb {
+  object-fit: cover;
+  background: var(--bg);
+}
+.composer-attachment-icon {
+  display: grid;
+  place-items: center;
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.composer-attachment-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.composer-attachment-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.composer-attachment-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.composer-attachment-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--fg-dim);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.composer-attachment-remove:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+.composer-attachment-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.composer-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--err);
+}
+/* The file an exercise came from, at the top of the student's bubble. */
+.msg-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+.msg-attachment.is-alone {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.msg-attachment-icon {
+  flex: none;
+  padding: 1px var(--space-1);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.msg-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.msg-attachment-state {
+  flex: none;
+  color: var(--fg-dim);
+}
+/* The shortcut line means nothing without a keyboard. */
+@media (hover: none), (pointer: coarse) {
+  .composer-hint {
+    display: none;
+  }
+}
+/* Round icon control; the 44px target is the button itself. */
+.composer-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.composer-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.composer-btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.composer-btn:disabled {
+  cursor: not-allowed;
+}
+/* Something to send: white on the brand gradient, the same pairing as the
+   home screen's primary action (5.1:1 at its lightest end). */
+.composer-btn.is-send:not(:disabled) {
+  border-color: transparent;
+  background: var(--brand-grad);
+  color: #fff;
+  box-shadow: 0 10px 22px -12px var(--brand-violet);
+}
+.composer-btn.is-send:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+.composer-btn.is-stop {
+  background: var(--fg);
+  border-color: transparent;
+  color: var(--bg);
+}
+.stop-square {
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  border-radius: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-card {
+    transition: none;
+  }
+}
+/* Phones: the thread needs the height more than the card needs its air. */
+@media (max-width: 560px) {
+  .composer {
+    padding: var(--space-1) var(--space-3) var(--space-3);
+  }
+  .composer-card {
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  }
+}
+
+/* --- thread extras (Chat.jsx, Message.jsx) ---------------------------------- */
+
+/* A positioning frame for the jump button, so it floats over the scrolling
+   list without being inside it. */
+.messages-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-jump {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+.chat-jump svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chat-jump:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+/* "Fahem rédige…" beside the author while an answer streams. */
+.msg-writing {
+  margin-left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--fg-dim);
+}
+.msg-writing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-violet);
+  animation: msg-writing 1.1s ease-in-out infinite;
+}
+@keyframes msg-writing {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+}
+.msg-stopped {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--fg-dim);
+}
+/* Quiet until wanted: muted text buttons under the answer. */
+.msg-actions {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.msg-action {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.msg-action svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.msg-action:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.msg-action:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.msg-action.is-done {
+  color: var(--ok);
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg-writing-dot {
+    animation: none;
+  }
+  .msg-action {
+    transition: none;
+  }
 }
 
 /* ---------- mobile: sidebar becomes a drawer ---------- */
@@ -1576,9 +1982,14 @@ body {
   display: flex;
   overflow: hidden;
 }
+/* min-height:0 as well as min-width:0. Below 900px .shell turns into a
+   column, and without it this box grew to its content's height - a long
+   conversation pushed the composer below the screen, and .shell's
+   overflow:hidden made it unreachable, so a phone could not send at all. */
 .shell-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -1712,6 +2123,228 @@ body {
 }
 .appnav-logout {
   width: 100%;
+}
+/* "Ma classe": the student's niveau and section, and the way to change it. */
+.appnav-profile {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.appnav-profile:hover {
+  border-color: var(--accent);
+}
+.appnav-profile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.appnav-profile-label {
+  grid-column: 1;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.appnav-profile-value {
+  grid-column: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.appnav-profile-edit {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* The one-time profile question (ProfileSetup.jsx): radio tiles. */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.profile-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.profile-group:disabled {
+  opacity: 0.55;
+}
+.profile-legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.profile-hint {
+  font-weight: 400;
+  color: var(--fg-dim);
+}
+.profile-options {
+  display: grid;
+  gap: var(--space-2);
+}
+.profile-options-niveau {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.profile-options-section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.profile-option {
+  position: relative;
+  display: flex;
+}
+/* The radio stays in the page (keyboard, screen readers) but is drawn by
+   the tile beside it. */
+.profile-option input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.profile-group:disabled .profile-option input {
+  cursor: not-allowed;
+}
+.profile-option span {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.25;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.profile-option:hover input:not(:disabled) + span {
+  border-color: var(--fg-dim);
+}
+.profile-option input:checked + span {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.profile-option input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.profile-submit {
+  width: 100%;
+}
+.profile-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: calc(-1 * var(--space-3));
+}
+@media (max-width: 380px) {
+  .profile-options-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Déconnexion takes the row; the theme button sits at its end. */
+.appnav-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.appnav-actions .appnav-logout {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- theme toggle (ThemeToggle.jsx) ----------
+   A 44px square with a sun and a moon drawn on top of each other; the one
+   that is not wanted turns away and fades. Colours come from the bar it sits
+   in (currentColor and the bar's own tokens), placements below only adjust
+   the frame. */
+.theme-toggle {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.theme-toggle-icon {
+  grid-area: 1 / 1;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    transform 320ms var(--ease),
+    opacity 200ms var(--ease);
+}
+/* Light page: offer the moon. Dark page: offer the sun. */
+.theme-toggle[data-theme-current="light"] .theme-toggle-sun,
+.theme-toggle[data-theme-current="dark"] .theme-toggle-moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle,
+  .theme-toggle-icon {
+    transition: none;
+  }
+}
+/* Phone bar: pushed to the far end, opposite the brand. */
+.mobilebar-theme {
+  margin-left: auto;
+}
+/* Public pages: on the glass, not a solid chip. */
+.lp-theme {
+  border-color: var(--glass-line, var(--line));
+  background: transparent;
+}
+.auth-theme {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 5;
+  border-color: var(--glass-line, var(--line));
+  background: var(--glass, var(--bg));
+  backdrop-filter: blur(10px);
 }
 
 /* The sidebar as a drawer, declared *after* the rules above so it actually
@@ -2028,14 +2661,9 @@ body {
    same on the welcome card's tint - under AA for the small text it colours
    there. The same one-step-darker value the public pages use, light mode
    only: dark mode already passes. */
-@media (prefers-color-scheme: light) {
-  .appnav,
-  .verify-banner,
-  .hero,
-  .chat-head,
-  .history-panel {
-    --fg-dim: #4b5563;
-  }
+:root[data-theme="light"]
+  :is(.appnav, .verify-banner, .hero, .chat-head, .history-panel) {
+  --fg-dim: #4b5563;
 }
 
 /* --- layout ------------------------------------------------------------------ */
@@ -3259,22 +3887,19 @@ body {
   isolation: isolate;
   background: var(--auth-ground);
 }
-@media (prefers-color-scheme: dark) {
-  .signin,
-  .landing {
-    --auth-ground: #090b12;
-    --glass: rgb(20 22 32 / 0.74);
-    --glass-line: rgb(255 255 255 / 0.08);
-    --glass-panel: rgb(255 255 255 / 0.025);
-    --field-fill: rgb(255 255 255 / 0.04);
-    --field-line: rgb(255 255 255 / 0.12);
-    --grad-text: linear-gradient(100deg, #8fb4ff, #b9a2ff 35%, #5eead4 70%, #8fb4ff);
-    --blob-opacity: 0.42;
-    --card-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
-    /* Restated: the light override above would otherwise win here too,
+:root[data-theme="dark"] :is(.signin, .landing) {
+  --auth-ground: #090b12;
+  --glass: rgb(20 22 32 / 0.74);
+  --glass-line: rgb(255 255 255 / 0.08);
+  --glass-panel: rgb(255 255 255 / 0.025);
+  --field-fill: rgb(255 255 255 / 0.04);
+  --field-line: rgb(255 255 255 / 0.12);
+  --grad-text: linear-gradient(100deg, #8fb4ff, #b9a2ff 35%, #5eead4 70%, #8fb4ff);
+  --blob-opacity: 0.42;
+  --card-shadow: 0 40px 100px -30px rgb(0 0 0 / 0.8);
+  /* Restated: the light override above would otherwise win here too,
        since .signin outranks :root. Dark's own value passes at 6.35:1. */
-    --fg-dim: #9ca3af;
-  }
+  --fg-dim: #9ca3af;
 }
 
 /* --- aurora background --------------------------------------------------- */
@@ -3507,16 +4132,13 @@ body {
   --tk-num: #be185d;
   --glyph-rgb: 100 110 210;
 }
-@media (prefers-color-scheme: dark) {
-  .signin,
-  .landing {
-    --tk-kw: #8fb4ff;
-    --tk-op: #c4b5fd;
-    --tk-str: #5eead4;
-    --tk-fn: #fbbf24;
-    --tk-num: #f9a8d4;
-    --glyph-rgb: 150 170 255;
-  }
+:root[data-theme="dark"] :is(.signin, .landing) {
+  --tk-kw: #8fb4ff;
+  --tk-op: #c4b5fd;
+  --tk-str: #5eead4;
+  --tk-fn: #fbbf24;
+  --tk-num: #f9a8d4;
+  --glyph-rgb: 150 170 255;
 }
 
 .auth-demo {
@@ -4713,6 +5335,12 @@ body {
   letter-spacing: 0.12em;
   color: var(--tk-op);
 }
+/* Light mode: --tk-op (#6a4fe0) on the kicker's violet tint over the page
+   measured 4.28:1, under AA for this 12px label. A deeper violet from the
+   same family gives ~6.5:1; dark mode's own --tk-op already passes. */
+:root[data-theme="light"] .lp-kicker {
+  color: #5536c6;
+}
 .lp-kicker::before {
   content: "";
   width: 6px;
@@ -5566,4 +6194,114 @@ body {
   background: var(--bg);
   color: var(--fg);
   font: inherit;
+}
+
+/* =========================================================================
+   Signed-out screens, simplified: one quiet card, no showcase.
+   The landing page keeps the aurora, the demo and the glass; these screens
+   come after it and only have to let the student in. Declared last so it
+   wins over the showcase rules above, which the landing still shares.
+   ========================================================================= */
+.signin-simple {
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(
+      60rem 32rem at 50% -10%,
+      color-mix(in srgb, var(--accent) 9%, transparent),
+      transparent 70%
+    ),
+    var(--canvas);
+}
+.signin-simple .auth-shell {
+  max-width: 26rem;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: visible;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--shadow-md);
+  animation: auth-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.signin-simple .auth-shell::before,
+.signin-simple .auth-shell::after {
+  display: none;
+}
+.signin-simple .auth-main {
+  padding: var(--space-6);
+}
+.signin-simple .auth-main > * {
+  animation: none;
+}
+.signin-simple .auth-brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--fg);
+  text-decoration: none;
+}
+.signin-simple .auth-brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+.signin-simple .auth-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.signin-simple .auth-mark-arrow {
+  animation: none;
+}
+.signin-simple .auth-title {
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+}
+.signin-simple .auth-head {
+  margin-bottom: var(--space-5);
+}
+.signin-simple .auth-theme {
+  background: var(--bg);
+  border-color: var(--line);
+  backdrop-filter: none;
+}
+@media (max-width: 480px) {
+  .signin-simple .auth-main {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+/* The form in the app's own colours: a solid accent button with no glow or
+   light sweep, plain fields, and a smaller tab switch. */
+.signin-simple .btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.signin-simple .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  transform: none;
+  box-shadow: none;
+}
+.signin-simple .btn-primary::after {
+  display: none;
+}
+.signin-simple .field-input {
+  background: var(--bg);
+  border-color: var(--line);
+}
+.signin-simple .field-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.signin-simple .auth-toggle .btn {
+  min-height: 2.25rem;
+  font-size: var(--text-sm);
 }

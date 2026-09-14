@@ -112,3 +112,70 @@ export async function streamSolve(
     if (err.name !== "AbortError") onError?.(GENERIC_ERROR);
   }
 }
+
+/** The file types /solve/extract reads, and its size cap (config.py). */
+export const ATTACHMENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+];
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * POST /solve/extract: read the exercise out of a photo or a PDF.
+ *
+ * Returns the text only; the chat then sends it through streamSolve like a
+ * typed message. The raw file is the body (its own Content-Type), not
+ * multipart - the backend checks the real type from the bytes anyway.
+ *
+ * Resolves to one of:
+ *   { ok: true, text, source, pages }
+ *   { ok: false, unauthorized: true }
+ *   { ok: false, rateLimited: true, retryAfter }
+ *   { ok: false, error }        - a sentence the student can act on
+ *   { aborted: true }           - the stop button
+ * The backend's own 413/415/422 details are written for the student (see
+ * attachments.py), so they are shown as they are; anything else is generic.
+ */
+export async function extractAttachment(file, { signal } = {}) {
+  let response;
+  try {
+    response = await fetch(`${API_URL}/solve/extract`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+      signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") return { aborted: true };
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  if (response.status === 401) return { ok: false, unauthorized: true };
+  if (response.status === 429) {
+    const header = Number(response.headers.get("Retry-After"));
+    return {
+      ok: false,
+      rateLimited: true,
+      retryAfter: Number.isFinite(header) && header > 0 ? header : null,
+    };
+  }
+
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    // Non-JSON error page: fall through to the generic message.
+  }
+  if (!response.ok) {
+    const readable = [413, 415, 422].includes(response.status);
+    return {
+      ok: false,
+      error: readable && typeof body?.detail === "string" ? body.detail : GENERIC_ERROR,
+    };
+  }
+  if (!body?.text) return { ok: false, error: GENERIC_ERROR };
+  return { ok: true, text: body.text, source: body.source, pages: body.pages };
+}
