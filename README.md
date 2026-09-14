@@ -286,8 +286,9 @@ powershell -ExecutionPolicy Bypass -File share.ps1
 It rebuilds the frontend to call the API on the same address (`/api`, proxied
 by nginx), starts a `cloudflared` container, and prints a
 `https://<random>.trycloudflare.com` link. Friends sign up with e-mail and
-password; Google sign-in does not work on that address (it is not an
-authorised origin). The link lives as long as your PC and Docker are on, and
+password - the share build hides the Google button, because Google refuses
+sign-ins from an origin not registered in its console (`origin_mismatch`) and
+the tunnel's address is random. The link lives as long as your PC and Docker are on, and
 changes when the tunnel restarts. Stop sharing with
 `docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel`;
 go back to local-only with a plain `docker compose up -d --build`.

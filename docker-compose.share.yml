@@ -24,6 +24,11 @@ services:
         # Same-site API: ui/src/config.js resolves "/api" against the page's
         # address, and ui/nginx.conf proxies it to the backend.
         VITE_API_URL: /api
+        # Google refuses sign-ins from origins not registered in the Google
+        # Cloud Console (Error 400: origin_mismatch), and a quick tunnel's
+        # address is random. Built without a client id, the sign-in page
+        # offers e-mail and password only.
+        VITE_GOOGLE_CLIENT_ID: ""
 
   backend:
     # Not published on the host any more: the only way in is the tunnel, then
