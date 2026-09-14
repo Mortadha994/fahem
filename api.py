@@ -38,6 +38,7 @@ import attachments
 import auth
 import chapter_store
 import chapters
+import chat_history
 import gatekeeper
 import models
 import password_auth
@@ -143,6 +144,10 @@ app.include_router(admin.router)
 
 # Uploaded chapters (Phase 9): upload, review, publish. Same router-level gate.
 app.include_router(admin_chapters.router)
+
+# Chat history, per account: each student's discussions, scoped to their own
+# rows on every route - see chat_history.py.
+app.include_router(chat_history.router)
 
 
 def _meta_scope(payload) -> tuple[str, str]:

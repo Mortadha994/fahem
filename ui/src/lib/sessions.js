@@ -1,35 +1,37 @@
-// Session persistence, browser-local by design: no auth, no student identity,
-// no backend table. Sessions live in localStorage keyed by chapter, which is
-// enough for the sidebar and for the Phase 5 student test. They do not follow
-// a student to another device and are lost if site data is cleared.
+import { API_URL } from "../config.js";
 
-const KEY = "fahem.sessions.v1";
+// Chat history, per account. Discussions are saved on the server
+// (/chat/sessions, chat_history.py), scoped to whoever is signed in, so they
+// follow a student to any device and nobody sees anyone else's. The in-memory
+// list and the save timing live in ChatSessionsProvider.
 
-export function loadSessions() {
+// Where history used to live: one browser key shared by every account that
+// signed in on that browser - the leak this module replaced. It is deleted,
+// not imported: nothing in it says whose each discussion was.
+const LEGACY_KEY = "fahem.sessions.v1";
+
+export function clearLegacySessions() {
   try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    localStorage.removeItem(LEGACY_KEY);
   } catch {
-    // Private mode, blocked storage, corrupt value - start empty rather than
-    // taking the app down.
-    return [];
+    // Blocked storage: there is nothing readable to clear either.
   }
 }
 
-export function saveSessions(sessions) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(sessions));
-  } catch {
-    // Quota or blocked storage: the conversation still works in memory.
-  }
+/** A random v4 UUID - the server keys discussions by one. */
+function uuid() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export function newSession({ niveau, chapitre }) {
   return {
-    id:
-      globalThis.crypto?.randomUUID?.() ??
-      `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: uuid(),
     title: "Nouvelle discussion",
     niveau,
     chapitre,
@@ -39,8 +41,73 @@ export function newSession({ niveau, chapitre }) {
   };
 }
 
-/** First student message becomes the sidebar title. */
+/** First student message becomes the discussion's title. */
 export function titleFrom(text) {
   const clean = text.trim().replace(/\s+/g, " ");
   return clean.length > 48 ? `${clean.slice(0, 48)}…` : clean || "Nouvelle discussion";
+}
+
+/** A message still being written: saving it now would store half an answer. */
+export function isBusy(session) {
+  return session.messages.some(
+    (m) => m.status === "streaming" || m.status === "reading"
+  );
+}
+
+/** What the server stores - the fields the chat renders, nothing transient. */
+export function sessionPayload(session) {
+  return {
+    title: session.title,
+    niveau: session.niveau,
+    chapitre: String(session.chapitre),
+    createdAt: session.createdAt,
+    messages: session.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content ?? "",
+      status: m.status ?? null,
+      warnings: m.warnings ?? [],
+      pinned: m.pinned ?? [],
+      retrieved: m.retrieved ?? [],
+      error: m.error ?? null,
+      attachment: m.attachment ?? null,
+      readingKind: m.readingKind ?? null,
+    })),
+  };
+}
+
+/** Thrown on 401: the caller hands over to the sign-in screen. */
+export class HistoryUnauthorized extends Error {}
+
+async function call(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
+    ...options,
+  });
+  if (response.status === 401) throw new HistoryUnauthorized(path);
+  if (!response.ok) throw new Error(`${path} returned ${response.status}`);
+  return response.status === 204 ? null : response.json();
+}
+
+/** The signed-in student's discussions, newest first. */
+export function fetchSessions() {
+  return call("/chat/sessions");
+}
+
+/**
+ * Save one discussion. `keepalive` lets the request finish while the page is
+ * being hidden or closed (the browser caps such a body at ~64 KB, so it is
+ * the backstop, not the normal path).
+ */
+export function saveSession(session, { keepalive = false } = {}) {
+  return call(`/chat/sessions/${encodeURIComponent(session.id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionPayload(session)),
+    keepalive,
+  });
+}
+
+export function deleteSessionRemote(id) {
+  return call(`/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

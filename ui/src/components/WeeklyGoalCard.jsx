@@ -5,6 +5,7 @@ import Button from "./ui/Button.jsx";
 import CountUp from "./CountUp.jsx";
 import { SPRING_ENTER, rise } from "../lib/motion.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { useAuth } from "../lib/authContext.js";
 import {
   WEEKLY_GOAL_RANGE,
   loadWeeklyGoal,
@@ -22,9 +23,9 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 /**
  * Exercises solved this week against a target the student sets.
  *
- * The count is real - solved exercises from this browser's chat history, since
- * Monday (lib/progress.js) - and browser-local for the same reason the streak
- * is. The target itself is remembered in localStorage.
+ * The count is real - solved exercises from the student's own chat history,
+ * since Monday (lib/progress.js). The target is remembered in localStorage,
+ * under a key that carries the account id.
  *
  * The ring is an SVG arc rather than a div trick so it scales cleanly and can
  * carry its own accessible value; the visible "4/6" is hidden from screen
@@ -32,11 +33,12 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  */
 export default function WeeklyGoalCard() {
   const { sessions } = useChatSessions();
+  const { user } = useAuth();
   const inputId = useId();
   const gradientId = `goal-grad-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const [goal, setGoal] = useState(loadWeeklyGoal);
+  const [goal, setGoal] = useState(() => loadWeeklyGoal(user?.id));
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => String(loadWeeklyGoal()));
+  const [draft, setDraft] = useState(() => String(loadWeeklyGoal(user?.id)));
 
   const done = useMemo(
     () => weeklySolved(solvedByDay(solvedTimestamps(sessions))),
@@ -48,7 +50,7 @@ export default function WeeklyGoalCard() {
 
   function save(event) {
     event.preventDefault();
-    const next = saveWeeklyGoal(Number(draft));
+    const next = saveWeeklyGoal(Number(draft), user?.id);
     setGoal(next);
     setDraft(String(next));
     setEditing(false);

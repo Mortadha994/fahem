@@ -21,8 +21,8 @@ import { SPRING_ENTER, rise, stagger } from "../lib/motion.js";
  * opened it. Up/Down move between results; Enter in the search opens the
  * first match.
  *
- * Deleting still asks first (unchanged from SessionHistory): localStorage is
- * the only copy of a transcript, so the first click turns the control into
+ * Deleting still asks first (unchanged from SessionHistory): it removes the
+ * discussion from the account for good, so the first click turns the control into
  * "Supprimer ?" and the second confirms. Blur or Escape backs out.
  */
 

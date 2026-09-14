@@ -8,7 +8,7 @@ import { rise, stagger } from "../lib/motion.js";
 /**
  * The last few discussions, one tap from the home screen.
  *
- * The same list the chat sidebar shows (this browser's localStorage), trimmed
+ * The same list the chat history shows (the student's own, from the server), trimmed
  * to the three most recent that have a question in them. Opening one selects
  * it and goes to the chat - exactly what clicking it in the sidebar does, so
  * there is no second way of resuming a discussion to keep in sync.

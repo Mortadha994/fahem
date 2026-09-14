@@ -282,7 +282,7 @@ class ChatSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        order_by="ChatMessage.created_at",
+        order_by="ChatMessage.position",
     )
 
     __table_args__ = (
@@ -323,6 +323,17 @@ class ChatMessage(Base):
     # deterministic across corpus changes, so re-running it later would show a
     # student different sources than the answer was actually built on.
     grounding_excerpts: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Order within the session. A discussion is saved as a whole, so its
+    # messages are inserted in one transaction and share a created_at - that
+    # timestamp cannot order them, this can.
+    position: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # What the chat shows that is not part of the answer itself: an error
+    # sentence, the attached file's name and kind, the client's message id.
+    # Kept loose on purpose - display state, not something to query.
+    extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

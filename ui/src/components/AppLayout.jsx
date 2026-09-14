@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import AppSidebar from "./AppSidebar.jsx";
 import ChatSessionsProvider from "./ChatSessionsProvider.jsx";
+import { useAuth } from "../lib/authContext.js";
 import MotionProvider from "./MotionProvider.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
@@ -26,6 +27,7 @@ import Button from "./ui/Button.jsx";
  */
 export default function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
+  const { user } = useAuth();
 
   // Closing on navigation is handled by the links themselves (onNavigate
   // below), not by an effect watching the pathname: every way out of the
@@ -42,7 +44,9 @@ export default function AppLayout() {
   }, [navOpen]);
 
   return (
-    <ChatSessionsProvider>
+    // Keyed by account: a different user always gets a fresh history, loaded
+    // from their own rows, never the previous account's list still in memory.
+    <ChatSessionsProvider key={user?.id ?? "anon"}>
       <MotionProvider>
         <div className={`shell${navOpen ? " shell-nav-open" : ""}`}>
           {/* Narrow screens only. Nothing here duplicates the sidebar: it is a
