@@ -75,6 +75,7 @@ import redis.asyncio as aioredis
 
 from config import (
     GROQ_MAX_CONCURRENT,
+    GROQ_QUEUE_AGING_SECONDS,
     GROQ_QUEUE_TIMEOUT_SECONDS,
     GROQ_RETRY_MAX,
     GROQ_VISION_MAX_CONCURRENT,
@@ -145,6 +146,22 @@ def queue_priority(kind: str, plan_priority: int) -> int:
     if not 0 <= plan_priority < KIND_TIER_SPAN:
         raise ValueError(f"plan priority {plan_priority} outside 0..{KIND_TIER_SPAN - 1}")
     return KIND_TIER.get(kind, KIND_TIER[KIND_DEFAULT]) * KIND_TIER_SPAN + plan_priority
+
+
+def aging_for(kind: str) -> tuple[float, int]:
+    """(age_after_seconds, aging_drop) for a Groq call of this kind.
+
+    The kind tier alone let classifications jump a waiting solve for as long
+    as they kept arriving - under sustained overload, no solve was ever served.
+    So a solve or transcription still waiting after GROQ_QUEUE_AGING_SECONDS
+    drops to the classification tier, scored from that moment: it can no
+    longer be jumped by a classification that arrives later. Classifications
+    are already in the top tier and do not age.
+    """
+    tier = KIND_TIER.get(kind, KIND_TIER[KIND_DEFAULT])
+    if tier == 0:
+        return 0.0, 0
+    return GROQ_QUEUE_AGING_SECONDS, tier * KIND_TIER_SPAN
 
 
 class QueueTimeout(Exception):
@@ -223,15 +240,55 @@ def _meta_keys(key: str) -> tuple[str, str]:
     return f"{base}:kinds", f"{base}:starts"
 
 
+def _aging_keys(key: str) -> tuple[str, str]:
+    """`young`: ticket -> the time it stops being jumpable (arrival + aging).
+    `aging`: ticket -> how many priority levels it gains then."""
+    base = f"{_KEY_PREFIX}:{key}"
+    return f"{base}:young", f"{base}:aging"
+
+
 def all_keys(key: str) -> tuple[str, ...]:
     """Every Redis key a queue uses - for tests and cleanup."""
-    return (*_keys(key), *_meta_keys(key))
+    return (*_keys(key), *_meta_keys(key), *_aging_keys(key))
+
+
+def _enqueue_keys(key: str) -> list[str]:
+    waiting, _active, seen, _stats = _keys(key)
+    return [waiting, seen, *_aging_keys(key)]
+
+
+def _admit_keys(key: str) -> list[str]:
+    waiting, active, seen, _stats = _keys(key)
+    return [waiting, active, seen, *_aging_keys(key)]
+
+
+def _enqueue_args(
+    ticket: str,
+    priority: int,
+    waiter_ttl_ms: int,
+    age_after_seconds: float,
+    aging_drop: int,
+    enqueued_ms: int | None = None,
+) -> list:
+    return [
+        ticket,
+        priority,
+        waiter_ttl_ms,
+        _KEY_TTL_MS,
+        "" if enqueued_ms is None else enqueued_ms,
+        int(age_after_seconds * 1000),
+        aging_drop,
+    ]
 
 
 _NOW_MS = "local t = redis.call('TIME') local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)"
 
-# KEYS: waiting, seen. ARGV: ticket, priority, waiter_ttl_ms, key_ttl_ms, [enqueued_ms]
-# A re-enqueue passes its original enqueued_ms, so it keeps its place.
+# KEYS: waiting, seen, young, aging.
+# ARGV: ticket, priority, waiter_ttl_ms, key_ttl_ms, enqueued_ms ("" = now),
+#       age_after_ms (0 = never ages), aging_drop (priority levels gained on aging)
+# A re-enqueue passes its original enqueued_ms, so it keeps its place - and its
+# aging deadline, which may already have passed: the next admit then promotes
+# it at once, to the same score it had.
 _ENQUEUE = f"""
 {_NOW_MS}
 local enqueued = tonumber(ARGV[5]) or now
@@ -239,11 +296,28 @@ redis.call('ZADD', KEYS[1], tonumber(ARGV[2]) * {_PRIORITY_SPAN} + enqueued, ARG
 redis.call('ZADD', KEYS[2], now + tonumber(ARGV[3]), ARGV[1])
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 redis.call('PEXPIRE', KEYS[2], ARGV[4])
+local age_after = tonumber(ARGV[6]) or 0
+local drop = tonumber(ARGV[7]) or 0
+if age_after > 0 and drop > 0 then
+  redis.call('ZADD', KEYS[3], enqueued + age_after, ARGV[1])
+  redis.call('HSET', KEYS[4], ARGV[1], drop)
+  redis.call('PEXPIRE', KEYS[3], ARGV[4])
+  redis.call('PEXPIRE', KEYS[4], ARGV[4])
+end
 return enqueued
 """
 
-# KEYS: waiting, active, seen. ARGV: ticket, max_concurrent, lease_ms, waiter_ttl_ms, key_ttl_ms
+# KEYS: waiting, active, seen, young, aging.
+# ARGV: ticket, max_concurrent, lease_ms, waiter_ttl_ms, key_ttl_ms
 # Returns -1 admitted, -2 ticket no longer in line (re-enqueue), else 0-based position.
+#
+# Aging runs here, in the same atomic script as the admission decision, before
+# any rank is read: a ticket past its aging deadline is re-scored to
+# (priority - drop, deadline). So an aged solve ranks exactly like a
+# classification that arrived at the solve's deadline - every classification
+# that arrived before that moment stays ahead of it, none that arrives after can
+# jump it. Every waiter runs this script each poll, so promotion is prompt, and
+# no other code writes scores, so there is nothing to race.
 _ADMIT = f"""
 {_NOW_MS}
 local ticket = ARGV[1]
@@ -253,7 +327,22 @@ for _, member in ipairs(dead) do
   if member ~= ticket then
     redis.call('ZREM', KEYS[1], member)
     redis.call('ZREM', KEYS[3], member)
+    redis.call('ZREM', KEYS[4], member)
+    redis.call('HDEL', KEYS[5], member)
   end
+end
+local due = redis.call('ZRANGEBYSCORE', KEYS[4], '-inf', now)
+for _, member in ipairs(due) do
+  local score = redis.call('ZSCORE', KEYS[1], member)
+  if score then
+    local drop = tonumber(redis.call('HGET', KEYS[5], member)) or 0
+    local deadline = tonumber(redis.call('ZSCORE', KEYS[4], member))
+    local priority = math.floor(tonumber(score) / {_PRIORITY_SPAN}) - drop
+    if priority < 0 then priority = 0 end
+    redis.call('ZADD', KEYS[1], 'XX', priority * {_PRIORITY_SPAN} + deadline, member)
+  end
+  redis.call('ZREM', KEYS[4], member)
+  redis.call('HDEL', KEYS[5], member)
 end
 if not redis.call('ZSCORE', KEYS[1], ticket) then
   return -2
@@ -264,6 +353,8 @@ local free = tonumber(ARGV[2]) - redis.call('ZCARD', KEYS[2])
 if free > 0 and rank < free then
   redis.call('ZREM', KEYS[1], ticket)
   redis.call('ZREM', KEYS[3], ticket)
+  redis.call('ZREM', KEYS[4], ticket)
+  redis.call('HDEL', KEYS[5], ticket)
   redis.call('ZADD', KEYS[2], now + tonumber(ARGV[3]), ticket)
   redis.call('PEXPIRE', KEYS[2], ARGV[5])
   return -1
@@ -380,9 +471,11 @@ async def estimated_wait(
 async def _discard(r: aioredis.Redis, key: str, ticket: str) -> None:
     waiting, active, seen, _stats = _keys(key)
     kinds, starts = _meta_keys(key)
+    young, aging = _aging_keys(key)
     async with r.pipeline(transaction=True) as pipe:
         pipe.zrem(waiting, ticket).zrem(seen, ticket).zrem(active, ticket)
         pipe.hdel(kinds, ticket).hdel(starts, ticket)
+        pipe.zrem(young, ticket).hdel(aging, ticket)
         await pipe.execute()
 
 
@@ -417,6 +510,8 @@ async def acquire(
     *,
     kind: str = KIND_DEFAULT,
     on_wait: Callable[[int, float], Any] | None = None,
+    age_after_seconds: float = 0.0,
+    aging_drop: int = 0,
     lease_seconds: float = LEASE_SECONDS,
     waiter_ttl_seconds: float = WAITER_TTL_SECONDS,
     poll_seconds: float = POLL_SECONDS,
@@ -437,12 +532,15 @@ async def acquire(
     `on_wait(position, estimated_seconds)` - sync or async - is called each
     time the 0-based position changes while waiting, for a "you are Nth in
     line" message. `kind` feeds the per-kind wait estimate.
+
+    Aging: with `age_after_seconds` and `aging_drop`, a ticket still waiting
+    that long gains `aging_drop` priority levels, scored from that moment - see
+    _ADMIT.
     """
     if max_concurrent < 1:
         raise ValueError("max_concurrent must be at least 1")
     r = client or _client()
     loop = asyncio.get_running_loop()
-    waiting, active, seen, _stats = _keys(key)
     kinds, starts = _meta_keys(key)
     enqueue = r.register_script(_ENQUEUE)
     admit = r.register_script(_ADMIT)
@@ -453,7 +551,8 @@ async def acquire(
     admitted = False
     try:
         enqueued_ms = await enqueue(
-            keys=[waiting, seen], args=[ticket, priority, waiter_ttl_ms, _KEY_TTL_MS]
+            keys=_enqueue_keys(key),
+            args=_enqueue_args(ticket, priority, waiter_ttl_ms, age_after_seconds, aging_drop),
         )
         await r.hset(kinds, ticket, kind)
         await r.pexpire(kinds, _KEY_TTL_MS)
@@ -461,7 +560,7 @@ async def acquire(
         while True:
             result = int(
                 await admit(
-                    keys=[waiting, active, seen],
+                    keys=_admit_keys(key),
                     args=[
                         ticket,
                         max_concurrent,
@@ -478,8 +577,10 @@ async def acquire(
                 # Purged as dead (this process stalled past the waiter TTL):
                 # rejoin at the original arrival time, so the place is kept.
                 await enqueue(
-                    keys=[waiting, seen],
-                    args=[ticket, priority, waiter_ttl_ms, _KEY_TTL_MS, enqueued_ms],
+                    keys=_enqueue_keys(key),
+                    args=_enqueue_args(
+                        ticket, priority, waiter_ttl_ms, age_after_seconds, aging_drop, enqueued_ms
+                    ),
                 )
                 continue
             waited = loop.time() - started
@@ -588,6 +689,8 @@ class SyncWaiter:
         *,
         kind: str = KIND_DEFAULT,
         budget: WaitBudget | None = None,
+        age_after_seconds: float = 0.0,
+        aging_drop: int = 0,
         lease_seconds: float = LEASE_SECONDS,
         waiter_ttl_seconds: float = WAITER_TTL_SECONDS,
         poll_seconds: float = POLL_SECONDS,
@@ -601,6 +704,8 @@ class SyncWaiter:
         self.timeout = timeout
         self.kind = kind
         self.budget = budget
+        self.age_after_seconds = age_after_seconds
+        self.aging_drop = aging_drop
         self.lease_seconds = lease_seconds
         self.waiter_ttl_ms = int(waiter_ttl_seconds * 1000)
         self.poll_seconds = poll_seconds
@@ -618,17 +723,23 @@ class SyncWaiter:
     def __exit__(self, *exc_info) -> None:
         self.close()
 
+    def _enqueue_args(self, enqueued_ms: int | None = None) -> list:
+        return _enqueue_args(
+            self.ticket,
+            self.priority,
+            self.waiter_ttl_ms,
+            self.age_after_seconds,
+            self.aging_drop,
+            enqueued_ms,
+        )
+
     def wait(self) -> Iterator[Waiting]:
-        waiting, active, seen, _stats = _keys(self.key)
         kinds, starts = _meta_keys(self.key)
         enqueue = self.r.register_script(_ENQUEUE)
         admit = self.r.register_script(_ADMIT)
         limit = self.timeout if self.budget is None else min(self.timeout, self.budget.remaining())
         started = time.monotonic()
-        enqueued_ms = enqueue(
-            keys=[waiting, seen],
-            args=[self.ticket, self.priority, self.waiter_ttl_ms, _KEY_TTL_MS],
-        )
+        enqueued_ms = enqueue(keys=_enqueue_keys(self.key), args=self._enqueue_args())
         self._queued = True
         self.r.hset(kinds, self.ticket, self.kind)
         self.r.pexpire(kinds, _KEY_TTL_MS)
@@ -637,7 +748,7 @@ class SyncWaiter:
             while True:
                 result = int(
                     admit(
-                        keys=[waiting, active, seen],
+                        keys=_admit_keys(self.key),
                         args=[
                             self.ticket,
                             self.max_concurrent,
@@ -650,16 +761,7 @@ class SyncWaiter:
                 if result == -1:
                     break
                 if result == -2:
-                    enqueue(
-                        keys=[waiting, seen],
-                        args=[
-                            self.ticket,
-                            self.priority,
-                            self.waiter_ttl_ms,
-                            _KEY_TTL_MS,
-                            enqueued_ms,
-                        ],
-                    )
+                    enqueue(keys=_enqueue_keys(self.key), args=self._enqueue_args(enqueued_ms))
                     continue
                 waited = time.monotonic() - started
                 if waited >= limit:
@@ -719,9 +821,11 @@ class SyncWaiter:
         elif self._queued:
             # Also clears `active`, for an admission that landed just before
             # an exception reached us.
+            young, aging = _aging_keys(self.key)
             with self.r.pipeline(transaction=True) as pipe:
                 pipe.zrem(waiting, self.ticket).zrem(seen, self.ticket).zrem(active, self.ticket)
                 pipe.hdel(kinds, self.ticket).hdel(starts, self.ticket)
+                pipe.zrem(young, self.ticket).hdel(aging, self.ticket)
                 pipe.execute()
         self._queued = False
 
@@ -894,6 +998,7 @@ def groq_call_steps(
     QueueTimeout if no slot came within the budget, or the last HTTPError once
     retrying is not allowed."""
     budget = budget if budget is not None else WaitBudget()
+    age_after_seconds, aging_drop = aging_for(kind)
     with SyncWaiter(
         groq_queue_key(model),
         queue_priority(kind, priority),
@@ -901,6 +1006,8 @@ def groq_call_steps(
         budget.total,
         kind=kind,
         budget=budget,
+        age_after_seconds=age_after_seconds,
+        aging_drop=aging_drop,
     ) as waiter:
         yield from waiter.wait()
         return (yield from retry_steps(model, send, budget, kind=kind, sleep=sleep))

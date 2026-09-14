@@ -72,6 +72,11 @@ GROQ_QUEUE_TIMEOUT_SECONDS = float(os.environ.get("GROQ_QUEUE_TIMEOUT_SECONDS", 
 # call again, at most this many times, and never for longer in total than the
 # queue timeout.
 GROQ_RETRY_MAX = int(os.environ.get("GROQ_RETRY_MAX", "3"))
+# Classifications rank ahead of solves (llm_queue.KIND_TIER), but a solve that
+# has waited this long can no longer be jumped by a classification arriving
+# after that moment - without it, classifications arriving faster than they
+# are served kept every solve waiting forever.
+GROQ_QUEUE_AGING_SECONDS = float(os.environ.get("GROQ_QUEUE_AGING_SECONDS", "20"))
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")

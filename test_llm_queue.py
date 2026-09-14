@@ -19,6 +19,7 @@ import time
 import urllib.error
 import uuid
 
+import redis as sync_redis
 import redis.asyncio as aioredis
 
 import llm_queue
@@ -360,7 +361,10 @@ def sync_fifo_and_positions(key: str) -> None:
                 if record:
                     positions.append(waiting.position)
             order.append(name)
-            time.sleep(0.05)
+            # Longer than a poll (POLL_SECONDS), so C is sure to see itself at
+            # position 0 while B holds the slot - a shorter hold made C go from
+            # 1 straight to admitted now and then.
+            time.sleep(0.3)
 
     threads = [threading.Thread(target=holder)]
     threads[0].start()
@@ -570,7 +574,9 @@ def groq_call_retries_in_slot() -> None:
         )
         check(
             "groq_call: both sleeps are charged to the request's budget",
-            4.0 <= budget.spent < 4.5,
+            # 4.0s of sleeps, plus whatever entering the queue took (Redis
+            # round trips; slower while a previous case's threads drain).
+            4.0 <= budget.spent < 5.0,
             round(budget.spent, 3),
         )
 
@@ -697,12 +703,14 @@ def shared_deadline(key_prefix: str) -> None:
         t.join(5)
         check(
             "deadline: the second call times out on what the first left (~0.4s)",
-            timed_out and 0.3 <= waited < 0.8,
+            # The timeout is checked between polls, so it can overshoot by one
+            # poll plus a Redis round trip.
+            timed_out and 0.3 <= waited < 1.0,
             (timed_out, round(waited, 3)),
         )
         check(
             "deadline: total waiting across both calls stays within the 1s budget (+ polling)",
-            budget.spent <= 1.0 + llm_queue.POLL_SECONDS + 0.05,
+            budget.spent <= 1.0 + 0.3,
             round(budget.spent, 3),
         )
     finally:
@@ -867,6 +875,159 @@ def classification_then_solve_all_served(key: str) -> None:
     )
 
 
+AGING = 1.0  # seconds; the real queue uses GROQ_QUEUE_AGING_SECONDS (20s)
+
+
+def aging_order(key: str) -> None:
+    """A solve can be jumped by classifications that arrive before its aging
+    mark, never by one arriving after it."""
+    qp = llm_queue.queue_priority
+    drop = llm_queue.KIND_TIER_SPAN
+    holding = threading.Event()
+    release = threading.Event()
+    order: list[str] = []
+
+    def holder():
+        with llm_queue.acquire_sync(key, qp("solve", 1), 1, 20, kind="solve"):
+            holding.set()
+            release.wait(20)
+
+    def solve():
+        with llm_queue.acquire_sync(
+            key, qp("solve", 1), 1, 20, kind="solve", age_after_seconds=AGING, aging_drop=drop
+        ):
+            order.append("solve")
+            time.sleep(0.05)
+
+    def classification(name: str):
+        with llm_queue.acquire_sync(key, qp("gatekeeper", 1), 1, 20, kind="gatekeeper"):
+            order.append(name)
+            time.sleep(0.05)
+
+    t = threading.Thread(target=holder)
+    t.start()
+    holding.wait(5)
+    threads = [threading.Thread(target=solve)]
+    threads[0].start()
+    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 1)
+    time.sleep(0.3)
+    early = threading.Thread(target=classification, args=("before the mark",))
+    early.start()
+    threads.append(early)
+    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 2)
+    time.sleep(AGING)  # the solve is now past its mark (polls promote it)
+    late = threading.Thread(target=classification, args=("after the mark",))
+    late.start()
+    threads.append(late)
+    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 3)
+    release.set()
+    for th in (t, *threads):
+        th.join(20)
+    check(
+        "aging: classification before the mark stays ahead, one after it queues behind the solve",
+        order == ["before the mark", "solve", "after the mark"],
+        order,
+    )
+
+    # A young solve (not yet at its mark) is still jumped, as before.
+    order.clear()
+    holding.clear()
+    release.clear()
+    t = threading.Thread(target=holder)
+    t.start()
+    holding.wait(5)
+    s = threading.Thread(target=solve)
+    s.start()
+    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 1)
+    c = threading.Thread(target=classification, args=("young jumper",))
+    c.start()
+    _wait_sync(lambda: llm_queue.snapshot_sync(key).waiting == 2)
+    release.set()  # well before AGING
+    for th in (t, s, c):
+        th.join(20)
+    check(
+        "aging: a solve younger than its mark is still jumped",
+        order == ["young jumper", "solve"],
+        order,
+    )
+
+
+def aging_ends_starvation(key: str) -> None:
+    """The sustained-overload case that used to starve solves: classifications
+    arriving twice as fast as the slot serves them. With aging the solve is
+    served, and only classifications that arrived before its mark got ahead."""
+    qp = llm_queue.queue_priority
+    drop = llm_queue.KIND_TIER_SPAN
+    hold, every = 0.1, 0.05
+    stop = threading.Event()
+    lock = threading.Lock()
+    admitted: list[tuple[float, float]] = []  # (arrived, admitted) of classifications
+    t0 = time.monotonic()
+    # Hundreds of waiting threads here, each polling Redis: more than the shared
+    # client's pool (100 in redis-py 8) allows at once. The backend itself runs
+    # at most ~40 of them (anyio's worker threads), so this is the test's own
+    # client, sized for the load it creates.
+    client = sync_redis.Redis.from_url(REDIS_URL, decode_responses=True, max_connections=1000)
+
+    def classification():
+        arrived = time.monotonic() - t0
+        try:
+            with llm_queue.acquire_sync(
+                key, qp("gatekeeper", 1), 1, 30, kind="gatekeeper", client=client
+            ):
+                with lock:
+                    admitted.append((arrived, time.monotonic() - t0))
+                time.sleep(hold)
+        except llm_queue.QueueTimeout:
+            pass
+
+    def producer():
+        while not stop.is_set():
+            threading.Thread(target=classification, daemon=True).start()
+            time.sleep(every)
+
+    threading.Thread(target=producer, daemon=True).start()
+    time.sleep(0.4)  # the classification line is already non-empty
+    solve_arrived = time.monotonic() - t0
+    solve_admitted = None
+    try:
+        with llm_queue.acquire_sync(
+            key,
+            qp("solve", 1),
+            1,
+            15,
+            kind="solve",
+            age_after_seconds=AGING,
+            aging_drop=drop,
+            client=client,
+        ):
+            solve_admitted = time.monotonic() - t0
+    except llm_queue.QueueTimeout:
+        pass
+    stop.set()
+    time.sleep(0.5)
+
+    with lock:
+        jumpers = [
+            a
+            for a, adm in admitted
+            if a > solve_arrived and solve_admitted and adm < solve_admitted
+        ]
+    latest_jump = max((a - solve_arrived for a in jumpers), default=0.0)
+    check(
+        "overload: the solve is served despite classifications arriving 2x faster than served",
+        solve_admitted is not None,
+        solve_admitted,
+    )
+    check(
+        "overload: no classification arriving after the solve's mark got ahead of it",
+        latest_jump <= AGING + 0.15,
+        (round(latest_jump, 3), len(jumpers)),
+    )
+    # Drain what is left, so the line does not leak into the next case.
+    _wait_sync(lambda: llm_queue.snapshot_sync(key, client=client).waiting == 0, timeout=20)
+
+
 def give_up_is_logged() -> None:
     """Giving up on a 429 leaves a warning saying why, with the numbers."""
     records: list[logging.LogRecord] = []
@@ -937,6 +1098,7 @@ SYNC_CASES = [
     per_kind_estimate,
     kind_tier_priority,
     classification_then_solve_all_served,
+    aging_order,
 ]
 
 
@@ -974,6 +1136,15 @@ def run_sync_cases() -> None:
         shared_deadline("test-deadline")
     except Exception as exc:
         check("shared_deadline ran to completion", False, repr(exc))
+    # Last: hundreds of polling threads leave Redis and the CPU busy for a
+    # moment, which would blur the timing checks above.
+    key = f"test-aging_ends_starvation-{uuid.uuid4().hex[:8]}"
+    try:
+        aging_ends_starvation(key)
+    except Exception as exc:
+        check("aging_ends_starvation ran to completion", False, repr(exc))
+    finally:
+        client.delete(*llm_queue.all_keys(key))
 
 
 if __name__ == "__main__":
