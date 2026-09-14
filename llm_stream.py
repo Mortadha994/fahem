@@ -71,7 +71,8 @@ def stream_groq(
     # the line.
     with llm_queue.SyncWaiter(
         llm_queue.groq_queue_key(GROQ_MODEL),
-        priority,
+        # A solve queues behind any classification waiting, then by plan.
+        llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
         llm_queue.groq_max_concurrent(GROQ_MODEL),
         GROQ_QUEUE_TIMEOUT_SECONDS,
         kind=llm_queue.KIND_SOLVE,

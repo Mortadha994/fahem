@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import email.message
+import logging
 import threading
 import time
 import urllib.error
@@ -781,11 +782,161 @@ def _wait_sync(predicate, timeout: float = 3.0) -> bool:
     return False
 
 
+def kind_tier_priority(key: str) -> None:
+    """Classifications rank ahead of solves whatever the plan; the plan still
+    orders requests within a kind."""
+    qp = llm_queue.queue_priority
+    check(
+        "priority: free classification (1) < paid solve (10) < free solve (11)",
+        (qp("gatekeeper", 1), qp("solve", 0), qp("solve", 1)) == (1, 10, 11),
+        (qp("gatekeeper", 1), qp("solve", 0), qp("solve", 1)),
+    )
+    check("priority: transcription ranks with solves", qp("transcription", 1) == qp("solve", 1))
+    try:
+        qp("solve", 10)
+        check("priority: a plan tier that would reach the next kind tier is refused", False)
+    except ValueError:
+        check("priority: a plan tier that would reach the next kind tier is refused", True)
+
+    holding = threading.Event()
+    release = threading.Event()
+    order: list[str] = []
+
+    def holder():
+        with llm_queue.acquire_sync(key, qp("solve", 1), 1, 10, kind="solve"):
+            holding.set()
+            release.wait(10)
+
+    def waiter(name: str, kind: str, plan: int):
+        with llm_queue.acquire_sync(key, qp(kind, plan), 1, 10, kind=kind):
+            order.append(name)
+            time.sleep(0.05)
+
+    t = threading.Thread(target=holder)
+    t.start()
+    holding.wait(5)
+    threads = []
+    # Two solves are already in line when the classification arrives last.
+    for name, kind, plan in (
+        ("free solve", "solve", 1),
+        ("paid solve", "solve", 0),
+        ("free classification", "gatekeeper", 1),
+    ):
+        th = threading.Thread(target=waiter, args=(name, kind, plan))
+        th.start()
+        threads.append(th)
+        _wait_sync(lambda n=len(threads): llm_queue.snapshot_sync(key).waiting == n)
+    release.set()
+    for th in (t, *threads):
+        th.join(10)
+    check(
+        "priority: a classification arriving after two queued solves is served first",
+        order == ["free classification", "paid solve", "free solve"],
+        order,
+    )
+
+
+def classification_then_solve_all_served(key: str) -> None:
+    """The real shape of the traffic: each request classifies, then solves. At
+    a pace the slot can keep up with, every solve is served - the kind tier
+    reorders the line, it does not stop solves."""
+    qp = llm_queue.queue_priority
+    done: list[float] = []
+    started = time.monotonic()
+
+    def request(i: int):
+        time.sleep(i * 0.3)  # arrivals spread out, slower than the slot serves
+        with llm_queue.acquire_sync(key, qp("gatekeeper", 1), 1, 10, kind="gatekeeper"):
+            time.sleep(0.03)
+        with llm_queue.acquire_sync(key, qp("solve", 1), 1, 10, kind="solve"):
+            time.sleep(0.2)
+        done.append(time.monotonic() - started)
+
+    threads = [threading.Thread(target=request, args=(i,)) for i in range(6)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(20)
+    check(
+        "mixed traffic: all 6 solves served when each classification is followed by its solve",
+        len(done) == 6,
+        len(done),
+    )
+    check(
+        "mixed traffic: nothing left in line afterwards", llm_queue.snapshot_sync(key).waiting == 0
+    )
+
+
+def give_up_is_logged() -> None:
+    """Giving up on a 429 leaves a warning saying why, with the numbers."""
+    records: list[logging.LogRecord] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = Capture(level=logging.WARNING)
+    logger = logging.getLogger("fahem.llm_queue")
+    logger.addHandler(handler)
+    model = f"test-giveup-{uuid.uuid4().hex[:8]}"
+    try:
+        budget = llm_queue.WaitBudget(10)
+        budget.charge(7.5)  # as if 7.5s were already spent in the queue
+        try:
+            llm_queue.groq_call(
+                model,
+                1,
+                lambda: (_ for _ in ()).throw(_http_429(retry_after="28")),
+                kind="solve",
+                budget=budget,
+                sleep=lambda s: None,
+            )
+        except urllib.error.HTTPError:
+            pass
+        lines = [r.getMessage() for r in records if "giving up" in r.getMessage()]
+        check(
+            "give-up log: budget case names the reason and the numbers",
+            len(lines) == 1
+            and "Retry-After exceeds the remaining wait budget" in lines[0]
+            and "0 retries done" in lines[0]
+            and "7.5s waited" in lines[0]
+            and "2.5s of budget left" in lines[0]
+            and "would need 28.0s" in lines[0],
+            lines,
+        )
+
+        records.clear()
+        try:
+            llm_queue.groq_call(
+                model,
+                1,
+                lambda: (_ for _ in ()).throw(_http_429(retry_after="1")),
+                kind="gatekeeper",
+                budget=llm_queue.WaitBudget(120),
+                sleep=lambda s: None,
+            )
+        except urllib.error.HTTPError:
+            pass
+        lines = [r.getMessage() for r in records if "giving up" in r.getMessage()]
+        check(
+            "give-up log: retries-used-up case says so",
+            len(lines) == 1
+            and "retries used up" in lines[0]
+            and f"{llm_queue.GROQ_RETRY_MAX} retries done" in lines[0],
+            lines,
+        )
+    finally:
+        logger.removeHandler(handler)
+        llm_queue._sync_client().delete(*llm_queue.all_keys(llm_queue.groq_queue_key(model)))
+
+
 SYNC_CASES = [
     sync_fifo_and_positions,
     sync_timeout_and_release,
     sync_generator_closed_while_waiting,
     per_kind_estimate,
+    kind_tier_priority,
+    classification_then_solve_all_served,
 ]
 
 
@@ -814,7 +965,7 @@ def run_sync_cases() -> None:
             check(f"{case.__name__} ran to completion", False, repr(exc))
         finally:
             client.delete(*llm_queue.all_keys(key))
-    for case in (retry_policy, groq_call_retries_in_slot):
+    for case in (retry_policy, groq_call_retries_in_slot, give_up_is_logged):
         try:
             case()
         except Exception as exc:

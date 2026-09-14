@@ -94,6 +94,21 @@ KIND_SOLVE = "solve"
 KIND_TRANSCRIPTION = "transcription"
 KIND_DEFAULT = "default"
 
+# Two independent priority axes, combined into the one number the queue sorts
+# by (queue_priority). The kind tier puts the gatekeeper's classification -
+# ~686 tokens, ~0.2s - ahead of any solve or transcription, so a student is not
+# kept waiting behind whole solves just to find out whether their message is an
+# exercise. The plan tier (priority_for) still orders requests within a kind.
+KIND_TIER = {
+    KIND_GATEKEEPER: 0,
+    KIND_SOLVE: 1,
+    KIND_TRANSCRIPTION: 1,
+    KIND_DEFAULT: 1,
+}
+# Larger than any plan tier, so a plan can never lift a solve above a
+# classification (plan tiers are 0 and 1 today).
+KIND_TIER_SPAN = 10
+
 # A held slot whose heartbeat stops is reclaimed after this long. Longer than
 # any heartbeat gap, shorter than a student will wait for nothing.
 LEASE_SECONDS = 60.0
@@ -117,6 +132,19 @@ _KEY_TTL_MS = 3_600_000
 def priority_for(plan: str | None) -> int:
     """Queue priority for an account's plan: lower is served first."""
     return PRIORITY_PAID if plan == "paid" else PRIORITY_FREE
+
+
+def queue_priority(kind: str, plan_priority: int) -> int:
+    """The value a Groq call is queued at: kind first, then plan.
+
+    kind_tier * KIND_TIER_SPAN + plan_tier - every classification ranks ahead
+    of every solve, whatever the plans; within one kind a paid account ranks
+    ahead of a free one. Callers pass the plan priority; this is the only
+    place the two are combined.
+    """
+    if not 0 <= plan_priority < KIND_TIER_SPAN:
+        raise ValueError(f"plan priority {plan_priority} outside 0..{KIND_TIER_SPAN - 1}")
+    return KIND_TIER.get(kind, KIND_TIER[KIND_DEFAULT]) * KIND_TIER_SPAN + plan_priority
 
 
 class QueueTimeout(Exception):
@@ -635,6 +663,18 @@ class SyncWaiter:
                     continue
                 waited = time.monotonic() - started
                 if waited >= limit:
+                    log.warning(
+                        "queue %s (%s): giving up at position %d after %.1fs in line "
+                        "(limit %.1fs%s)",
+                        self.key,
+                        self.kind,
+                        result,
+                        waited,
+                        limit,
+                        ""
+                        if self.budget is None
+                        else f", request had already waited {self.budget.spent:.1f}s",
+                    )
                     raise QueueTimeout(self.key, waited, result)
                 if result != last_position:
                     last_position = result
@@ -803,6 +843,27 @@ def retry_steps(
         except urllib.error.HTTPError as exc:
             delay = next_retry_delay(exc, attempts, budget.remaining())
             if delay is None:
+                if exc.code == 429:
+                    # The "why did this request fail" line: without it a
+                    # give-up is only visible as a busy error at some time.
+                    wanted = retry_after_seconds(exc.headers)
+                    why = (
+                        "retries used up"
+                        if attempts >= GROQ_RETRY_MAX
+                        else "Retry-After exceeds the remaining wait budget"
+                    )
+                    log.warning(
+                        "groq 429 on %s (%s): giving up, %s - %d %s done, %.1fs waited "
+                        "so far, %.1fs of budget left, next sleep would need %.1fs",
+                        model,
+                        kind,
+                        why,
+                        attempts,
+                        "retry" if attempts == 1 else "retries",
+                        budget.spent,
+                        budget.remaining(),
+                        wanted,
+                    )
                 raise
             log.warning(
                 "groq 429 on %s (%s): retry %d/%d in %.1fs (holding the slot, %.0fs of wait left)",
@@ -835,7 +896,7 @@ def groq_call_steps(
     budget = budget if budget is not None else WaitBudget()
     with SyncWaiter(
         groq_queue_key(model),
-        priority,
+        queue_priority(kind, priority),
         groq_max_concurrent(model),
         budget.total,
         kind=kind,
