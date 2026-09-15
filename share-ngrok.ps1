@@ -18,7 +18,11 @@ $domain = ([regex]::Match($envText, "(?m)^\s*NGROK_DOMAIN\s*=\s*(\S+)").Groups[1
 $url = "https://$domain"
 
 # Only one share mode at a time: the Cloudflare quick tunnel goes away.
-docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel 2>$null | Out-Null
+# (Windows PowerShell turns docker's stderr progress into a terminating error
+# under "Stop" once redirected, so relax it for this one best-effort call.)
+$ErrorActionPreference = "Continue"
+docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel *> $null
+$ErrorActionPreference = "Stop"
 
 Write-Host "1/2  Building and starting Fahem at $url ..."
 docker compose -f docker-compose.yml -f docker-compose.ngrok.yml up -d --build --remove-orphans
