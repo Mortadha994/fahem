@@ -1,0 +1,40 @@
+# Share mode with a FIXED address: an ngrok free static domain.
+#
+# Same idea as docker-compose.share.yml (the stack runs on this PC, a tunnel
+# publishes the frontend, nginx serves the API under /api), but the address
+# never changes - so it can be registered once in Google Cloud Console and
+# "Se connecter avec Google" works for friends.
+#
+# Needs, in .env (never committed):
+#   NGROK_AUTHTOKEN=...                 dashboard.ngrok.com > Your Authtoken
+#   NGROK_DOMAIN=xxxx.ngrok-free.app    dashboard.ngrok.com > Domains (free, one)
+#   GOOGLE_CLIENT_ID=...                already there
+#
+# Start / stop:
+#   powershell -ExecutionPolicy Bypass -File share-ngrok.ps1
+#   docker compose -f docker-compose.yml -f docker-compose.ngrok.yml stop ngrok
+
+services:
+  frontend:
+    build:
+      args:
+        VITE_API_URL: /api
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+
+  backend:
+    # Reachable only through ngrok -> nginx, which is what makes trusting the
+    # last X-Forwarded-For entry safe (ratelimit.client_ip).
+    ports: !reset []
+    environment:
+      TRUSTED_CLIENT_IP_HEADER: X-Forwarded-For
+      APP_BASE_URL: https://${NGROK_DOMAIN:?set NGROK_DOMAIN in .env}
+      PUBLIC_API_URL: https://${NGROK_DOMAIN}/api
+
+  ngrok:
+    image: ngrok/ngrok:3-alpine
+    command: ["http", "--url=${NGROK_DOMAIN}", "frontend:80"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    depends_on:
+      - frontend
+    restart: unless-stopped

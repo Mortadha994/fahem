@@ -293,6 +293,25 @@ changes when the tunnel restarts. Stop sharing with
 `docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel`;
 go back to local-only with a plain `docker compose up -d --build`.
 
+**With Google sign-in (fixed address).** Google only accepts sign-ins from
+origins registered for the OAuth client, so it needs an address that does not
+change: an ngrok free static domain.
+
+1. Create a free account at ngrok.com; copy your authtoken and claim your free
+   domain (Dashboard → Domains).
+2. In `.env`: `NGROK_AUTHTOKEN=…` and `NGROK_DOMAIN=your-name.ngrok-free.app`
+   (no `https://`).
+3. Google Cloud Console → APIs & Services → Credentials → your OAuth client →
+   *Authorised JavaScript origins* → add `https://your-name.ngrok-free.app`.
+   If the OAuth consent screen is in *Testing*, only the listed test users can
+   sign in: add your friends' Gmail addresses there, or publish the app.
+4. `powershell -ExecutionPolicy Bypass -File share-ngrok.ps1` (it stops the
+   Cloudflare link if one is running).
+
+ngrok's free plan shows visitors a one-time "You are about to visit" page;
+they click *Visit Site*. Stop with
+`docker compose -f docker-compose.yml -f docker-compose.ngrok.yml stop ngrok`.
+
 Mind Groq's free tier: about 200,000 tokens a day for the text model, roughly
 35 solves shared by everyone. Admin → Surveillance IA shows how much is left.
 

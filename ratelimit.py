@@ -80,14 +80,20 @@ def client_ip(request: Request) -> str:
     arrives from the proxy, so every visitor would share one bucket - five
     wrong passwords from one friend would lock out everyone. There
     TRUSTED_CLIENT_IP_HEADER names the header the edge sets (Cloudflare's
-    CF-Connecting-IP, which it overwrites on every request), and share mode
-    stops publishing the backend's port, so the edge is the only way in and
-    the header cannot be forged.
+    CF-Connecting-IP, which it overwrites on every request; ngrok's
+    X-Forwarded-For), and share mode stops publishing the backend's port, so
+    the edge is the only way in.
+
+    Only the LAST entry of a list is used: ngrok appends the address it saw to
+    whatever X-Forwarded-For the visitor sent, so earlier entries are the
+    visitor's own invention. nginx in between passes the header through
+    without adding to it.
     """
     if TRUSTED_CLIENT_IP_HEADER:
-        forwarded = request.headers.get(TRUSTED_CLIENT_IP_HEADER, "").strip()
-        if forwarded:
-            return forwarded
+        forwarded = request.headers.get(TRUSTED_CLIENT_IP_HEADER, "")
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
     return get_remote_address(request)
 
 
