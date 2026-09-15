@@ -45,11 +45,18 @@ curriculum text it was built on.
   *Syntaxe à vérifier* with the exact lines — from a mechanical checker.
 - **A grounding strip** that opens to show the pinned syntax tables and the
   retrieved excerpts the answer was built on.
-- **Discussions kept in the browser**, in a Historique panel, with a confirm
-  step before one is deleted.
+- **Discussions saved to the account**, in a Historique panel, with a confirm
+  step before one is deleted — each student sees only their own, on any device.
+- **A wait message instead of an error when the service is busy.** Every model
+  call queues for Groq; a student who has to wait sees their place in line.
 - **A light / dark theme toggle**, defaulting to the OS setting.
 
-Admins get a separate console (users and uploaded chapters) — see *History*.
+Content today: 2ème informatique, chapter 1 (*structures de données et
+structures simples*) and chapter 2 (*structures conditionnelles*, with a
+12-exercise série: Si, ET/OU, Si imbriqués, Selon).
+
+Admins get a separate console: users, uploaded chapters, and **Surveillance IA**
+(Groq load, token usage against the daily limit, chat activity) — see *History*.
 
 ---
 
@@ -102,6 +109,9 @@ then goes through the same gatekeeper.
 | **Relational store** | PostgreSQL via SQLAlchemy, schema managed by Alembic: users (with role, niveau, section), chat sessions, chat messages, emailed auth tokens, and uploaded chapters. |
 | **Auth** | Two ways in. Google Identity Services on the frontend, verified server-side against Google's keys; and email + password (Argon2id), with emailed verification and reset links. Either way the backend issues its own signed session in an `httpOnly` cookie (PyJWT); the Google token is never treated as a session. A closed `role` (`student` / `admin`) gates the console; the admin role is granted only out of band by `promote_admin.py`. |
 | **Rate limiting** | slowapi over Redis. Solving and attachment reading are limited **per user** (`10/minute;100/hour` by default, a shared budget); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
+| **Groq queue** | `llm_queue.py`: a Redis priority queue per model in front of every Groq call. Classifications rank ahead of solves, a solve waiting 20 s can no longer be jumped, a 429 is retried in the slot with `Retry-After`, and one request never waits more than 120 s in total. The UI gets `waiting` SSE events with the position. |
+| **AI monitoring** | `llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. |
+| **Chat history** | `chat_history.py` stores each account's discussions in the chat tables; every route is scoped to the caller's own rows. |
 | **Chapters** | `chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `admin_chapters.py` + `chapter_store.py` back the admin upload/publish workflow; `course_markdown.py` reads a Markdown-authored chapter. |
 
 ### API at a glance
@@ -119,7 +129,9 @@ then goes through the same gatekeeper.
 | `GET /chapters/{id}/exercises` · `/pdf` | cookie | A chapter's exercise series / lesson PDF |
 | `POST /solve` · `/solve/stream` | cookie (user-limited) | One-shot / streamed (SSE) solution — the UI uses the stream |
 | `POST /solve/extract` | cookie (user-limited) | Read the exercise text out of an attached photo or PDF |
+| `GET /chat/sessions` · `PUT` / `DELETE /chat/sessions/{id}` | cookie | The signed-in student's own discussions |
 | `/admin/*` · `/admin/chapters/*` | cookie + admin | The console: users, stats, and the chapter upload/publish workflow |
+| `GET /admin/monitoring` | cookie + admin | Groq load and usage, chat activity (Surveillance IA) |
 
 Request/response shapes, the SSE event contract and the pre-launch checklist
 are in [`README_API.md`](README_API.md).
@@ -269,6 +281,14 @@ Everything tunable is in `config.py`, read from env with working defaults:
 | `ATTACHMENT_MAX_BYTES` | `10485760` (10 MB) | per attached photo / PDF |
 | `ATTACHMENT_MAX_PDF_PAGES` | `3` | pages read from a PDF |
 | `ATTACHMENT_MAX_TEXT_CHARS` | `1800` | cap on the extracted text (kept under the gatekeeper input cap) |
+| `GATEKEEPER_REASONING_EFFORT` | `low` | keeps gpt-oss from spending the gatekeeper's token budget on reasoning |
+| `GROQ_MAX_CONCURRENT` / `GROQ_VISION_MAX_CONCURRENT` | `1` / `1` | slots per model queue |
+| `GROQ_QUEUE_TIMEOUT_SECONDS` | `120` | total wait budget of one request |
+| `GROQ_RETRY_MAX` | `3` | 429 retries inside a slot |
+| `GROQ_QUEUE_AGING_SECONDS` | `20` | after this, later classifications can no longer jump a solve |
+| `GROQ_TPM_LIMIT` / `GROQ_TPD_LIMIT` | `8000` / `200000` | limits the monitoring measures load against |
+| `LLM_USAGE_RECORDING` / `LLM_USAGE_RETENTION_DAYS` | `1` / `7` | per-call monitoring rows |
+| `TRUSTED_CLIENT_IP_HEADER` | *(empty)* | set by the share modes only (`CF-Connecting-IP`, `X-Forwarded-For`) |
 
 Inside compose, `DATABASE_URL`, `QDRANT_URL` and `REDIS_URL` are overridden to
 point at the sibling containers.
@@ -326,6 +346,9 @@ docker compose exec backend python test_db.py         # models, constraints, cas
 docker compose exec backend python test_admin.py      # admin role gate and user management
 docker compose exec backend python test_chapters_admin.py   # chapter upload/publish workflow
 docker compose exec backend python test_course_markdown.py  # Markdown chapter parsing
+docker compose exec backend python test_llm_queue.py  # Groq queue: priority, aging, deadline, 429 retry
+docker compose exec backend python test_llm_usage.py  # per-call recording and /admin/monitoring
+docker compose exec backend python test_gatekeeper_meta.py  # meta answers never leak reasoning (--live calls the model)
 docker compose exec backend python test_retrieval.py  # retrieval inspection (no assertions)
 docker compose exec backend python test_gatekeeper_adversarial.py   # adversarial transcripts; calls the model
 ```
@@ -395,9 +418,15 @@ relevance. This is why the syntax core is pinned rather than retrieved. An
 asymmetric model (e5 with `query:`/`passage:` prefixes) is the principled fix,
 deferred until a chapter's universal table set is too large to curate by hand.
 
-**Discussions live in the browser.** Chat history is `localStorage`, keyed per
-browser, not per account — the Postgres chat tables exist but nothing writes
-to them yet. Logging out does not clear it.
+**Discussions belong to the account.** Chat history is stored server-side
+(`chat_history.py`), so two students on the same browser never see each
+other's discussions, and a student finds theirs on any device.
+
+**Groq's daily limit is the one that runs out.** On the free tier gpt-oss-120b
+allows 8,000 tokens a minute but only 200,000 a day — about 35 solves shared by
+everyone — and the per-day figure never appears in the response headers, only
+in a 429's body. `llm_usage.py` keeps that figure, and Surveillance IA shows the
+day's usage against it.
 
 ---
 
@@ -449,13 +478,17 @@ auth.py              /auth: Google token exchange, session cookie, current user,
 password_auth.py     /auth: email+password signup/login, verification, reset
 admin.py             /admin: role gate, stats, user management
 admin_chapters.py    /admin/chapters: upload → extract → review → publish
+admin_monitoring.py  /admin/monitoring: Groq load, usage, chat activity
+chat_history.py      /chat/sessions: each account's discussions
+llm_queue.py         Redis priority queue in front of every Groq call
+llm_usage.py         records every Groq call for the monitoring
 chapter_store.py     the uploaded-chapter store behind the admin workflow
 chapters.py          /chapters: catalogue (year-scoped), exercises, lesson PDF
 attachments.py       reads an exercise from an attached photo or PDF
 course_markdown.py   reads a Markdown-authored chapter
 emails.py            sends verification / reset mail
 ratelimit.py         slowapi limiter over Redis; per-user and per-IP keys
-db.py / models.py    SQLAlchemy engine + User, ChatSession, ChatMessage, AuthToken, UploadedChapter
+db.py / models.py    SQLAlchemy engine + User, ChatSession, ChatMessage, AuthToken, UploadedChapter, LlmCall
 alembic/             migrations
 gatekeeper.py        routes each message PROBLEM / CODE / QUESTION / META / OFF_TOPIC
                      before the pipeline sees it; meta-responder + output safety net
@@ -469,6 +502,8 @@ rag_store.py         embedding + Qdrant storage
 extract_chapter.py   PDF → tagged chunks          (offline tool)
 patch_chunks.py      pinned corrections           (offline tool)
 promote_admin.py     grant/revoke the admin role  (offline tool)
+docker-compose.share.yml / share.ps1        free test link (Cloudflare quick tunnel)
+docker-compose.ngrok.yml / share-ngrok.ps1  fixed test link with Google sign-in (ngrok)
 ```
 
 **Frontend** (`ui/src`)
@@ -485,7 +520,7 @@ components/          AppLayout, AppSidebar, Message, Composer, Markdown,
 components/ui/       Button, Badge, Alert, Skeleton, EmptyState
 lib/                 api.js (SSE client + attachment upload), auth.js,
                      authContext.js, profile.js, theme.js, chapters.js,
-                     sessions.js (localStorage), algoHighlighter.js,
+                     sessions.js (server-side history), admin.js, algoHighlighter.js,
                      alignAlgoTable.js, remarkAlgoTable.js, hasRealSolution.js
 grammar/             algoPseudocode.json (TextMate grammar), algoThemes.js
 ```
@@ -527,20 +562,27 @@ older imports elsewhere keep working.
 | **Phase 7** | An enforced `student` / `admin` role, granted out of band by `promote_admin.py`. |
 | **Phase 8** | The admin console: users, stats, session revocation. |
 | **Phase 9** | Uploaded chapters — an admin upload → extract → review → publish workflow (9b: Markdown-authored chapters). |
-| **This batch (PR #11)** | Solve from a photo or PDF; `CODE` / `QUESTION` gatekeeper routes and line-by-line answers; a slimmed sign-in screen; a light/dark toggle; the student profile (niveau + section) that scopes the chapter list and steers the tutor's tone. |
+| **PR #11** | Solve from a photo or PDF; `CODE` / `QUESTION` gatekeeper routes and line-by-line answers; a slimmed sign-in screen; a light/dark toggle; the student profile (niveau + section) that scopes the chapter list and steers the tutor's tone; per-account chat history. |
+| **PR #12** | The Groq priority queue (phases A and B): `users.plan`, a Redis queue per model, 429 retry inside the slot. |
+| **Next PR** | Queue follow-ups (one wait deadline, gatekeeper `waiting` events, classifications ahead of solves, aging); the gatekeeper fix (no raw reasoning, identity and own-level questions answered); Surveillance IA; the free share modes (Cloudflare, ngrok with Google sign-in). Chapter 2's 12 exercises were added through the console (database, not code). |
 
 ## Status and what's next
 
 The product works end to end: sign in, answer the one-time class question,
 pick a chapter for your year, read the lesson, click an exercise or paste one
-(or send a photo of it), get a grounded, checked answer.
+(or send a photo of it), get a grounded, checked answer. Friends can test it
+from a share link (see *Sharing a test link*).
 
 Next, roughly in order:
 
-- **Before anyone else can reach it** — set a real `SESSION_SECRET_KEY`,
+- **Before a real deployment** — set a real `SESSION_SECRET_KEY`,
   `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS`; enable Qdrant's API key;
-  and close the items in `README_API.md`'s pre-launch list (generic error
-  bodies, and who may receive curriculum excerpts).
+  stop publishing Postgres/Qdrant/Redis ports; and close the items in
+  `README_API.md`'s pre-launch list (generic error bodies, and who may receive
+  curriculum excerpts).
+- **More Groq budget** — the free tier's 200,000 tokens a day is the real
+  ceiling on how many students can use Fahem at once; a paid tier or a second
+  model for the gatekeeper is the lever.
 - **More chapters, more years** — the profile already scopes the chapter list
   by niveau, so a 3ème/Bac student currently lands on an honest empty state.
   Each new chapter needs its PDF (or Markdown), its pinned-table anchors in
@@ -550,5 +592,5 @@ Next, roughly in order:
 - **Section-aware chapters** — tag chapters with a section so the catalogue can
   filter on it too, not only the niveau (`catalogue(niveau=…)` is written for
   this).
-- **Server-side history** — write discussions to the Postgres chat tables so
-  they follow the account rather than the browser.
+- **Chapter 3 (structures itératives)** — still *À venir*; author it in
+  Markdown like chapter 2 and publish it with its série.
