@@ -98,9 +98,7 @@ SECTIONS_BY_NIVEAU = {
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Google's `sub` claim, not the email address: a user can change the email
     # on their Google account, but `sub` is stable for the life of the account.
@@ -169,9 +167,7 @@ class User(Base):
     )
     # Nullable because a row is created at first sign-in, before any *return*
     # visit exists to record.
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     sessions: Mapped[list[ChatSession]] = relationship(
         back_populates="user",
@@ -240,9 +236,7 @@ class AuthToken(Base):
 
     __tablename__ = "auth_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -272,9 +266,7 @@ class AuthToken(Base):
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -321,9 +313,7 @@ class ChatSession(Base):
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("chat_sessions.id", ondelete="CASCADE"),
@@ -351,9 +341,7 @@ class ChatMessage(Base):
     # Order within the session. A discussion is saved as a whole, so its
     # messages are inserted in one transaction and share a created_at - that
     # timestamp cannot order them, this can.
-    position: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # What the chat shows that is not part of the answer itself: an error
     # sentence, the attached file's name and kind, the client's message id.
     # Kept loose on purpose - display state, not something to query.
@@ -374,6 +362,58 @@ class ChatMessage(Base):
 
     def __repr__(self) -> str:
         return f"<ChatMessage {self.id} {self.role}>"
+
+
+# --- AI monitoring ----------------------------------------------------------------
+#
+# One row per Groq call, written by llm_usage.py, read by the admin console's
+# "IA" page. Kept small and flat on purpose: it is a time series queried by
+# created_at ranges, pruned after LLM_USAGE_RETENTION_DAYS. No user id - the
+# console measures the service's load, not who spent it.
+
+LLM_CALL_OK = "ok"
+LLM_CALL_RATE_LIMITED = "rate_limited"  # a 429 reached the caller
+LLM_CALL_QUEUE_TIMEOUT = "queue_timeout"  # no slot within the request's budget
+LLM_CALL_ERROR = "error"  # any other failure (HTTP 5xx, network, parse)
+LLM_CALL_CANCELLED = "cancelled"  # the student left before it finished
+LLM_CALL_STATUSES = (
+    LLM_CALL_OK,
+    LLM_CALL_RATE_LIMITED,
+    LLM_CALL_QUEUE_TIMEOUT,
+    LLM_CALL_ERROR,
+    LLM_CALL_CANCELLED,
+)
+
+
+class LlmCall(Base):
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    # llm_queue's kinds: gatekeeper | solve | transcription | default.
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Time in line for a slot, then time holding it (Groq, 429 sleeps included).
+    queue_wait_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # 429s this call received, retried or not.
+    rate_limit_hits: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # A short, non-sensitive reason for a failure ("HTTP 503", "tokens per day").
+    detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('ok', 'rate_limited', 'queue_timeout', 'error', 'cancelled')",
+            name="ck_llm_calls_status",
+        ),
+        Index("ix_llm_calls_created_at", "created_at"),
+    )
 
 
 # --- uploaded chapters (Phase 9) ----------------------------------------------

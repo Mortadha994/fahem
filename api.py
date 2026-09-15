@@ -20,6 +20,7 @@ against the account yet.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import urllib.error
@@ -34,6 +35,7 @@ from slowapi.errors import RateLimitExceeded
 
 import admin
 import admin_chapters
+import admin_monitoring
 import attachments
 import auth
 import chapter_store
@@ -51,6 +53,8 @@ from generate import GROQ_MODEL, generate, pick_backend
 from llm_stream import stream_groq
 from prompts import build_messages
 from rag_store import get_model
+
+log = logging.getLogger("fahem.api")
 
 
 @asynccontextmanager
@@ -146,6 +150,9 @@ app.include_router(admin.router)
 # Uploaded chapters (Phase 9): upload, review, publish. Same router-level gate.
 app.include_router(admin_chapters.router)
 
+# AI monitoring: Groq load and usage, chat activity. Same router-level gate.
+app.include_router(admin_monitoring.router)
+
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.
 app.include_router(chat_history.router)
@@ -195,6 +202,17 @@ def student_profile(user: models.User) -> str | None:
     niveau = models.NIVEAUX.get(user.niveau, user.niveau)
     section = models.SECTIONS.get(user.section, user.section)
     return f"{niveau}, section {section}"
+
+
+def meta_niveau(user: models.User, payload: "SolveRequest") -> str:
+    """The student's class, for the meta-responder's "je suis à quel niveau ?".
+
+    The account's own niveau and section when the student has answered the
+    profile question - that is their class. Otherwise the niveau this
+    discussion is scoped to, in its display form: the request's niveau is the
+    corpus scope (2ème by default), not necessarily the student's class, so it
+    is only the fallback."""
+    return student_profile(user) or niveau_label(payload.niveau)
 
 
 class SolveRequest(BaseModel):
@@ -316,8 +334,10 @@ def solve(
     # Queue priority from the account's plan (llm_queue.priority_for): every
     # Groq call this request makes waits its turn at this priority.
     priority = llm_queue.priority_for(user.plan)
+    # One deadline for all of this request's waiting (llm_queue.WaitBudget).
+    budget = llm_queue.WaitBudget()
     try:
-        route = gatekeeper.classify(gate_text(payload), priority=priority)
+        route = gatekeeper.classify(gate_text(payload), priority=priority, budget=budget)
     except gatekeeper.Busy as exc:
         raise HTTPException(status_code=429, detail="model backend busy") from exc
 
@@ -336,7 +356,12 @@ def solve(
     if route == "META":
         try:
             answer = gatekeeper.respond_meta(
-                gate_text(payload), meta_chapitre, meta_topics, priority=priority
+                gate_text(payload),
+                meta_chapitre,
+                meta_topics,
+                priority=priority,
+                budget=budget,
+                niveau=meta_niveau(user, payload),
             )
         except gatekeeper.Busy as exc:
             raise HTTPException(status_code=429, detail="model backend busy") from exc
@@ -385,7 +410,7 @@ def solve(
     )
 
     try:
-        answer = generate(messages, pick_backend(None), priority=priority)
+        answer = generate(messages, pick_backend(None), priority=priority, budget=budget)
     except llm_queue.QueueTimeout as exc:
         raise HTTPException(status_code=429, detail="model backend busy") from exc
     except urllib.error.HTTPError as exc:
@@ -420,6 +445,37 @@ def solve(
 def _sse(event: str, payload: dict) -> str:
     """One Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _waiting_frame(waiting: llm_queue.Waiting) -> str:
+    """The SSE frame for a request still waiting on Groq. `seconds` is Groq's
+    own Retry-After for a rate_limited wait; for a queue wait it is this
+    module's estimate, not yet shown to students (see llm_queue)."""
+    return _sse(
+        "waiting",
+        {
+            "position": waiting.position,
+            "seconds": round(waiting.estimated_seconds, 1),
+            "reason": waiting.reason,
+            "kind": waiting.kind,
+        },
+    )
+
+
+def _relay(steps):
+    """Forward a step generator's llm_queue.Waiting markers as SSE frames and
+    return its result (`route = yield from _relay(...)`). Closing the stream -
+    a student who leaves while waiting - closes the steps too, which takes the
+    request out of Groq's queue."""
+    try:
+        while True:
+            try:
+                waiting = next(steps)
+            except StopIteration as stop:
+                return stop.value
+            yield _waiting_frame(waiting)
+    finally:
+        steps.close()
 
 
 def _busy_stream():
@@ -490,6 +546,12 @@ def solve_stream(
     rejection arrived mid-stream.
 
     Event order:
+      waiting - the request is waiting on Groq: in its queue (reason
+               "queue", with a position) or on a 429 inside its slot (reason
+               "rate_limited", with Groq's seconds). `kind` says whether the
+               gatekeeper's classification or the solve is waiting. May come
+               before meta (the classification waits) and before the first
+               delta (the solve waits).
       meta   - the grounding: pinned tables and retrieved excerpts, WITH their
                text, sent before generation so the citation strip can render
                while the answer is still arriving.
@@ -505,8 +567,8 @@ def solve_stream(
     """
     started = time.monotonic()
 
-    # Gatekeeper: same three-way split as /solve, before build_context ever
-    # runs. See gatekeeper.py's module docstring and _gatekeeper_stream above.
+    # The DoS cap and the chapter check still answer before the stream opens:
+    # neither waits for Groq. See gatekeeper.py's module docstring.
     if gatekeeper.is_input_too_long(gate_text(payload)):
         return StreamingResponse(
             _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
@@ -516,72 +578,82 @@ def solve_stream(
 
     meta_chapitre, meta_topics = _meta_scope(payload)
     priority = llm_queue.priority_for(user.plan)
-    try:
-        route = gatekeeper.classify(gate_text(payload), priority=priority)
-    except gatekeeper.Busy:
-        return StreamingResponse(
-            _busy_stream(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    if route == "OFF_TOPIC":
-        return StreamingResponse(
-            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    if route == "META":
-        try:
-            answer = gatekeeper.respond_meta(
-                gate_text(payload), meta_chapitre, meta_topics, priority=priority
-            )
-        except gatekeeper.Busy:
-            return StreamingResponse(
-                _busy_stream(),
-                media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
-        return StreamingResponse(
-            _gatekeeper_stream(answer, GROQ_MODEL, payload, started),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    # route is PROBLEM, CODE or QUESTION (gatekeeper.GROUNDED_ROUTES): the same
-    # grounded pipeline for all three, each with its own prompt (prompts.py).
-    # Context assembly happens before the response starts, so a bad scope is
-    # still a clean 422 rather than an error frame inside a 200 stream.
-    try:
-        context = build_context(
-            payload.problem,
-            niveau=payload.niveau,
-            chapitre=payload.chapitre,
-            k=payload.k,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"could not assemble context for niveau={payload.niveau} "
-            f"chapitre={payload.chapitre}: {exc}",
-        ) from exc
-
-    if not context.pinned:
-        raise HTTPException(status_code=422, detail="no pinned syntax core for this scope")
-
-    rendered = context.render()
-    messages = build_messages(
-        context=rendered,
-        query=payload.problem,
-        niveau=niveau_label(payload.niveau),
-        chapitre=payload.chapitre,
-        kind=route,
-        profile=student_profile(user),
-        note=(payload.note or "").strip() or None,
-    )
+    # One deadline for everything this request waits on - the classifier's
+    # place in Groq's queue, the solve's, and every 429 sleep - so a student
+    # hears "busy" within GROQ_QUEUE_TIMEOUT_SECONDS, not a multiple of it.
+    budget = llm_queue.WaitBudget()
 
     def events():
+        # The gatekeeper runs inside the stream rather than before it: under
+        # load its Groq call waits in the same queue as the solves, and only an
+        # open stream can tell the student so. The order of decisions is
+        # unchanged - classification first, META and OFF_TOPIC never reach
+        # build_context.
+        try:
+            route = yield from _relay(
+                gatekeeper.classify_steps(gate_text(payload), priority, budget)
+            )
+            if route == "OFF_TOPIC":
+                yield from _gatekeeper_stream(
+                    gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started
+                )
+                return
+            if route == "META":
+                answer = yield from _relay(
+                    gatekeeper.respond_meta_steps(
+                        gate_text(payload),
+                        meta_chapitre,
+                        meta_topics,
+                        priority,
+                        budget,
+                        niveau=meta_niveau(user, payload),
+                    )
+                )
+                yield from _gatekeeper_stream(answer, GROQ_MODEL, payload, started)
+                return
+        except gatekeeper.Busy:
+            yield from _busy_stream()
+            return
+
+        # route is PROBLEM, CODE or QUESTION (gatekeeper.GROUNDED_ROUTES): the
+        # same grounded pipeline for all three, each with its own prompt. Context
+        # assembly depends on the route, so it now runs inside the stream too: a
+        # store failure is an error frame instead of a 422 (the student sees the
+        # same generic error either way), while an unavailable chapter is still
+        # refused before the stream opens, by _meta_scope above.
+        try:
+            context = build_context(
+                payload.problem,
+                niveau=payload.niveau,
+                chapitre=payload.chapitre,
+                k=payload.k,
+            )
+        except Exception:
+            log.exception(
+                "could not assemble context for niveau=%s chapitre=%s",
+                payload.niveau,
+                payload.chapitre,
+            )
+            yield _sse("error", {"message": "backend", "status": 422})
+            return
+        if not context.pinned:
+            log.error(
+                "no pinned syntax core for niveau=%s chapitre=%s", payload.niveau, payload.chapitre
+            )
+            yield _sse("error", {"message": "backend", "status": 422})
+            return
+
+        rendered = context.render()
+        messages = build_messages(
+            context=rendered,
+            query=payload.problem,
+            niveau=niveau_label(payload.niveau),
+            chapitre=payload.chapitre,
+            kind=route,
+            profile=student_profile(user),
+            note=(payload.note or "").strip() or None,
+        )
+
         yield _sse(
             "meta",
             {
@@ -607,25 +679,18 @@ def solve_stream(
 
         parts: list[str] = []
         try:
-            for fragment in stream_groq(messages, priority=priority):
+            for fragment in stream_groq(messages, priority=priority, budget=budget):
                 # Still waiting - for a slot, or on Groq's Retry-After inside
                 # it. Sent before any delta, so the student sees why nothing
                 # is arriving yet.
                 if isinstance(fragment, llm_queue.Waiting):
-                    yield _sse(
-                        "waiting",
-                        {
-                            "position": fragment.position,
-                            "seconds": round(fragment.estimated_seconds, 1),
-                            "reason": fragment.reason,
-                        },
-                    )
+                    yield _waiting_frame(fragment)
                     continue
                 parts.append(fragment)
                 yield _sse("delta", {"t": fragment})
         except llm_queue.QueueTimeout:
-            # Waited as long as the queue allows: the same "busy" the student
-            # already gets for Groq's own 429, with its retry.
+            # Waited as long as the request's budget allows: the same "busy"
+            # the student already gets for Groq's own 429, with its retry.
             yield _sse("error", {"message": "busy", "status": 429})
             return
         except urllib.error.HTTPError as exc:
@@ -683,7 +748,9 @@ async def solve_extract(
     """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > attachments.ATTACHMENT_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Le fichier est trop volumineux (maximum 10 Mo).")
+        raise HTTPException(
+            status_code=413, detail="Le fichier est trop volumineux (maximum 10 Mo)."
+        )
     data = await request.body()
     try:
         # PDF parsing, image decoding and the model call all block; off the

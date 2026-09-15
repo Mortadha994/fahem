@@ -37,7 +37,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from config import RATE_LIMIT_RETRY_AFTER_FALLBACK, REDIS_URL
+from config import RATE_LIMIT_RETRY_AFTER_FALLBACK, REDIS_URL, TRUSTED_CLIENT_IP_HEADER
 
 # This module deliberately does NOT import auth. auth.py imports it (for the
 # /auth/google decorator), so importing auth back would be a cycle. The
@@ -65,21 +65,41 @@ def user_key(request: Request) -> str:
     """
     user_id = getattr(request.state, STATE_USER_ID, None)
     if user_id is None:
-        return f"ip:{get_remote_address(request)}"
+        return f"ip:{client_ip(request)}"
     return f"user:{user_id}"
 
 
-def ip_key(request: Request) -> str:
-    """Rate-limit key for a pre-login route.
+def client_ip(request: Request) -> str:
+    """The caller's address.
 
-    get_remote_address reads request.client.host directly and does NOT trust
-    X-Forwarded-For. That is correct while nothing sits in front of uvicorn:
-    honouring a client-supplied header would let anyone reset their own
-    counter by inventing an IP. Behind a real proxy this needs revisiting
-    together with uvicorn's --proxy-headers, or every request will key on the
-    proxy's address and share one bucket.
+    By default request.client.host, and X-Forwarded-For is NOT trusted: while
+    nothing sits in front of uvicorn, honouring a client-supplied header would
+    let anyone reset their own counter by inventing an IP.
+
+    Behind a tunnel (share mode, docker-compose.share.yml) every request
+    arrives from the proxy, so every visitor would share one bucket - five
+    wrong passwords from one friend would lock out everyone. There
+    TRUSTED_CLIENT_IP_HEADER names the header the edge sets (Cloudflare's
+    CF-Connecting-IP, which it overwrites on every request; ngrok's
+    X-Forwarded-For), and share mode stops publishing the backend's port, so
+    the edge is the only way in.
+
+    Only the LAST entry of a list is used: ngrok appends the address it saw to
+    whatever X-Forwarded-For the visitor sent, so earlier entries are the
+    visitor's own invention. nginx in between passes the header through
+    without adding to it.
     """
-    return f"ip:{get_remote_address(request)}"
+    if TRUSTED_CLIENT_IP_HEADER:
+        forwarded = request.headers.get(TRUSTED_CLIENT_IP_HEADER, "")
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
+    return get_remote_address(request)
+
+
+def ip_key(request: Request) -> str:
+    """Rate-limit key for a pre-login route (see client_ip)."""
+    return f"ip:{client_ip(request)}"
 
 
 limiter = Limiter(

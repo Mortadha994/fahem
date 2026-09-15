@@ -17,7 +17,16 @@
 // while localhost:5173 -> 127.0.0.1:8000 is cross-site and the browser
 // withholds it. With the cookie withheld every request 401s and the app is
 // stuck on the sign-in screen with no error explaining why.
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+//
+// A value starting with "/" (e.g. "/api") means "on this same site": nginx
+// proxies that path to the backend (ui/nginx.conf), so the app works from any
+// address it is served on - which is how a share link (docker-compose.share.yml,
+// a tunnel URL not known at build time) reaches the API. It is resolved against
+// the page's origin because callers build absolute URLs with `new URL(...)`.
+const RAW_API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export const API_URL = RAW_API_URL.startsWith("/")
+  ? `${window.location.origin}${RAW_API_URL.replace(/\/$/, "")}`
+  : RAW_API_URL;
 
 // Google OAuth client id. Not a secret - it ships in this bundle by design,
 // and identifies the app to Google rather than authenticating it. Must be the

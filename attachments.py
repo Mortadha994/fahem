@@ -241,7 +241,9 @@ def _transcribe(images_b64: list[str], priority: int = llm_queue.PRIORITY_FREE) 
 
     try:
         # The vision model's own queue; a 429 is retried inside the slot.
-        body = llm_queue.groq_call(GROQ_VISION_MODEL, priority, send)
+        body = llm_queue.groq_call(
+            GROQ_VISION_MODEL, priority, send, kind=llm_queue.KIND_TRANSCRIPTION
+        )
     except llm_queue.QueueTimeout as exc:
         raise AttachmentError(
             "Le service est très sollicité. Réessaie dans une minute.", status=429

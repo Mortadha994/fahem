@@ -125,6 +125,12 @@ export default function AdminLayout() {
               </span>
               Tableau de bord
             </NavLink>
+            <NavLink to="/admin/ia" className={navClass} onClick={close}>
+              <span className="adm-ico" aria-hidden="true">
+                ◔
+              </span>
+              Surveillance IA
+            </NavLink>
             <p className="adm-rail-title">Gestion</p>
             <NavLink to="/admin/utilisateurs" className={navClass} onClick={close}>
               <span className="adm-ico" aria-hidden="true">

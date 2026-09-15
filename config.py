@@ -72,6 +72,30 @@ GROQ_QUEUE_TIMEOUT_SECONDS = float(os.environ.get("GROQ_QUEUE_TIMEOUT_SECONDS", 
 # call again, at most this many times, and never for longer in total than the
 # queue timeout.
 GROQ_RETRY_MAX = int(os.environ.get("GROQ_RETRY_MAX", "3"))
+# Classifications rank ahead of solves (llm_queue.KIND_TIER), but a solve that
+# has waited this long moves ahead of every classification that arrived after
+# it - so jumps can delay a solve by about this much at most. Without it,
+# classifications arriving faster than they are served kept every solve waiting
+# forever.
+GROQ_QUEUE_AGING_SECONDS = float(os.environ.get("GROQ_QUEUE_AGING_SECONDS", "20"))
+
+# --- AI monitoring (llm_usage.py, /admin/monitoring) ----------------------------
+#
+# The limits the console measures load against. Per minute: from the response
+# headers above. Per day: only a 429's body reveals it - on 2026-09-14 the
+# queue probes used gpt-oss-120b's whole 200,000 tokens per day (TPD) and every
+# student request was refused for hours, with the per-minute headers still
+# showing a full budget. That is the limit that actually ran out, so it is the
+# one the console watches first. 0 means unknown (not shown as a ratio).
+GROQ_TPM_LIMIT = int(os.environ.get("GROQ_TPM_LIMIT", "8000"))
+GROQ_TPD_LIMIT = int(os.environ.get("GROQ_TPD_LIMIT", "200000"))
+GROQ_VISION_TPM_LIMIT = int(os.environ.get("GROQ_VISION_TPM_LIMIT", "8000"))
+GROQ_VISION_TPD_LIMIT = int(os.environ.get("GROQ_VISION_TPD_LIMIT", "0"))
+# Every Groq call is recorded (tokens, latency, queue wait, 429s) unless this is
+# "0" - the queue's unit tests turn it off so fake models never reach the
+# console. Rows older than the retention are pruned when the console reads.
+LLM_USAGE_RECORDING = os.environ.get("LLM_USAGE_RECORDING", "1") != "0"
+LLM_USAGE_RETENTION_DAYS = int(os.environ.get("LLM_USAGE_RETENTION_DAYS", "7"))
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
@@ -185,6 +209,12 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower()
 # registrable domain than the UI, this has to become "none" (which also
 # forces Secure).
 SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "lax").lower()
+
+# The header carrying the real client address when a trusted edge sits in
+# front (share mode: Cloudflare's CF-Connecting-IP). Empty = trust nothing and
+# use the socket's address - see ratelimit.client_ip for why this must stay
+# empty whenever the backend is reachable without going through that edge.
+TRUSTED_CLIENT_IP_HEADER = os.environ.get("TRUSTED_CLIENT_IP_HEADER", "").strip()
 
 
 # --- password accounts + transactional email (Phase 4) ----------------------
@@ -367,6 +397,16 @@ GATEKEEPER_OUTPUT_MAX_CHARS = int(os.environ.get("GATEKEEPER_OUTPUT_MAX_CHARS", 
 # Fail fast: a routing/scope call should not hang the request the way a
 # real generation legitimately can (generate.py uses 300s).
 GATEKEEPER_TIMEOUT_SECONDS = int(os.environ.get("GATEKEEPER_TIMEOUT_SECONDS", "30"))
+
+# Sent as Groq's `reasoning_effort` on both gatekeeper calls (classifier and
+# meta-responder); empty to omit it. Measured on 8 real META messages at
+# max_tokens=250 (2026-09-14): with gpt-oss's default reasoning, reasoning took
+# median 92 tokens, max 248 - one reply came back with empty `content` (the
+# bug that showed a student raw reasoning) and three were cut off mid-sentence.
+# With "low": reasoning 12-20 tokens, the longest reply 181 tokens, none cut
+# off, all four transcript messages answered correctly. So "low", and the
+# 250-token caps above keep their headroom.
+GATEKEEPER_REASONING_EFFORT = os.environ.get("GATEKEEPER_REASONING_EFFORT", "low")
 
 # --- chat attachments (attachments.py) ------------------------------------------
 

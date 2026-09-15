@@ -12,6 +12,7 @@ import AdminUserDetail from "./routes/admin/AdminUserDetail.jsx";
 import AdminUsers from "./routes/admin/AdminUsers.jsx";
 import AdminChapters from "./routes/admin/AdminChapters.jsx";
 import AdminChapterDetail from "./routes/admin/AdminChapterDetail.jsx";
+import AdminMonitoring from "./routes/admin/AdminMonitoring.jsx";
 import Chat from "./routes/Chat.jsx";
 import ResetPassword from "./routes/ResetPassword.jsx";
 import ProfileSetup from "./components/ProfileSetup.jsx";
@@ -329,6 +330,7 @@ export default function App() {
             <Route path="utilisateurs/nouveau" element={<AdminUserCreate />} />
             <Route path="utilisateurs/:id" element={<AdminUserDetail />} />
             <Route path="chapitres" element={<AdminChapters />} />
+            <Route path="ia" element={<AdminMonitoring />} />
             <Route path="chapitres/:id" element={<AdminChapterDetail />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Route>

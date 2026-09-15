@@ -19,18 +19,14 @@ student instead of pausing in silence.
 from __future__ import annotations
 
 import json
-import logging
 import os
-import time
-import urllib.error
 import urllib.request
 from typing import Iterator
 
 import llm_queue
-from config import GROQ_QUEUE_TIMEOUT_SECONDS, GROQ_RETRY_MAX
+import llm_usage
+from config import GROQ_QUEUE_TIMEOUT_SECONDS
 from generate import GROQ_MODEL, GROQ_URL
-
-log = logging.getLogger("fahem.llm_stream")
 
 
 def stream_groq(
@@ -38,13 +34,17 @@ def stream_groq(
     temperature: float = 0.2,
     timeout: int = 300,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> Iterator[str | llm_queue.Waiting]:
     """Yield answer-content fragments as they arrive, preceded by
     llm_queue.Waiting markers while the request waits. Reasoning is discarded.
 
-    Raises llm_queue.QueueTimeout if no slot came in time, or the Groq
-    HTTPError once the 429 retries are used up.
+    `budget` is the request's shared WaitBudget: whatever the gatekeeper's
+    classification already spent waiting is not available again here.
+    Raises llm_queue.QueueTimeout if no slot came within it, or the Groq
+    HTTPError once the 429 retries are used up or no longer fit.
     """
+    budget = budget if budget is not None else llm_queue.WaitBudget()
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
         {
@@ -70,55 +70,63 @@ def stream_groq(
     # Leaving this block - normally, on an error, or when the client
     # disconnects and the generator is closed - releases the slot or leaves
     # the line.
-    with llm_queue.SyncWaiter(
-        llm_queue.groq_queue_key(GROQ_MODEL),
-        priority,
-        llm_queue.groq_max_concurrent(GROQ_MODEL),
-        GROQ_QUEUE_TIMEOUT_SECONDS,
-    ) as waiter:
-        yield from waiter.wait()
+    age_after_seconds, aging_drop = llm_queue.aging_for(llm_queue.KIND_SOLVE)
+    # What this solve cost, for the admin console (llm_usage).
+    record = llm_usage.CallRecord(model=GROQ_MODEL, kind=llm_queue.KIND_SOLVE)
+    try:
+        with llm_queue.SyncWaiter(
+            llm_queue.groq_queue_key(GROQ_MODEL),
+            # A solve queues behind any classification waiting, then by plan -
+            # until it has waited GROQ_QUEUE_AGING_SECONDS; after that it ranks
+            # ahead of every classification that arrived after it
+            # (llm_queue.aging_for).
+            llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
+            llm_queue.groq_max_concurrent(GROQ_MODEL),
+            GROQ_QUEUE_TIMEOUT_SECONDS,
+            kind=llm_queue.KIND_SOLVE,
+            budget=budget,
+            age_after_seconds=age_after_seconds,
+            aging_drop=aging_drop,
+        ) as waiter:
+            yield from waiter.wait()
+            record.mark_admitted()
 
-        # A 429 arrives before any byte of the stream, so retrying here never
-        # repeats text the student has already seen.
-        attempts = 0
-        waited = 0.0
-        while True:
-            try:
-                response = urllib.request.urlopen(request, timeout=timeout)
-                break
-            except urllib.error.HTTPError as exc:
-                delay = llm_queue.next_retry_delay(exc, attempts, waited)
-                if delay is None:
-                    raise
-                log.warning(
-                    "groq 429 on %s (stream): retry %d/%d in %.1fs (holding the slot)",
-                    GROQ_MODEL,
-                    attempts + 1,
-                    GROQ_RETRY_MAX,
-                    delay,
-                )
-                yield llm_queue.Waiting(position=0, estimated_seconds=delay, reason="rate_limited")
-                time.sleep(delay)
-                waited += delay
-                attempts += 1
+            # A 429 arrives before any byte of the stream, so retrying here never
+            # repeats text the student has already seen.
+            response = yield from llm_queue.retry_steps(
+                GROQ_MODEL,
+                lambda: urllib.request.urlopen(request, timeout=timeout),
+                budget,
+                kind=llm_queue.KIND_SOLVE,
+                record=record,
+            )
 
-        with response:
-            for raw in response:
-                line = raw.decode("utf-8").strip()
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                choices = chunk.get("choices") or []
-                if not choices:
-                    continue
-                delta = choices[0].get("delta") or {}
-                # `reasoning` is deliberately ignored - see the module docstring.
-                fragment = delta.get("content")
-                if fragment:
-                    yield fragment
+            with response:
+                for raw in response:
+                    line = raw.decode("utf-8").strip()
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    # Groq reports the usage on the last chunk, under x_groq.
+                    usage = chunk.get("usage") or (chunk.get("x_groq") or {}).get("usage")
+                    if usage:
+                        record.add_usage(usage)
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    # `reasoning` is deliberately ignored - see the module docstring.
+                    fragment = delta.get("content")
+                    if fragment:
+                        yield fragment
+    except BaseException as exc:
+        llm_usage.classify_failure(record, exc, queue_timeout=llm_queue.QueueTimeout)
+        raise
+    finally:
+        record.finish()

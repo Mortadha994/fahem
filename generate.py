@@ -46,6 +46,7 @@ def call_groq(
     messages: list[dict],
     temperature: float = 0.2,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> str:
     key = os.environ["GROQ_API_KEY"]
     payload = json.dumps(
@@ -69,7 +70,9 @@ def call_groq(
 
     # Waits its turn in GROQ_MODEL's queue and retries a 429 inside the slot
     # (llm_queue.groq_call); raises QueueTimeout if no slot came in time.
-    body = llm_queue.groq_call(GROQ_MODEL, priority, send)
+    body = llm_queue.groq_call(
+        GROQ_MODEL, priority, send, kind=llm_queue.KIND_SOLVE, budget=budget
+    )
     message = body["choices"][0]["message"]
     # Reasoning models (gpt-oss) put the chain of thought in `reasoning` and the
     # answer in `content`; fall back to reasoning only if content came back empty.
@@ -104,9 +107,10 @@ def generate(
     backend: str,
     temperature: float = 0.2,
     priority: int = llm_queue.PRIORITY_FREE,
+    budget: llm_queue.WaitBudget | None = None,
 ) -> str:
     if backend == "groq":
-        return call_groq(messages, temperature, priority)
+        return call_groq(messages, temperature, priority, budget)
     if backend == "ollama":
         return call_ollama(messages, temperature)
     raise SystemExit(f"unknown backend: {backend}")

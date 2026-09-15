@@ -87,6 +87,8 @@ export function errorMessage(err) {
 
 export const fetchAdminWhoAmI = () => request("/admin/whoami");
 export const fetchAdminStats = () => request("/admin/stats");
+/** Groq load, usage and chat activity (admin_monitoring.py). */
+export const fetchMonitoring = () => request("/admin/monitoring");
 export const fetchUsers = (query) => request("/admin/users", { query });
 export const fetchUser = (id) => request(`/admin/users/${encodeURIComponent(id)}`);
 export const createUser = (body) => request("/admin/users", { method: "POST", body });

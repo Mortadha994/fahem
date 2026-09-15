@@ -5,6 +5,7 @@ import GoogleSignIn from "./GoogleSignIn.jsx";
 import PasswordAuthForm from "./PasswordAuthForm.jsx";
 import Alert from "./ui/Alert.jsx";
 import { verifyOutcomeMessage } from "../lib/verifyBanner.js";
+import { GOOGLE_CLIENT_ID } from "../config.js";
 
 const HEADINGS = {
   login: {
@@ -69,7 +70,10 @@ export default function SignInScreen({
         </Alert>
       )}
 
-      {mode !== "forgot" && (
+      {/* No client id (share mode builds without one: Google only accepts
+          sign-ins from origins registered in its console, and a tunnel
+          address is not) - e-mail and password only, no dead button. */}
+      {mode !== "forgot" && GOOGLE_CLIENT_ID && (
         <>
           <div className="signin-action">
             <GoogleSignIn onCredential={onCredential} disabled={busy} />
