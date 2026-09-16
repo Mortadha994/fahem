@@ -183,10 +183,18 @@ def snapshot() -> dict[str, dict[str, Any]]:
     return out
 
 
-def set_many(values: dict[str, Any], admin_email: str) -> dict[str, tuple[Any, Any]]:
+def set_many(
+    values: dict[str, Any],
+    admin_email: str,
+    *,
+    action: str = "settings.update",
+    target: str | None = None,
+) -> dict[str, tuple[Any, Any]]:
     """Validate every value, then write them in one transaction and log the
     change. Returns {key: (old, new)} for the keys whose value changed.
-    Raises InvalidSetting (naming the key) before writing anything."""
+    Raises InvalidSetting (naming the key) before writing anything.
+    `action`/`target` name the log entry (revert() logs settings.revert,
+    with the reverted entry's id as target)."""
     from db import session_scope
     from models import AdminAuditEntry, AppSetting
 
@@ -217,8 +225,8 @@ def set_many(values: dict[str, Any], admin_email: str) -> dict[str, tuple[Any, A
             s.add(
                 AdminAuditEntry(
                     admin_email=admin_email,
-                    action="settings.update",
-                    target="ia",
+                    action=action,
+                    target=target or "ia",
                     detail={k: {"old": o, "new": n} for k, (o, n) in changed.items()},
                 )
             )
@@ -226,30 +234,121 @@ def set_many(values: dict[str, Any], admin_email: str) -> dict[str, tuple[Any, A
     return changed
 
 
-def audit(admin_email: str, action: str, target: str | None, detail: dict | None = None) -> None:
+def audit(
+    admin_email: str,
+    action: str,
+    target: str | None,
+    detail: dict | None = None,
+    *,
+    target_id: str | None = None,
+) -> None:
     """Record one admin action (outside settings) in admin_audit."""
     from db import session_scope
     from models import AdminAuditEntry
 
     with session_scope() as s:
-        s.add(AdminAuditEntry(admin_email=admin_email, action=action, target=target, detail=detail))
+        s.add(
+            AdminAuditEntry(
+                admin_email=admin_email,
+                action=action,
+                target=target,
+                target_id=target_id,
+                detail=detail,
+            )
+        )
 
 
-def recent_audit(limit: int = 15) -> list[dict[str, Any]]:
+# --- the action log ---------------------------------------------------------------
+
+# What the console's log filters on. Every action name starts with its family.
+AUDIT_CATEGORIES = {
+    "ia": ("settings.",),
+    "comptes": ("user.",),
+    "files": ("queue.",),
+}
+REVERTIBLE_ACTIONS = ("settings.update", "settings.revert")
+
+
+def _entry(r) -> dict[str, Any]:
+    return {
+        "id": r.id,
+        "at": r.created_at,
+        "admin_email": r.admin_email,
+        "action": r.action,
+        "target": r.target,
+        "target_id": r.target_id,
+        "detail": r.detail,
+        "revertible": r.action in REVERTIBLE_ACTIONS and bool(r.detail),
+    }
+
+
+def query_audit(
+    *,
+    category: str | None = None,
+    q: str = "",
+    before: int | None = None,
+    limit: int = 30,
+) -> tuple[list[dict[str, Any]], int | None]:
+    """A page of the log, newest first. `before` is the id to continue from;
+    the second value is the id to pass for the next page, or None at the end."""
+    from sqlalchemy import or_
+
     from db import session_scope
     from models import AdminAuditEntry
 
     with session_scope() as s:
-        rows = (
-            s.query(AdminAuditEntry).order_by(AdminAuditEntry.created_at.desc()).limit(limit).all()
-        )
-        return [
-            {
-                "at": r.created_at,
-                "admin_email": r.admin_email,
-                "action": r.action,
-                "target": r.target,
-                "detail": r.detail,
-            }
-            for r in rows
-        ]
+        query = s.query(AdminAuditEntry)
+        if category in AUDIT_CATEGORIES:
+            query = query.filter(
+                or_(
+                    *(
+                        AdminAuditEntry.action.startswith(prefix)
+                        for prefix in AUDIT_CATEGORIES[category]
+                    )
+                )
+            )
+        if q.strip():
+            term = (
+                "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            )
+            query = query.filter(
+                or_(
+                    AdminAuditEntry.admin_email.ilike(term, escape="\\"),
+                    AdminAuditEntry.target.ilike(term, escape="\\"),
+                )
+            )
+        if before is not None:
+            query = query.filter(AdminAuditEntry.id < before)
+        rows = query.order_by(AdminAuditEntry.id.desc()).limit(limit + 1).all()
+        items = [_entry(r) for r in rows[:limit]]
+    next_before = items[-1]["id"] if len(rows) > limit else None
+    return items, next_before
+
+
+def recent_audit(limit: int = 15) -> list[dict[str, Any]]:
+    return query_audit(limit=limit)[0]
+
+
+def revert(entry_id: int, admin_email: str) -> dict[str, tuple[Any, Any]]:
+    """Put back the values a settings change replaced. Logged as its own
+    settings.revert entry (target = the reverted entry's id). Raises
+    LookupError for an unknown entry, InvalidSetting if it is not a settings
+    change or nothing would change."""
+    from db import session_scope
+    from models import AdminAuditEntry
+
+    with session_scope() as s:
+        row = s.get(AdminAuditEntry, entry_id)
+        if row is None:
+            raise LookupError(entry_id)
+        if row.action not in REVERTIBLE_ACTIONS or not row.detail:
+            raise InvalidSetting("Seuls les changements de réglages peuvent être rétablis.")
+        old_values = {
+            key: change.get("old")
+            for key, change in row.detail.items()
+            if key in SPECS and isinstance(change, dict)
+        }
+    changed = set_many(old_values, admin_email, action="settings.revert", target=str(entry_id))
+    if not changed:
+        raise InvalidSetting("Les réglages ont déjà ces valeurs : rien à rétablir.")
+    return changed

@@ -10,6 +10,8 @@ import {
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
 import { useAdminStatus } from "../../lib/adminStatus.js";
+import { formatValue } from "../../lib/auditFormat.js";
+import AuditLog from "./AuditLog.jsx";
 import { SPRING_ENTER, rise } from "../../lib/motion.js";
 
 /**
@@ -33,23 +35,30 @@ const REFRESH_MS = 15_000;
 const GUARD_OPTIONS = [0, 70, 80, 90, 95];
 const LIMIT_RE = /^\s*(\d+)\s*\/\s*minute\s*;\s*(\d+)\s*\/\s*hour\s*$/i;
 
-const ACTIONS = {
-  "settings.update": "Réglages de l'IA",
-  "queue.reset": "File vidée",
-  "user.update": "Compte modifié",
-  "user.suspend": "Compte suspendu",
-  "user.reactivate": "Compte réactivé",
-};
+/** "Modifié par x · il y a 3 h", or the default when never changed. */
+function SettingMeta({ settings, keys }) {
+  const changed = keys
+    .map((key) => settings[key])
+    .filter((s) => s?.updated_at)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+  return (
+    <p className="ctl-meta">
+      {changed
+        ? `Modifié par ${changed.updated_by ?? "un admin"} · ${relativeTime(changed.updated_at)}`
+        : "Valeur par défaut, jamais modifiée"}
+    </p>
+  );
+}
 
-const SETTING_LABELS = {
-  ai_paused: "Pause",
-  ai_pause_message: "Message de pause",
-  daily_budget_guard_pct: "Garde-fou",
-  solve_rate_limit: "Limite par élève",
-  queue_timeout_seconds: "Attente max",
-  retry_max: "Réessais",
-  attachments_enabled: "Photos / PDF",
-};
+/** "défaut : 120 s" under a field, only when the value differs from it. */
+function DefaultHint({ setting, settingKey, current }) {
+  if (!setting || String(current) === String(setting.default)) return null;
+  return (
+    <span className="ctl-default">
+      défaut : {formatValue(settingKey, setting.default)}
+    </span>
+  );
+}
 
 const nf = new Intl.NumberFormat("fr-FR");
 
@@ -83,29 +92,6 @@ function formValues(form) {
   };
 }
 
-function describe(entry) {
-  if (entry.action === "settings.update" && entry.detail) {
-    return Object.entries(entry.detail)
-      .map(([key, { new: value }]) => {
-        const label = SETTING_LABELS[key] ?? key;
-        if (typeof value === "boolean") {
-          if (key === "ai_paused") return value ? "IA mise en pause" : "IA relancée";
-          return `${label} : ${value ? "activé" : "désactivé"}`;
-        }
-        if (key === "daily_budget_guard_pct")
-          return value ? `${label} : ${value} %` : `${label} : désactivé`;
-        if (key === "queue_timeout_seconds") return `${label} : ${value} s`;
-        if (key === "ai_pause_message") return `${label} modifié`;
-        return `${label} : ${value}`;
-      })
-      .join(" · ");
-  }
-  if (entry.action === "user.update" && entry.detail) {
-    return `${entry.target} — ${Object.keys(entry.detail).join(", ")}`;
-  }
-  return entry.target ?? "";
-}
-
 export default function AiControls({ onChanged }) {
   const { onUnauthorized } = useAuth();
   // The sidebar card and the top bar pill show the same status: refresh them
@@ -118,6 +104,8 @@ export default function AiControls({ onChanged }) {
   const [confirming, setConfirming] = useState(null); // pause | reset:<model>
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
+  // Bumped by every applied change, so the action log below reloads.
+  const [version, setVersion] = useState(0);
 
   const fail = useCallback(
     (err) => {
@@ -162,6 +150,7 @@ export default function AiControls({ onChanged }) {
       apply(next, { resetForm: kind === "save" || !dirty });
       setNotice(success);
       setConfirming(null);
+      setVersion((v) => v + 1);
       onChanged?.();
       refreshStatus();
     } catch (err) {
@@ -183,7 +172,7 @@ export default function AiControls({ onChanged }) {
     );
   }
 
-  const { settings, budget, queues, audit } = data;
+  const { settings, budget, queues } = data;
   const paused = settings.ai_paused.value;
   const guard = settings.daily_budget_guard_pct.value;
   const status = paused ? "paused" : budget.blocking ? "blocked" : "on";
@@ -199,342 +188,393 @@ export default function AiControls({ onChanged }) {
     form.rawLimit === null &&
     (!(Number(form.perMinute) >= 1) || !(Number(form.perHour) >= 1));
 
+  const queueLabels = Object.fromEntries(queues.map((q) => [q.model, q.label]));
+  const limitNow =
+    form.rawLimit ?? `${Number(form.perMinute)}/minute;${Number(form.perHour)}/hour`;
+
   return (
-    <m.section
-      className={`adm-panel ctl is-${status}`}
-      variants={rise}
-      aria-label="Contrôle de l'IA"
-    >
-      <header className="adm-panel-head ctl-head">
-        <div>
-          <h2 className="adm-h2">Contrôle de l'IA</h2>
-          <p className="adm-muted adm-small">
-            Chaque réglage s'applique aux élèves en quelques secondes, sans redémarrer.
-          </p>
-        </div>
-        <span className={`ctl-status is-${status}`} role="status">
-          <i aria-hidden="true" />
-          {status === "paused"
-            ? "IA en pause"
-            : status === "blocked"
-              ? "Garde-fou atteint"
-              : "IA active"}
-        </span>
-      </header>
+    <>
+      <m.section
+        className={`adm-panel ctl is-${status}`}
+        variants={rise}
+        aria-label="Contrôle de l'IA"
+      >
+        <header className="adm-panel-head ctl-head">
+          <div>
+            <h2 className="adm-h2">Contrôle de l'IA</h2>
+            <p className="adm-muted adm-small">
+              Chaque réglage s'applique aux élèves en quelques secondes, sans
+              redémarrer.
+            </p>
+          </div>
+          <span className={`ctl-status is-${status}`} role="status">
+            <i aria-hidden="true" />
+            {status === "paused"
+              ? "IA en pause"
+              : status === "blocked"
+                ? "Garde-fou atteint"
+                : "IA active"}
+          </span>
+        </header>
 
-      {notice && (
-        <p className="adm-notice" role="status">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p className="adm-alert" role="alert">
-          {error}
-        </p>
-      )}
-
-      <div className="ctl-grid">
-        {/* --- pause ------------------------------------------------------ */}
-        <div className="ctl-card ctl-pause">
-          <p className="adm-strong">Pause / maintenance</p>
-          <p className="adm-muted adm-small">
-            {paused
-              ? "Aucune requête n'atteint l'IA. Les élèves lisent ce message :"
-              : "Coupe toutes les requêtes à l'IA. Les élèves liront ce message :"}
+        {notice && (
+          <p className="adm-notice" role="status">
+            {notice}
           </p>
-          <textarea
-            className="adm-input ctl-message"
-            rows={2}
-            maxLength={300}
-            value={form.pauseMessage}
-            onChange={(e) => update({ pauseMessage: e.target.value })}
-            aria-label="Message affiché aux élèves pendant la pause"
-          />
-          {paused ? (
-            <button
-              className="adm-btn adm-btn-primary"
-              disabled={busy === "pause"}
-              onClick={() =>
-                run(
-                  "pause",
-                  () => updateControls({ ai_paused: false }),
-                  "L'IA est relancée."
-                )
-              }
-            >
-              {busy === "pause" ? "Relance…" : "Relancer l'IA"}
-            </button>
-          ) : confirming === "pause" ? (
-            <span className="adm-confirm">
-              <button className="adm-btn" onClick={() => setConfirming(null)}>
-                Annuler
-              </button>
+        )}
+        {error && (
+          <p className="adm-alert" role="alert">
+            {error}
+          </p>
+        )}
+
+        <div className="ctl-grid">
+          <h3 className="ctl-section">
+            Disponibilité
+            <span>Qui peut utiliser l'IA, et jusqu'où.</span>
+          </h3>
+          {/* --- pause ------------------------------------------------------ */}
+          <div className="ctl-card ctl-pause">
+            <p className="adm-strong">Pause / maintenance</p>
+            <p className="adm-muted adm-small">
+              {paused
+                ? "Aucune requête n'atteint l'IA. Les élèves lisent ce message :"
+                : "Coupe toutes les requêtes à l'IA. Les élèves liront ce message :"}
+            </p>
+            <textarea
+              className="adm-input ctl-message"
+              rows={2}
+              maxLength={300}
+              value={form.pauseMessage}
+              onChange={(e) => update({ pauseMessage: e.target.value })}
+              aria-label="Message affiché aux élèves pendant la pause"
+            />
+            {paused ? (
               <button
-                className="adm-btn adm-btn-danger"
-                disabled={busy === "pause" || !form.pauseMessage.trim()}
+                className="adm-btn adm-btn-primary"
+                disabled={busy === "pause"}
                 onClick={() =>
                   run(
                     "pause",
-                    () =>
-                      updateControls({
-                        ai_paused: true,
-                        ai_pause_message: form.pauseMessage,
-                      }),
-                    "L'IA est en pause."
+                    () => updateControls({ ai_paused: false }),
+                    "L'IA est relancée."
                   )
                 }
               >
-                Confirmer la pause
+                {busy === "pause" ? "Relance…" : "Relancer l'IA"}
               </button>
-            </span>
-          ) : (
-            <button
-              className="adm-btn adm-btn-warn"
-              onClick={() => setConfirming("pause")}
-            >
-              Mettre l'IA en pause
-            </button>
-          )}
-        </div>
-
-        {/* --- daily budget guard -------------------------------------------- */}
-        <div className="ctl-card">
-          <p className="adm-strong">Garde-fou du budget journalier</p>
-          <p className="adm-muted adm-small">
-            Arrête les nouvelles requêtes à ce pourcentage de la limite de tokens par
-            jour de Groq, pour garder une réserve.
-          </p>
-          <div className="adm-seg" role="radiogroup" aria-label="Seuil du garde-fou">
-            {GUARD_OPTIONS.map((pct) => (
+            ) : confirming === "pause" ? (
+              <span className="adm-confirm">
+                <button className="adm-btn" onClick={() => setConfirming(null)}>
+                  Annuler
+                </button>
+                <button
+                  className="adm-btn adm-btn-danger"
+                  disabled={busy === "pause" || !form.pauseMessage.trim()}
+                  onClick={() =>
+                    run(
+                      "pause",
+                      () =>
+                        updateControls({
+                          ai_paused: true,
+                          ai_pause_message: form.pauseMessage,
+                        }),
+                      "L'IA est en pause."
+                    )
+                  }
+                >
+                  Confirmer la pause
+                </button>
+              </span>
+            ) : (
               <button
-                key={pct}
-                type="button"
-                role="radio"
-                aria-checked={guard === pct}
-                className={`adm-seg-btn${guard === pct ? " is-on" : ""}`}
-                disabled={busy === "guard"}
-                onClick={() =>
-                  guard !== pct &&
-                  run(
-                    "guard",
-                    () => updateControls({ daily_budget_guard_pct: pct }),
-                    pct ? `Garde-fou réglé à ${pct} %.` : "Garde-fou désactivé."
-                  )
-                }
+                className="adm-btn adm-btn-warn"
+                onClick={() => setConfirming("pause")}
               >
-                {pct ? `${pct} %` : "Désactivé"}
+                Mettre l'IA en pause
               </button>
-            ))}
-          </div>
-          <div
-            className={`ctl-budget${budget.blocking ? " is-blocking" : ""}`}
-            role="img"
-            aria-label={`${nf.format(budget.used)} tokens utilisés sur ${nf.format(budget.limit)} aujourd'hui`}
-          >
-            <m.span
-              className="ctl-budget-fill"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: usedRatio }}
-              transition={{ ...SPRING_ENTER, visualDuration: 0.7 }}
-            />
-            {thresholdRatio !== null && (
-              <span
-                className="ctl-budget-mark"
-                style={{ left: `${thresholdRatio * 100}%` }}
-              />
             )}
+            <SettingMeta settings={settings} keys={["ai_paused", "ai_pause_message"]} />
           </div>
-          <p className="adm-small ctl-budget-text">
-            <span className="adm-strong">{nf.format(budget.used)}</span> /{" "}
-            {nf.format(budget.limit)} tokens (24 h)
-            {budget.threshold !== null && (
-              <>
-                {" "}
-                · arrêt à{" "}
-                <span className="adm-strong">{nf.format(budget.threshold)}</span>
-              </>
-            )}
-          </p>
-        </div>
 
-        {/* --- limits ----------------------------------------------------------- */}
-        <form
-          className="ctl-card ctl-limits"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(
-              "save",
-              () => updateControls(formValues(form)),
-              "Réglages enregistrés."
-            );
-          }}
-        >
-          <p className="adm-strong">Limites et réglages</p>
-          <div className="ctl-fields">
-            <fieldset className="ctl-field">
-              <legend>Limite par élève</legend>
-              {form.rawLimit !== null ? (
-                <input
-                  className="adm-input"
-                  value={form.rawLimit}
-                  onChange={(e) => update({ rawLimit: e.target.value })}
-                  aria-label="Limite par élève"
+          {/* --- daily budget guard -------------------------------------------- */}
+          <div className="ctl-card">
+            <p className="adm-strong">Garde-fou du budget journalier</p>
+            <p className="adm-muted adm-small">
+              Arrête les nouvelles requêtes à ce pourcentage de la limite de tokens par
+              jour de Groq, pour garder une réserve.
+            </p>
+            <div className="adm-seg" role="radiogroup" aria-label="Seuil du garde-fou">
+              {GUARD_OPTIONS.map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  role="radio"
+                  aria-checked={guard === pct}
+                  className={`adm-seg-btn${guard === pct ? " is-on" : ""}`}
+                  disabled={busy === "guard"}
+                  onClick={() =>
+                    guard !== pct &&
+                    run(
+                      "guard",
+                      () => updateControls({ daily_budget_guard_pct: pct }),
+                      pct ? `Garde-fou réglé à ${pct} %.` : "Garde-fou désactivé."
+                    )
+                  }
+                >
+                  {pct ? `${pct} %` : "Désactivé"}
+                </button>
+              ))}
+            </div>
+            <div
+              className={`ctl-budget${budget.blocking ? " is-blocking" : ""}`}
+              role="img"
+              aria-label={`${nf.format(budget.used)} tokens utilisés sur ${nf.format(budget.limit)} aujourd'hui`}
+            >
+              <m.span
+                className="ctl-budget-fill"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: usedRatio }}
+                transition={{ ...SPRING_ENTER, visualDuration: 0.7 }}
+              />
+              {thresholdRatio !== null && (
+                <span
+                  className="ctl-budget-mark"
+                  style={{ left: `${thresholdRatio * 100}%` }}
                 />
-              ) : (
+              )}
+            </div>
+            <p className="adm-small ctl-budget-text">
+              <span className="adm-strong">{nf.format(budget.used)}</span> /{" "}
+              {nf.format(budget.limit)} tokens (24 h)
+              {budget.threshold !== null && (
+                <>
+                  {" "}
+                  · arrêt à{" "}
+                  <span className="adm-strong">{nf.format(budget.threshold)}</span>
+                </>
+              )}
+            </p>
+            <SettingMeta settings={settings} keys={["daily_budget_guard_pct"]} />
+          </div>
+
+          <h3 className="ctl-section">
+            Limites et maintenance
+            <span>Combien chaque élève peut demander, et l'état des files.</span>
+          </h3>
+
+          {/* --- limits ----------------------------------------------------------- */}
+          <form
+            className="ctl-card ctl-limits"
+            onSubmit={(e) => {
+              e.preventDefault();
+              run(
+                "save",
+                () => updateControls(formValues(form)),
+                "Réglages enregistrés."
+              );
+            }}
+          >
+            <p className="adm-strong">Limites et réglages</p>
+            <div className="ctl-fields">
+              <fieldset className="ctl-field">
+                <legend>Limite par élève</legend>
+                {form.rawLimit !== null ? (
+                  <input
+                    className="adm-input"
+                    value={form.rawLimit}
+                    onChange={(e) => update({ rawLimit: e.target.value })}
+                    aria-label="Limite par élève"
+                  />
+                ) : (
+                  <span className="ctl-inline">
+                    <input
+                      className="adm-input ctl-num"
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={form.perMinute}
+                      onChange={(e) => update({ perMinute: e.target.value })}
+                      aria-label="Requêtes par minute"
+                    />
+                    / min
+                    <input
+                      className="adm-input ctl-num"
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={form.perHour}
+                      onChange={(e) => update({ perHour: e.target.value })}
+                      aria-label="Requêtes par heure"
+                    />
+                    / heure
+                  </span>
+                )}
+                <DefaultHint
+                  setting={settings.solve_rate_limit}
+                  settingKey="solve_rate_limit"
+                  current={limitNow}
+                />
+              </fieldset>
+              <label className="ctl-field">
+                <span>Attente max dans la file</span>
                 <span className="ctl-inline">
                   <input
                     className="adm-input ctl-num"
                     type="number"
-                    min={1}
-                    max={1000}
-                    value={form.perMinute}
-                    onChange={(e) => update({ perMinute: e.target.value })}
-                    aria-label="Requêtes par minute"
+                    min={15}
+                    max={600}
+                    value={form.queueTimeout}
+                    onChange={(e) => update({ queueTimeout: e.target.value })}
                   />
-                  / min
+                  secondes
+                </span>
+                <DefaultHint
+                  setting={settings.queue_timeout_seconds}
+                  settingKey="queue_timeout_seconds"
+                  current={form.queueTimeout}
+                />
+              </label>
+              <label className="ctl-field">
+                <span>Réessais après un refus Groq (429)</span>
+                <span className="ctl-inline">
                   <input
                     className="adm-input ctl-num"
                     type="number"
-                    min={1}
-                    max={10000}
-                    value={form.perHour}
-                    onChange={(e) => update({ perHour: e.target.value })}
-                    aria-label="Requêtes par heure"
+                    min={0}
+                    max={5}
+                    value={form.retryMax}
+                    onChange={(e) => update({ retryMax: e.target.value })}
                   />
-                  / heure
+                  fois
                 </span>
-              )}
-            </fieldset>
-            <label className="ctl-field">
-              <span>Attente max dans la file</span>
-              <span className="ctl-inline">
-                <input
-                  className="adm-input ctl-num"
-                  type="number"
-                  min={15}
-                  max={600}
-                  value={form.queueTimeout}
-                  onChange={(e) => update({ queueTimeout: e.target.value })}
+                <DefaultHint
+                  setting={settings.retry_max}
+                  settingKey="retry_max"
+                  current={form.retryMax}
                 />
-                secondes
-              </span>
-            </label>
-            <label className="ctl-field">
-              <span>Réessais après un refus Groq (429)</span>
-              <span className="ctl-inline">
+              </label>
+              <label className="adm-check ctl-field">
                 <input
-                  className="adm-input ctl-num"
-                  type="number"
-                  min={0}
-                  max={5}
-                  value={form.retryMax}
-                  onChange={(e) => update({ retryMax: e.target.value })}
+                  type="checkbox"
+                  checked={form.attachments}
+                  onChange={(e) => update({ attachments: e.target.checked })}
                 />
-                fois
-              </span>
-            </label>
-            <label className="adm-check ctl-field">
-              <input
-                type="checkbox"
-                checked={form.attachments}
-                onChange={(e) => update({ attachments: e.target.checked })}
-              />
-              <span>Lecture des photos et PDF</span>
-            </label>
-          </div>
-          <div className="adm-form-actions">
-            {dirty && (
+                <span>Lecture des photos et PDF</span>
+              </label>
+            </div>
+            <SettingMeta
+              settings={settings}
+              keys={[
+                "solve_rate_limit",
+                "queue_timeout_seconds",
+                "retry_max",
+                "attachments_enabled",
+              ]}
+            />
+            <div className="adm-form-actions">
               <button
                 type="button"
-                className="adm-btn"
+                className="adm-btn adm-btn-ghost"
                 onClick={() => {
-                  setForm(formFrom(settings));
-                  setDirty(false);
+                  const limit =
+                    /^\s*(\d+)\s*\/\s*minute\s*;\s*(\d+)\s*\/\s*hour\s*$/i.exec(
+                      settings.solve_rate_limit.default
+                    );
+                  update({
+                    perMinute: limit?.[1] ?? "",
+                    perHour: limit?.[2] ?? "",
+                    rawLimit: limit ? null : settings.solve_rate_limit.default,
+                    queueTimeout: String(settings.queue_timeout_seconds.default),
+                    retryMax: String(settings.retry_max.default),
+                    attachments: settings.attachments_enabled.default,
+                  });
                 }}
               >
-                Annuler
+                Valeurs par défaut
               </button>
-            )}
-            <button
-              className="adm-btn adm-btn-primary"
-              disabled={!dirty || busy === "save" || limitInvalid}
-            >
-              {busy === "save" ? "Enregistrement…" : "Enregistrer"}
-            </button>
+              {dirty && (
+                <button
+                  type="button"
+                  className="adm-btn"
+                  onClick={() => {
+                    setForm(formFrom(settings));
+                    setDirty(false);
+                  }}
+                >
+                  Annuler
+                </button>
+              )}
+              <button
+                className="adm-btn adm-btn-primary"
+                disabled={!dirty || busy === "save" || limitInvalid}
+              >
+                {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+              </button>
+            </div>
+          </form>
+
+          {/* --- queues -------------------------------------------------------------- */}
+          <div className="ctl-card">
+            <p className="adm-strong">Files d'attente</p>
+            <p className="adm-muted adm-small">
+              À vider seulement si une file semble bloquée : les demandes en attente se
+              replacent d'elles-mêmes.
+            </p>
+            <ul className="ctl-queues">
+              {queues.map((q) => {
+                const key = `reset:${q.model}`;
+                return (
+                  <li key={q.model}>
+                    <span>
+                      <span className="adm-strong">{q.label}</span>{" "}
+                      <span className="adm-muted adm-small">
+                        {q.waiting === null
+                          ? "indisponible"
+                          : `${q.active}/${q.max_concurrent} en cours · ${q.waiting} en attente`}
+                      </span>
+                    </span>
+                    {confirming === key ? (
+                      <span className="adm-confirm">
+                        <button className="adm-btn" onClick={() => setConfirming(null)}>
+                          Annuler
+                        </button>
+                        <button
+                          className="adm-btn adm-btn-warn"
+                          disabled={busy === key}
+                          onClick={() =>
+                            run(
+                              key,
+                              () => resetQueue(q.model),
+                              `File ${q.label} vidée.`
+                            )
+                          }
+                        >
+                          Vider
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="adm-btn" onClick={() => setConfirming(key)}>
+                        Vider la file
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        </form>
-
-        {/* --- queues -------------------------------------------------------------- */}
-        <div className="ctl-card">
-          <p className="adm-strong">Files d'attente</p>
-          <p className="adm-muted adm-small">
-            À vider seulement si une file semble bloquée : les demandes en attente se
-            replacent d'elles-mêmes.
-          </p>
-          <ul className="ctl-queues">
-            {queues.map((q) => {
-              const key = `reset:${q.model}`;
-              return (
-                <li key={q.model}>
-                  <span>
-                    <span className="adm-strong">{q.label}</span>{" "}
-                    <span className="adm-muted adm-small">
-                      {q.waiting === null
-                        ? "indisponible"
-                        : `${q.active}/${q.max_concurrent} en cours · ${q.waiting} en attente`}
-                    </span>
-                  </span>
-                  {confirming === key ? (
-                    <span className="adm-confirm">
-                      <button className="adm-btn" onClick={() => setConfirming(null)}>
-                        Annuler
-                      </button>
-                      <button
-                        className="adm-btn adm-btn-warn"
-                        disabled={busy === key}
-                        onClick={() =>
-                          run(key, () => resetQueue(q.model), `File ${q.label} vidée.`)
-                        }
-                      >
-                        Vider
-                      </button>
-                    </span>
-                  ) : (
-                    <button className="adm-btn" onClick={() => setConfirming(key)}>
-                      Vider la file
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         </div>
-      </div>
+      </m.section>
 
-      {/* --- log ------------------------------------------------------------------ */}
-      <details className="ctl-log">
-        <summary>
-          Historique des actions admin{" "}
-          <span className="adm-muted">({audit.length})</span>
-        </summary>
-        {audit.length === 0 ? (
-          <p className="adm-muted adm-small">Aucune action pour l'instant.</p>
-        ) : (
-          <ul>
-            {audit.map((entry, i) => (
-              <li key={`${entry.at}-${i}`}>
-                <span className="adm-strong">
-                  {ACTIONS[entry.action] ?? entry.action}
-                </span>
-                <span className="ctl-log-detail">{describe(entry)}</span>
-                <span className="adm-muted adm-small">
-                  {entry.admin_email} · {relativeTime(entry.at)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </details>
-    </m.section>
+      <AuditLog
+        version={version}
+        queueLabels={queueLabels}
+        onReverted={(next) => {
+          apply(next, { resetForm: !dirty });
+          onChanged?.();
+          refreshStatus();
+        }}
+      />
+    </>
   );
 }

@@ -6,6 +6,9 @@
   PUT  /admin/controls                  change one or more settings; validated
                                         all together, logged in admin_audit
   POST /admin/controls/queues/reset     empty one model's Groq queue
+  GET  /admin/audit                     the action log: filtered by family
+                                        (ia | comptes | files), searched, paged
+  POST /admin/audit/{id}/revert         put back what a settings change replaced
 
 What each setting does is in runtime_settings.py; where it takes effect is in
 ai_control.py. Same router-level admin gate as admin.py.
@@ -20,9 +23,9 @@ is rarely needed.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 import ai_control
@@ -64,11 +67,14 @@ class QueueOut(BaseModel):
 
 
 class AuditOut(BaseModel):
+    id: int
     at: datetime
     admin_email: str
     action: str
     target: str | None
+    target_id: str | None = None
     detail: dict | None
+    revertible: bool = False
 
 
 class ControlsOut(BaseModel):
@@ -76,6 +82,11 @@ class ControlsOut(BaseModel):
     budget: BudgetOut
     queues: list[QueueOut]
     audit: list[AuditOut]
+
+
+class AuditPage(BaseModel):
+    items: list[AuditOut]
+    next_before: int | None
 
 
 class QueueReset(BaseModel):
@@ -146,4 +157,32 @@ def reset_queue(payload: QueueReset, me: User = Depends(auth.get_current_admin))
     key = llm_queue.groq_queue_key(payload.model)
     llm_queue._sync_client().delete(*llm_queue.all_keys(key))
     runtime_settings.audit(me.email, "queue.reset", payload.model)
+    return _controls()
+
+
+@router.get("/audit", response_model=AuditPage)
+def read_audit(
+    category: Literal["ia", "comptes", "files"] | None = Query(None),
+    q: str = Query("", max_length=200),
+    before: int | None = Query(None, ge=1),
+    limit: int = Query(30, ge=1, le=100),
+) -> AuditPage:
+    items, next_before = runtime_settings.query_audit(
+        category=category, q=q, before=before, limit=limit
+    )
+    return AuditPage(items=[AuditOut(**i) for i in items], next_before=next_before)
+
+
+@router.post("/audit/{entry_id}/revert", response_model=ControlsOut)
+def revert_audit(entry_id: int, me: User = Depends(auth.get_current_admin)) -> ControlsOut:
+    try:
+        changed = runtime_settings.revert(entry_id, me.email)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Action introuvable.") from exc
+    except runtime_settings.InvalidSetting as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if "daily_budget_guard_pct" in changed:
+        ai_control.clear_budget_cache()
+    if "attachments_enabled" in changed:
+        public_overview.clear_cache()
     return _controls()

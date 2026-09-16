@@ -600,6 +600,8 @@ class AdminAuditEntry(Base):
     admin_email: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The target's id when it has one (a user's uuid), so the log can link to it.
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (Index("ix_admin_audit_created_at", "created_at"),)

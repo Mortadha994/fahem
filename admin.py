@@ -345,7 +345,7 @@ def update_user(
         if before.get(k) != v
     }
     if changes:
-        runtime_settings.audit(me.email, "user.update", email, changes)
+        runtime_settings.audit(me.email, "user.update", email, changes, target_id=str(user_id))
     if "solve_rate_limit" in changes:
         ai_control.forget_user_limit(user_id)
     return after
@@ -373,7 +373,13 @@ def suspend_user(
         user.sessions_valid_after = now
         s.flush()
         out, email = AdminUser.of(user), user.email
-    runtime_settings.audit(me.email, "user.suspend", email, {"reason": out.suspended_reason})
+    runtime_settings.audit(
+        me.email,
+        "user.suspend",
+        email,
+        {"reason": out.suspended_reason},
+        target_id=str(user_id),
+    )
     return out
 
 
@@ -388,7 +394,7 @@ def reactivate_user(user_id: uuid.UUID, me: User = Depends(auth.get_current_admi
         s.flush()
         out, email = AdminUser.of(user), user.email
     if was_suspended:
-        runtime_settings.audit(me.email, "user.reactivate", email)
+        runtime_settings.audit(me.email, "user.reactivate", email, target_id=str(user_id))
     return out
 
 

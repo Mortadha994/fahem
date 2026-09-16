@@ -93,6 +93,10 @@ export const fetchMonitoring = () => request("/admin/monitoring");
 export const fetchControls = () => request("/admin/controls");
 export const updateControls = (values) =>
   request("/admin/controls", { method: "PUT", body: values });
+/** The admin action log, filtered and paged (GET /admin/audit). */
+export const fetchAudit = (query) => request("/admin/audit", { query });
+export const revertAudit = (id) =>
+  request(`/admin/audit/${encodeURIComponent(id)}/revert`, { method: "POST" });
 export const resetQueue = (model) =>
   request("/admin/controls/queues/reset", { method: "POST", body: { model } });
 export const fetchUsers = (query) => request("/admin/users", { query });

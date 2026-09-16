@@ -278,6 +278,77 @@ def main() -> None:
         r = client.post("/admin/controls/queues/reset", json={"model": api.GROQ_MODEL})
         check("queue: a known model's queue is reset", r.status_code == 200, r.text[:200])
 
+        # --- the action log: filters, links, pages ----------------------------------------
+        r = client.get("/admin/audit", params={"category": "comptes", "q": student_email})
+        items = r.json()["items"]
+        check(
+            "log: the accounts filter returns only account actions for this student",
+            r.status_code == 200 and items and all(i["action"].startswith("user.") for i in items),
+            r.text[:300],
+        )
+        check(
+            "log: account actions link to the account",
+            any(i["action"] == "user.suspend" and i["target_id"] == str(student_id) for i in items),
+        )
+        r = client.get(
+            "/admin/audit", params={"category": "comptes", "q": student_email, "limit": 1}
+        )
+        page1 = r.json()
+        page2 = client.get(
+            "/admin/audit",
+            params={
+                "category": "comptes",
+                "q": student_email,
+                "limit": 1,
+                "before": page1["next_before"],
+            },
+        ).json()
+        check(
+            "log: pages continue where the last one stopped",
+            page1["next_before"] is not None
+            and page2["items"]
+            and page2["items"][0]["id"] < page1["items"][0]["id"],
+        )
+
+        # --- revert ----------------------------------------------------------------------------
+        before_retry = client.get("/admin/controls").json()["settings"]["retry_max"]["value"]
+        client.put("/admin/controls", json={"retry_max": 5 if before_retry != 5 else 4})
+        entry = client.get("/admin/audit", params={"category": "ia", "limit": 1}).json()["items"][0]
+        check(
+            "revert: a settings change is marked revertible",
+            entry["action"] == "settings.update" and entry["revertible"],
+            entry,
+        )
+        r = client.post(f"/admin/audit/{entry['id']}/revert")
+        check(
+            "revert: the old value is back",
+            r.status_code == 200 and r.json()["settings"]["retry_max"]["value"] == before_retry,
+            r.text[:200],
+        )
+        latest = client.get("/admin/audit", params={"category": "ia", "limit": 1}).json()["items"][
+            0
+        ]
+        check(
+            "revert: logged as its own entry pointing at the reverted one",
+            latest["action"] == "settings.revert" and latest["target"] == str(entry["id"]),
+            latest,
+        )
+        check(
+            "revert: reverting again changes nothing and says so",
+            client.post(f"/admin/audit/{entry['id']}/revert").status_code == 422,
+        )
+        account_entry = client.get(
+            "/admin/audit", params={"category": "comptes", "limit": 1}
+        ).json()["items"][0]
+        check(
+            "revert: an account action cannot be reverted",
+            client.post(f"/admin/audit/{account_entry['id']}/revert").status_code == 422,
+        )
+        check(
+            "revert: an unknown entry is a 404",
+            client.post("/admin/audit/999999999/revert").status_code == 404,
+        )
+
         # --- audit -------------------------------------------------------------------------
         with session_scope() as s:
             actions = set(
