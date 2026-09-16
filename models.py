@@ -30,8 +30,8 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Integer,
     Index,
+    Integer,
     String,
     Text,
     false,
@@ -303,6 +303,11 @@ class ChatSession(Base):
         nullable=False,
     )
 
+    # Bumped by every save (chat_history.py). A save sent from a stale copy -
+    # another tab, another device - is refused rather than allowed to
+    # overwrite messages it never saw.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
     user: Mapped[User] = relationship(back_populates="sessions")
     messages: Mapped[list[ChatMessage]] = relationship(
         back_populates="session",
@@ -356,6 +361,10 @@ class ChatMessage(Base):
     # sentence, the attached file's name and kind, the client's message id.
     # Kept loose on purpose - display state, not something to query.
     extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The chat's own id for the message ("u_1726...", "a_1726..."), unique
+    # within its discussion: what lets a save update the messages that
+    # changed instead of deleting and re-inserting the whole discussion.
+    client_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -368,6 +377,13 @@ class ChatMessage(Base):
         # from the tutor, and a third value would be a bug worth failing on.
         CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role"),
         Index("ix_chat_messages_session_id_created_at", "session_id", "created_at"),
+        Index(
+            "uq_chat_messages_session_client_id",
+            "session_id",
+            "client_id",
+            unique=True,
+            postgresql_where=text("client_id IS NOT NULL"),
+        ),
     )
 
     def __repr__(self) -> str:
@@ -416,6 +432,10 @@ class LlmCall(Base):
     rate_limit_hits: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     # A short, non-sensitive reason for a failure ("HTTP 503", "tokens per day").
     detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # For a solve: which prompt answered (PROBLEM, QUESTION, CODE, FOLLOW_UP)
+    # and how much session memory went with it.
+    route: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    memory_chars: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     __table_args__ = (
         CheckConstraint(
@@ -605,3 +625,38 @@ class AdminAuditEntry(Base):
     detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (Index("ix_admin_audit_created_at", "created_at"),)
+
+
+class AnswerFeedback(Base):
+    """A student's 👍 / 👎 on one tutor answer - how the answers' quality is
+    measured, and where the bad ones are found."""
+
+    __tablename__ = "answer_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    message_client_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("rating IN (-1, 1)", name="ck_answer_feedback_rating"),
+        Index(
+            "uq_answer_feedback_message",
+            "session_id",
+            "message_client_id",
+            unique=True,
+        ),
+        Index("ix_answer_feedback_created_at", "created_at"),
+    )

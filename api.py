@@ -24,7 +24,9 @@ import logging
 import re
 import time
 import urllib.error
+import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -241,6 +243,14 @@ class SolveRequest(BaseModel):
         "separate from the exercise text",
     )
     k: int = Field(default=5, ge=1, le=20, description="Retrieved extras budget")
+    # Where the exchange belongs, so the server saves it when the answer ends
+    # (chat_history.record_exchange) - even if the tab is closed first. All
+    # optional: without them nothing is saved server-side.
+    session_id: uuid.UUID | None = None
+    user_message_id: str | None = Field(default=None, max_length=80)
+    assistant_message_id: str | None = Field(default=None, max_length=80)
+    title: str | None = Field(default=None, max_length=200)
+    attachment: dict[str, Any] | None = None
     history: list[session_memory.HistoryTurn] = Field(
         default_factory=list,
         max_length=20,
@@ -341,7 +351,7 @@ def solve(
     # docstring for why this is a separate layer, not a pipeline change.
     if gatekeeper.is_input_too_long(gate_text(payload)):
         return SolveResponse(
-            solution=gatekeeper.DECLINE_MESSAGE,
+            solution=gatekeeper.TOO_LONG_MESSAGE,
             niveau=payload.niveau,
             chapitre=payload.chapitre,
             model="gatekeeper",
@@ -432,7 +442,12 @@ def solve(
         # on. Keeping the two separate is deliberate.
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
-        kind=route,
+        # A short follow-up gets the FOLLOW_UP prompt (see /solve/stream).
+        kind=(
+            "FOLLOW_UP"
+            if session_memory.is_follow_up(payload.problem, memory, payload.note)
+            else route
+        ),
         profile=student_profile(user),
         note=(payload.note or "").strip() or None,
         memory=session_memory.memory_block(memory),
@@ -478,6 +493,13 @@ def solve(
     )
 
 
+def _has_solution_table(answer: str) -> bool:
+    """An Algorithme | Python table with at least one ← in it - what makes an
+    answer checkable (ui/src/lib/hasRealSolution.js follows the same idea)."""
+    lowered = answer.lower()
+    return "| algorithme" in lowered and "python" in lowered and "←" in answer
+
+
 def _sse(event: str, payload: dict) -> str:
     """One Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -521,7 +543,13 @@ def _busy_stream():
     yield _sse("error", {"message": "busy", "status": 429})
 
 
-def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, started: float):
+def _gatekeeper_stream(
+    text: str,
+    model_label: str,
+    payload: SolveRequest,
+    started: float,
+    extra: dict | None = None,
+):
     """The meta/done/delta shape for a gatekeeper-produced reply (DoS cap,
     OFF_TOPIC, or META), reusing the exact SSE contract /solve/stream already
     emits for a real answer - empty pinned/retrieved, one delta, a clean
@@ -547,6 +575,7 @@ def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, start
             "notes": [],
             "chars": len(text),
             "elapsed_ms": int((time.monotonic() - started) * 1000),
+            **(extra or {}),
         },
     )
 
@@ -608,7 +637,9 @@ def solve_stream(
     # neither waits for Groq. See gatekeeper.py's module docstring.
     if gatekeeper.is_input_too_long(gate_text(payload)):
         return StreamingResponse(
-            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
+            _gatekeeper_stream(
+                gatekeeper.TOO_LONG_MESSAGE, "gatekeeper", payload, started, {"route": "TOO_LONG"}
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -621,6 +652,46 @@ def solve_stream(
     budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
     # What the tutor remembers of this discussion (session_memory.py).
     memory = session_memory.compact(payload.history)
+    memory_text = session_memory.memory_block(memory)
+    memory_turns = sum(1 for m in memory if m["role"] == "user")
+    note = (payload.note or "").strip() or None
+    saved = {"done": False}
+
+    def persist(content, status_value, route_label, warnings=None, pinned=None, retrieved=None):
+        """Save the exchange server-side (once), when the chat said where it
+        belongs. Returns the discussion's new version, or None."""
+        if saved["done"] or not content:
+            return None
+        if not (payload.session_id and payload.user_message_id and payload.assistant_message_id):
+            return None
+        saved["done"] = True
+        return chat_history.record_exchange(
+            user.id,
+            payload.session_id,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
+            title=payload.title,
+            user_message={
+                "id": payload.user_message_id,
+                "role": "user",
+                "content": payload.problem,
+                "note": note,
+                "attachment": payload.attachment,
+            },
+            assistant_message={
+                "id": payload.assistant_message_id,
+                "role": "assistant",
+                "content": content,
+                "status": status_value,
+                "warnings": warnings or [],
+                "pinned": pinned or [],
+                "retrieved": retrieved or [],
+                "route": route_label,
+            },
+        )
+
+    def done_extra(route_label, version):
+        return {"route": route_label, "memory_turns": memory_turns, "session_version": version}
 
     def events():
         # The gatekeeper runs inside the stream rather than before it: under
@@ -638,8 +709,13 @@ def solve_stream(
                 )
             )
             if route == "OFF_TOPIC":
+                version = persist(gatekeeper.DECLINE_MESSAGE, "none", route)
                 yield from _gatekeeper_stream(
-                    gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started
+                    gatekeeper.DECLINE_MESSAGE,
+                    "gatekeeper",
+                    payload,
+                    started,
+                    done_extra(route, version),
                 )
                 return
             if route == "META":
@@ -653,7 +729,10 @@ def solve_stream(
                         niveau=meta_niveau(user, payload),
                     )
                 )
-                yield from _gatekeeper_stream(answer, GROQ_MODEL, payload, started)
+                version = persist(answer, "none", route)
+                yield from _gatekeeper_stream(
+                    answer, GROQ_MODEL, payload, started, done_extra(route, version)
+                )
                 return
         except gatekeeper.Busy:
             yield from _busy_stream()
@@ -687,44 +766,60 @@ def solve_stream(
             yield _sse("error", {"message": "backend", "status": 422})
             return
 
+        # A short message continuing a discussion gets the FOLLOW_UP prompt,
+        # whichever of PROBLEM / QUESTION / CODE the classifier picked - it
+        # hesitates between them on follow-ups, and one of them forbids
+        # solving (session_memory.is_follow_up).
+        prompt_route = (
+            "FOLLOW_UP" if session_memory.is_follow_up(payload.problem, memory, note) else route
+        )
         rendered = context.render()
         messages = build_messages(
             context=rendered,
             query=payload.problem,
             niveau=niveau_label(payload.niveau),
             chapitre=payload.chapitre,
-            kind=route,
+            kind=prompt_route,
             profile=student_profile(user),
-            note=(payload.note or "").strip() or None,
-            memory=session_memory.memory_block(memory),
+            note=note,
+            memory=memory_text,
         )
 
+        pinned = [
+            {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
+            for p in context.pinned
+        ]
+        retrieved = [
+            {
+                "id": h.chunk_id,
+                "section": h.section,
+                "type": h.type,
+                "score": round(h.score, 4),
+                "content": h.content,
+            }
+            for h in context.retrieved
+        ]
         yield _sse(
             "meta",
             {
                 "model": GROQ_MODEL,
                 "niveau": payload.niveau,
                 "chapitre": payload.chapitre,
-                "pinned": [
-                    {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
-                    for p in context.pinned
-                ],
-                "retrieved": [
-                    {
-                        "id": h.chunk_id,
-                        "section": h.section,
-                        "type": h.type,
-                        "score": round(h.score, 4),
-                        "content": h.content,
-                    }
-                    for h in context.retrieved
-                ],
+                "route": prompt_route,
+                "pinned": pinned,
+                "retrieved": retrieved,
             },
         )
 
         parts: list[str] = []
         try:
-            for fragment in stream_groq(messages, priority=priority, budget=budget):
+            for fragment in stream_groq(
+                messages,
+                priority=priority,
+                budget=budget,
+                route=prompt_route,
+                memory_chars=len(memory_text or ""),
+            ):
                 # Still waiting - for a slot, or on Groq's Retry-After inside
                 # it. Sent before any delta, so the student sees why nothing
                 # is arriving yet.
@@ -747,6 +842,11 @@ def solve_stream(
         except (urllib.error.URLError, KeyError):
             yield _sse("error", {"message": "backend", "status": 502})
             return
+        except GeneratorExit:
+            # The student left mid-answer (tab closed, page changed): keep what
+            # was written, marked as stopped - those tokens were paid for.
+            persist("".join(parts), "stopped", prompt_route, [], pinned, retrieved)
+            raise
 
         answer = "".join(parts)
         # The chat shows the Algorithme column in course notation whatever the
@@ -761,6 +861,15 @@ def solve_stream(
                 route,
             )
         violations, notes = check_constraints(checked, rendered)
+        has_solution = _has_solution_table(answer)
+        version = persist(
+            answer,
+            "warned" if violations and has_solution else ("clean" if has_solution else "none"),
+            prompt_route,
+            violations,
+            pinned,
+            retrieved,
+        )
         yield _sse(
             "done",
             {
@@ -768,6 +877,7 @@ def solve_stream(
                 "notes": notes,
                 "chars": len(answer),
                 "elapsed_ms": int((time.monotonic() - started) * 1000),
+                **done_extra(prompt_route, version),
             },
         )
 

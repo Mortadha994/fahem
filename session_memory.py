@@ -153,3 +153,10 @@ def retrieval_query(problem: str, memory: list[dict[str, str]]) -> str:
         return problem
     previous = next((m["content"] for m in reversed(memory) if m["role"] == "user"), None)
     return f"{_clip(previous, 500)}\n{problem}" if previous else problem
+
+
+def is_follow_up(problem: str, memory: list[dict[str, str]], note: str | None = None) -> bool:
+    """A short message continuing a discussion that has a memory - answered with
+    the FOLLOW_UP prompt, whichever grounded route the classifier picked. An
+    attachment (a note beside a read file) is a new exercise, not a follow-up."""
+    return bool(memory) and not (note or "").strip() and len(problem.strip()) < FOLLOW_UP_CHARS

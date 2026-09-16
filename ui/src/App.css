@@ -6326,3 +6326,118 @@ h3 {
   min-height: 2.25rem;
   font-size: var(--text-sm);
 }
+
+/* --- chat: edit, feedback, memory hint, loading, composer count ---------------------------- */
+/* The student's bubble can carry "Modifier" under it, aligned with it. */
+.msg-user {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.msg-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 2rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.msg-edit:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.msg-edit:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.msg-edit svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.msg-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.msg-rate.is-on {
+  background: rgb(106 79 224 / 0.12);
+  color: var(--accent);
+}
+.msg-rate.is-on.is-down {
+  background: rgb(185 28 28 / 0.1);
+  color: #b91c1c;
+}
+:root[data-theme="dark"] .msg-rate.is-on.is-down {
+  color: #fca5a5;
+}
+.msg-feedback-thanks {
+  padding-left: var(--space-1);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.chat-loading {
+  margin: var(--space-4) auto;
+  color: var(--fg-dim);
+  text-align: center;
+}
+.chat-memory {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px var(--space-2);
+  margin: 0 auto;
+  padding: 2px var(--space-3, 0.75rem);
+  max-width: 48rem;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.chat-memory-new {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-memory-new:hover {
+  text-decoration: underline;
+}
+.composer-count {
+  margin: 0;
+  padding: 0 var(--space-3, 0.75rem);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+.composer-count.is-over {
+  color: #b91c1c;
+  font-weight: 600;
+}
+:root[data-theme="dark"] .composer-count.is-over {
+  color: #fca5a5;
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

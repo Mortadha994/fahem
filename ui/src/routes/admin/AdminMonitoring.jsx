@@ -257,6 +257,22 @@ export default function AdminMonitoring() {
                   <Failures failures={data.failures} />
                 </m.section>
               </div>
+
+              <div className="adm-grid-2">
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Réponses par consigne</h2>
+                  </header>
+                  <RouteTable routes={data.routes ?? []} />
+                </m.section>
+
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Avis des élèves — 7 jours</h2>
+                  </header>
+                  <FeedbackPanel feedback={data.feedback} />
+                </m.section>
+              </div>
             </div>
           )
         }
@@ -555,6 +571,93 @@ function KindTable({ kinds }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const ROUTES = {
+  PROBLEM: "Énoncé complet",
+  QUESTION: "Question de cours",
+  CODE: "Code à corriger",
+  FOLLOW_UP: "Suite d'échange",
+};
+
+/** Which prompt answered, and how much of it was the discussion's memory. */
+function RouteTable({ routes }) {
+  if (!routes.length)
+    return <p className="adm-empty">Aucune réponse ces dernières 24 h.</p>;
+  return (
+    <div className="adm-table-wrap">
+      <table className="adm-table mon-table">
+        <thead>
+          <tr>
+            <th>Consigne</th>
+            <th>Réponses</th>
+            <th>Avec mémoire</th>
+            <th>Tokens envoyés moy.</th>
+            <th>Mémoire moy.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {routes.map((r) => (
+            <tr key={r.route}>
+              <td className="adm-strong">{ROUTES[r.route] ?? r.route}</td>
+              <td>{nf.format(r.calls)}</td>
+              <td>
+                {nf.format(r.with_memory)}
+                {r.calls ? (
+                  <span className="adm-muted adm-small">
+                    {" "}
+                    ({Math.round((r.with_memory / r.calls) * 100)} %)
+                  </span>
+                ) : null}
+              </td>
+              <td>{nf.format(r.avg_prompt_tokens)}</td>
+              <td>
+                {r.avg_memory_chars ? `${nf.format(r.avg_memory_chars)} car.` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 👍 / 👎 over 7 days, and the answers students marked as wrong or unclear. */
+function FeedbackPanel({ feedback }) {
+  if (!feedback || feedback.up + feedback.down === 0)
+    return <p className="adm-empty">Aucun avis ces 7 derniers jours.</p>;
+  const total = feedback.up + feedback.down;
+  // The bar warms up as 👎 grow, like the other loads on this page.
+  const share = Math.round((feedback.down / total) * 100);
+  return (
+    <div className="adm-stack">
+      <Meter
+        label="Réponses jugées fausses ou pas claires"
+        ratio={feedback.down / total}
+        value={`${share} %`}
+        note={`${nf.format(feedback.up)} 👍 · ${nf.format(feedback.down)} 👎`}
+      />
+      {feedback.recent_down.length > 0 ? (
+        <m.ul className="adm-list mon-failures" variants={stagger(0.04)}>
+          {feedback.recent_down.map((d, i) => (
+            <m.li key={`${d.at}-${i}`} className="mon-failure" variants={rise}>
+              <span className="adm-tag adm-tag-warn">👎</span>
+              <span className="mon-failure-main">
+                <span className="adm-strong">{d.title || "Discussion sans titre"}</span>
+                <span className="adm-muted adm-small">
+                  {d.chapitre ? `Chapitre ${d.chapitre}` : ""}
+                  {d.comment ? ` · « ${d.comment} »` : ""}
+                </span>
+              </span>
+              <span className="adm-muted adm-list-when">{relativeTime(d.at)}</span>
+            </m.li>
+          ))}
+        </m.ul>
+      ) : (
+        <p className="adm-callout is-ok">Aucune réponse jugée fausse.</p>
+      )}
     </div>
   );
 }

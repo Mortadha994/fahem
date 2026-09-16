@@ -37,6 +37,9 @@ export function newSession({ niveau, chapitre }) {
     chapitre,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    // Never saved yet: version 0, and nothing to load from the server.
+    version: 0,
+    loaded: true,
     messages: [],
   };
 }
@@ -96,6 +99,7 @@ export function sessionPayload(session) {
       attachment: m.attachment ?? null,
       note: m.note ?? null,
       readingKind: m.readingKind ?? null,
+      route: m.route ?? null,
     })),
   };
 }
@@ -103,19 +107,41 @@ export function sessionPayload(session) {
 /** Thrown on 401: the caller hands over to the sign-in screen. */
 export class HistoryUnauthorized extends Error {}
 
+/** Thrown on 409 "stale": another tab or device saved this discussion since. */
+export class HistoryStale extends Error {
+  constructor(version) {
+    super("stale");
+    this.version = version;
+  }
+}
+
 async function call(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     credentials: "include",
     ...options,
   });
   if (response.status === 401) throw new HistoryUnauthorized(path);
+  if (response.status === 409) {
+    const body = await response.json().catch(() => null);
+    if (body?.detail?.code === "stale") throw new HistoryStale(body.detail.version);
+  }
   if (!response.ok) throw new Error(`${path} returned ${response.status}`);
   return response.status === 204 ? null : response.json();
 }
 
-/** The signed-in student's discussions, newest first. */
+/**
+ * The signed-in student's discussions, newest first - light: each comes with
+ * `loaded: false` and a skeleton of its messages (who spoke, each answer's
+ * status, the student's text), enough for the history panel and the home
+ * screen. The chat loads a discussion in full when it is opened.
+ */
 export function fetchSessions() {
   return call("/chat/sessions");
+}
+
+/** One discussion in full (`loaded: true`). */
+export function fetchSession(id) {
+  return call(`/chat/sessions/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -127,8 +153,22 @@ export function saveSession(session, { keepalive = false } = {}) {
   return call(`/chat/sessions/${encodeURIComponent(session.id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sessionPayload(session)),
+    // baseVersion: the server refuses a save from a copy older than its own
+    // (409 -> HistoryStale) instead of overwriting what another tab added.
+    body: JSON.stringify({
+      ...sessionPayload(session),
+      baseVersion: session.version ?? null,
+    }),
     keepalive,
+  });
+}
+
+/** A 👍 (1) / 👎 (-1) on an answer, or 0 to take it back. */
+export function sendFeedback(sessionId, messageId, rating) {
+  return call("/chat/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, message_id: messageId, rating }),
   });
 }
 

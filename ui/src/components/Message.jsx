@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import * as m from "motion/react-m";
 import Markdown from "./Markdown.jsx";
 import GroundingStrip from "./GroundingStrip.jsx";
@@ -27,7 +27,15 @@ const enterAssistant = {
   animate: { opacity: 1, y: 0, transition: { ...SPRING_ENTER, delay: 0.08 } },
 };
 
-export default function Message({ message, streaming, onRetry }) {
+/**
+ * Memoized: an answer streams in token by token, and each token used to
+ * re-render - and re-parse the Markdown tables of - every earlier message in
+ * the thread. Chat.jsx gives earlier messages constant props, so only the
+ * message being written renders again.
+ */
+export default memo(Message);
+
+function Message({ message, streaming, onRetry, onEdit, onFeedback }) {
   if (message.role === "user") {
     return (
       <m.div className="msg msg-user" {...enterUser}>
@@ -59,6 +67,15 @@ export default function Message({ message, streaming, onRetry }) {
           )}
           {message.content}
         </div>
+        {/* Take the last question back into the composer, to fix and resend. */}
+        {onEdit && (
+          <button type="button" className="msg-edit" onClick={onEdit}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+            </svg>
+            Modifier
+          </button>
+        )}
       </m.div>
     );
   }
@@ -184,13 +201,19 @@ export default function Message({ message, streaming, onRetry }) {
           {finished && (
             <div className="msg-actions">
               <CopyAnswer text={content} />
-              {status === "stopped" && onRetry && (
+              {onRetry && (
                 <button type="button" className="msg-action" onClick={onRetry}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" />
                   </svg>
                   Régénérer
                 </button>
+              )}
+              {onFeedback && status !== "stopped" && (
+                <Feedback
+                  value={message.feedback}
+                  onRate={(rating) => onFeedback(message.id, rating)}
+                />
               )}
             </div>
           )}
@@ -219,6 +242,47 @@ function waitingText(waiting) {
     return `${base} ${ahead} demande${ahead > 1 ? "s" : ""} avant la tienne.`;
   }
   return `${base} c'est bientôt ton tour.`;
+}
+
+/**
+ * 👍 / 👎 on an answer - how the answers' quality is measured (the admin
+ * console counts them, and lists the 👎). Pressing the chosen one again takes
+ * it back.
+ */
+function Feedback({ value, onRate }) {
+  return (
+    <span className="msg-feedback" role="group" aria-label="Cette réponse t'a aidé ?">
+      <button
+        type="button"
+        className={`msg-action msg-rate${value === 1 ? " is-on" : ""}`}
+        aria-pressed={value === 1}
+        title="Réponse utile"
+        onClick={() => onRate(1)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 11v9H4v-9h3zm0 0 4-7a2 2 0 0 1 3 1.7V9h5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7" />
+        </svg>
+        <span className="sr-only">Utile</span>
+      </button>
+      <button
+        type="button"
+        className={`msg-action msg-rate${value === -1 ? " is-on is-down" : ""}`}
+        aria-pressed={value === -1}
+        title="Réponse fausse ou pas claire"
+        onClick={() => onRate(-1)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M17 13V4h3v9h-3zm0 0-4 7a2 2 0 0 1-3-1.7V15H5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.2 4H17" />
+        </svg>
+        <span className="sr-only">Pas utile</span>
+      </button>
+      {value && (
+        <span className="msg-feedback-thanks" role="status">
+          {value === 1 ? "Merci !" : "Merci, on va l'améliorer."}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Copies the whole answer as the markdown it arrived as, and says so. */

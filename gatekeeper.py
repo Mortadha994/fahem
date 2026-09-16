@@ -288,6 +288,14 @@ def _call_groq_cheap_steps(
     return content.strip()
 
 
+# What a student who pasted too much reads - not DECLINE_MESSAGE, which told
+# them their request was refused when it was only too long.
+TOO_LONG_MESSAGE = (
+    f"Ton message est trop long ({MAX_INPUT_CHARS} caractères maximum). Envoie seulement "
+    "l'énoncé de l'exercice, ou découpe ta question en plusieurs messages."
+)
+
+
 def is_input_too_long(message: str) -> bool:
     """DoS guard - see MAX_INPUT_CHARS. Checked before any LLM call."""
     return len(message) > MAX_INPUT_CHARS

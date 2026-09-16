@@ -26,6 +26,8 @@ export default function Composer({
   onSend,
   onStop,
   streaming,
+  disabled = false,
+  maxLength = 2000,
   inputRef,
   followUp = false,
   chapterLabel,
@@ -50,7 +52,16 @@ export default function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
-  const canSend = !streaming && (value.trim().length > 0 || Boolean(attachment));
+  // The server declines anything past its cap; say so here, before sending,
+  // instead of letting a long statement come back as a refusal.
+  const length = value.length;
+  const tooLong = length > maxLength;
+  const showCount = length > maxLength * 0.8;
+  const canSend =
+    !streaming &&
+    !disabled &&
+    !tooLong &&
+    (value.trim().length > 0 || Boolean(attachment));
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -150,7 +161,22 @@ export default function Composer({
                 : "Un exercice, une question, ton programme… ou une photo 📎"
           }
           aria-label="Ton message"
+          aria-describedby={showCount ? "composer-count" : undefined}
+          disabled={disabled}
         />
+        {showCount && (
+          <p
+            id="composer-count"
+            className={`composer-count${tooLong ? " is-over" : ""}`}
+            role={tooLong ? "alert" : undefined}
+          >
+            {tooLong
+              ? attachment
+                ? `Ta précision est trop longue : ${length} / ${maxLength} caractères.`
+                : `Message trop long : ${length} / ${maxLength} caractères. Envoie seulement l'énoncé, ou découpe ta question.`
+              : `${length} / ${maxLength} caractères`}
+          </p>
+        )}
         {attachError && (
           <p className="composer-error" role="alert">
             {attachError}

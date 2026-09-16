@@ -13,7 +13,7 @@ import {
   ATTACHMENT_TYPES,
   ATTACHMENT_MAX_BYTES,
 } from "../lib/api.js";
-import { titleFrom } from "../lib/sessions.js";
+import { sendFeedback, titleFrom } from "../lib/sessions.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
 import { hasQuestion } from "../lib/sessionGroups.js";
@@ -44,13 +44,41 @@ const IS_MAC =
  */
 export default function Chat() {
   const { onUnauthorized } = useAuth();
-  const { sessions, setSessions, activeId, setActiveId, createSession, patchLast } =
-    useChatSessions();
+  const {
+    sessions,
+    setSessions,
+    activeId,
+    setActiveId,
+    createSession,
+    patchLast,
+    patchMessage,
+    ensureLoaded,
+    setVersion,
+    flush,
+  } = useChatSessions();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState("");
-  const [streaming, setStreaming] = useState(false);
+  // Answers being written, per discussion. Each discussion has its own stream
+  // and its own stop button: switching to another discussion while one answer
+  // is written neither blocks it nor lets "Arrêter" hit the wrong one.
+  const [streamingIds, setStreamingIds] = useState(() => new Set());
+  const streamsRef = useRef(new Map()); // session id -> AbortController
+  const startStream = useCallback((sessionId, controller) => {
+    streamsRef.current.set(sessionId, controller);
+    setStreamingIds((prev) => new Set(prev).add(sessionId));
+  }, []);
+  const endStream = useCallback((sessionId, controller) => {
+    if (controller && streamsRef.current.get(sessionId) !== controller) return;
+    streamsRef.current.delete(sessionId);
+    setStreamingIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
 
   /* A photo or PDF of an exercise waiting in the composer:
      { file, url, name, size, kind: "image" | "pdf" }. `url` is an object URL
@@ -87,7 +115,6 @@ export default function Chat() {
      the markup for why this is not driven off the streaming text. */
   const [announcement, setAnnouncement] = useState("");
 
-  const abortRef = useRef(null);
   const listRef = useRef(null);
   const pinnedToBottom = useRef(true);
 
@@ -96,7 +123,7 @@ export default function Chat() {
   // Phase 3b made this necessary and then forgot it. Before routing, chat was
   // the whole app and the only way to leave a stream was logging out, which
   // App.jsx handled by aborting before it called /auth/logout. Splitting Chat
-  // into a route moved abortRef here and added a second exit that never
+  // into a route moved the stream's controller here and added a second exit that never
   // existed: clicking "Chapitres" or "Poser une question" mid-generation
   // unmounts this component. Without this cleanup the fetch keeps reading the
   // SSE and the backend keeps generating against Groq for a conversation
@@ -106,9 +133,10 @@ export default function Chat() {
   // Empty deps so it runs only on unmount; the ref is read at cleanup time,
   // so it always sees the current controller.
   useEffect(() => {
+    const streams = streamsRef.current;
     return () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
+      for (const controller of streams.values()) controller.abort();
+      streams.clear();
     };
   }, []);
 
@@ -117,6 +145,23 @@ export default function Chat() {
     [sessions, activeId]
   );
   const messages = active?.messages ?? [];
+  const streaming = streamingIds.has(activeId);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // The history list arrives light (no answers); a discussion is loaded in
+  // full when it is opened. Nothing can be sent into it until then.
+  const activeLoading = Boolean(active && active.loaded === false);
+  // The id whose load failed (not a flag), so opening another discussion
+  // clears the error without an effect resetting it.
+  const [failedId, setFailedId] = useState(null);
+  const loadFailed = failedId === activeId;
+  useEffect(() => {
+    if (!activeLoading) return;
+    ensureLoaded(activeId).catch(() => setFailedId(activeId));
+  }, [activeId, activeLoading, ensureLoaded]);
 
   // Phase 9: the chapters a new discussion can be about. Fetched once; a
   // failure just leaves the picker hidden and the default chapter in place.
@@ -236,13 +281,17 @@ export default function Chat() {
     }
   });
 
+  // Stops the answer of the discussion on screen - the one whose stop button
+  // was pressed - never another discussion's.
   const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setStreaming(false);
+    const sessionId = activeIdRef.current;
+    const controller = streamsRef.current.get(sessionId);
+    if (!controller) return;
+    controller.abort();
+    endStream(sessionId, controller);
     // Keep whatever arrived; mark it as interrupted rather than verified.
-    if (activeId) patchLast(activeId, { status: "stopped" });
-  }, [activeId, patchLast]);
+    patchLast(sessionId, { status: "stopped" });
+  }, [endStream, patchLast]);
 
   /**
    * Send one problem. Split out of handleSend so an exercise arriving by
@@ -256,8 +305,14 @@ export default function Chat() {
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
       setAnnouncement("");
-      setStreaming(true);
       pinnedToBottom.current = true;
+      // Ids decided here, not inside the state update: the server saves the
+      // exchange under the same ids when the answer ends.
+      const stamp = Date.now();
+      const userId = reuse?.userId ?? `u_${stamp}`;
+      const assistantId = reuse?.assistantId ?? `a_${stamp}`;
+      const title =
+        session.messages.length <= (reuse ? 2 : 0) ? titleFrom(problem) : session.title;
 
       // `reuse`: the exchange is already on screen - an attachment was read
       // first (sendAttachment) - so its two messages are filled in rather
@@ -286,7 +341,7 @@ export default function Chat() {
             messages: [
               ...s.messages,
               {
-                id: `u_${Date.now()}`,
+                id: userId,
                 role: "user",
                 content: problem,
                 // A retried attachment keeps its note and its file chip.
@@ -294,7 +349,7 @@ export default function Chat() {
                 ...(attachment ? { attachment } : {}),
               },
               {
-                id: `a_${Date.now()}`,
+                id: assistantId,
                 role: "assistant",
                 content: "",
                 pinned: [],
@@ -308,23 +363,34 @@ export default function Chat() {
       );
 
       const controller = new AbortController();
-      abortRef.current = controller;
+      startStream(sessionId, controller);
 
       // Session memory: what was said before this message, from the
       // discussion as it is on screen (an answer that just finished is not
-      // saved yet, but it is here). Failed answers and the exchange being
-      // filled in (`reuse`) are left out; the server keeps the last exchanges
-      // and caps their size.
+      // saved yet, but it is here). Failed and interrupted answers, and the
+      // exchange being filled in (`reuse`), are left out - half an answer
+      // would be remembered as a whole one. A student message keeps the
+      // question they typed beside an attached file. The server keeps the
+      // last exchanges and caps their size.
       const skip = new Set(reuse ? [reuse.userId, reuse.assistantId] : []);
       const history = session.messages
         .filter(
           (msg) =>
             !skip.has(msg.id) &&
             msg.content?.trim() &&
-            !(msg.role === "assistant" && (msg.error || msg.status === "error"))
+            !(
+              msg.role === "assistant" &&
+              (msg.error || msg.status === "error" || msg.status === "stopped")
+            )
         )
         .slice(-6)
-        .map((msg) => ({ role: msg.role, content: msg.content }));
+        .map((msg) => ({
+          role: msg.role,
+          content:
+            msg.role === "user" && msg.note
+              ? `${msg.content}\n(Question de l'élève : ${msg.note})`
+              : msg.content,
+        }));
 
       streamSolve(
         // The session's own chapter, not a global: an older discussion keeps
@@ -335,6 +401,13 @@ export default function Chat() {
           chapitre: session.chapitre ?? CHAPITRE,
           note,
           history,
+          // Where the exchange belongs: the server saves it when the answer
+          // ends, even if this tab is closed before the chat saves it.
+          session_id: sessionId,
+          user_message_id: userId,
+          assistant_message_id: assistantId,
+          title,
+          attachment,
         },
         {
           signal: controller.signal,
@@ -347,6 +420,7 @@ export default function Chat() {
                 ...msg,
                 pinned: meta.pinned ?? [],
                 retrieved: meta.retrieved ?? [],
+                ...(meta.route ? { route: meta.route } : {}),
               };
               if (msg.status === "waiting") {
                 next.status = "streaming";
@@ -407,7 +481,10 @@ export default function Chat() {
                   ? "warned"
                   : "clean",
               warnings: done.warnings ?? [],
+              ...(done.route ? { route: done.route } : {}),
             }));
+            // The server saved the exchange; the next save builds on its version.
+            setVersion(sessionId, done.session_version);
           },
           onError: (message) => {
             setAnnouncement("La réponse a échoué.");
@@ -435,8 +512,7 @@ export default function Chat() {
       )
         .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))
         .finally(() => {
-          abortRef.current = null;
-          setStreaming(false);
+          endStream(sessionId, controller);
           // A stream that ended without a done frame still needs to leave the
           // pending badge behind - same real-content gate as onDone, since an
           // aborted stream's partial content has no real solution either.
@@ -450,7 +526,7 @@ export default function Chat() {
           });
         });
     },
-    [patchLast, setSessions, onUnauthorized]
+    [patchLast, setSessions, onUnauthorized, startStream, endStream, setVersion]
   );
 
   /**
@@ -469,7 +545,6 @@ export default function Chat() {
       const userId = `u_${stamp}`;
       const assistantId = `a_${stamp}`;
       setAnnouncement("");
-      setStreaming(true);
       pinnedToBottom.current = true;
       setSessions((prev) =>
         prev.map((s) =>
@@ -508,7 +583,7 @@ export default function Chat() {
       );
 
       const controller = new AbortController();
-      abortRef.current = controller;
+      startStream(sessionId, controller);
       const result = await extractAttachment(file, { signal: controller.signal });
       const markRead = () =>
         setSessions((prev) =>
@@ -525,15 +600,14 @@ export default function Chat() {
         );
 
       // Stopped while reading: handleStop already marked the answer.
-      if (result.aborted || abortRef.current !== controller) {
+      if (result.aborted || streamsRef.current.get(sessionId) !== controller) {
         markRead();
         return;
       }
-      abortRef.current = null;
+      endStream(sessionId, controller);
 
       if (!result.ok) {
         markRead();
-        setStreaming(false);
         let error = result.error ?? GENERIC_ERROR;
         if (result.unauthorized) {
           error = "Ta session a expiré. Reconnecte-toi pour continuer.";
@@ -547,14 +621,18 @@ export default function Chat() {
       }
 
       const problem = result.text.slice(0, 2000);
-      send(problem, session, { reuse: { userId, assistantId }, note });
+      send(problem, session, {
+        reuse: { userId, assistantId },
+        note,
+        attachment: { name, kind },
+      });
     },
-    [patchLast, setSessions, onUnauthorized, send]
+    [patchLast, setSessions, onUnauthorized, send, startStream, endStream]
   );
 
   const handleSend = useCallback(() => {
     const problem = draft.trim();
-    if (streaming) return;
+    if (streaming || activeLoading) return;
     if (attachment) {
       const session = active ?? createSession(chapterChoice);
       setDraft("");
@@ -576,6 +654,7 @@ export default function Chat() {
   }, [
     draft,
     streaming,
+    activeLoading,
     active,
     createSession,
     send,
@@ -610,9 +689,54 @@ export default function Chat() {
     );
   }, [active, streaming, setSessions, send]);
 
+  /**
+   * "Modifier" on the student's last message: the exchange is taken back and
+   * its text returns to the composer, to be corrected and sent again.
+   */
+  const editLast = useCallback(() => {
+    if (!active || streaming) return;
+    const msgs = active.messages;
+    const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
+    if (lastUserIndex < 0 || !msgs[lastUserIndex].content) return;
+    setDraft(msgs[lastUserIndex].content);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === active.id ? { ...s, messages: msgs.slice(0, lastUserIndex) } : s
+      )
+    );
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [active, streaming, setSessions]);
+
+  /**
+   * 👍 / 👎 on an answer (clicking the same one again takes it back). Shown at
+   * once, then sent; an answer the server has not saved yet gets one more try
+   * after the chat's own save.
+   */
+  const giveFeedback = useCallback(
+    (messageId, rating) => {
+      const sessionId = activeIdRef.current;
+      let next = rating;
+      patchMessage(sessionId, messageId, (msg) => {
+        next = msg.feedback === rating ? 0 : rating;
+        return { ...msg, feedback: next || undefined };
+      });
+      const attempt = (retry) =>
+        sendFeedback(sessionId, messageId, next).catch(() => {
+          if (retry) {
+            flush();
+            setTimeout(() => attempt(false), 1500);
+          }
+        });
+      // After the state update, so `next` holds the toggled value.
+      setTimeout(() => attempt(true), 0);
+    },
+    [patchMessage, flush]
+  );
+
   // Retry is offered on the last answer only, and only once nothing is
   // streaming - an older failure further up has been superseded.
   const lastMessageId = messages[messages.length - 1]?.id;
+  const lastUserMessageId = messages.findLast((msg) => msg.role === "user")?.id;
   // A photo that could not be read left no text to resend; the student
   // attaches it again (or a better one) instead.
   const lastUserHasText = Boolean(
@@ -813,6 +937,27 @@ export default function Chat() {
               )}
             </m.div>
           ) : null}
+          {activeLoading && (
+            <p className="chat-loading" role="status">
+              {loadFailed ? (
+                <>
+                  Impossible de charger cette discussion.{" "}
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setFailedId(null);
+                      ensureLoaded(activeId).catch(() => setFailedId(activeId));
+                    }}
+                  >
+                    Réessayer
+                  </button>
+                </>
+              ) : (
+                "Chargement de la discussion…"
+              )}
+            </p>
+          )}
           {messages.length === 0 ? null : (
             <>
               {/* Keyed by discussion with initial={false}: opening a thread shows
@@ -822,15 +967,24 @@ export default function Chat() {
                   <Message
                     key={msg.id}
                     message={msg}
-                    streaming={streaming}
+                    // Only the last answer can be streaming: earlier messages
+                    // get a constant, so memo() skips them on every token.
+                    streaming={msg.id === lastMessageId && streaming}
                     onRetry={
                       msg.id === lastMessageId &&
-                      (msg.error || msg.status === "stopped") &&
+                      msg.role === "assistant" &&
+                      !["streaming", "waiting", "reading"].includes(msg.status) &&
                       lastUserHasText &&
                       !streaming
                         ? retryLast
                         : undefined
                     }
+                    onEdit={
+                      msg.id === lastUserMessageId && !streaming && msg.content
+                        ? editLast
+                        : undefined
+                    }
+                    onFeedback={msg.role === "assistant" ? giveFeedback : undefined}
                   />
                 ))}
               </AnimatePresence>
@@ -861,12 +1015,29 @@ export default function Chat() {
         </AnimatePresence>
       </div>
 
+      {/* Session memory, said out loud: what Fahem keeps of this discussion,
+          and how to start without it. */}
+      {!isEmpty && !activeLoading && (
+        <p className="chat-memory">
+          <span aria-hidden="true">◎</span> Fahem se souvient des{" "}
+          {Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers
+          échanges de cette discussion.
+          <button type="button" className="chat-memory-new" onClick={newDiscussion}>
+            Repartir de zéro
+          </button>
+        </p>
+      )}
+
       <Composer
         value={draft}
         onChange={setDraft}
         onSend={handleSend}
         onStop={handleStop}
         streaming={streaming}
+        disabled={activeLoading}
+        // The gatekeeper's cap: 2000 characters in all, and a note beside a
+        // file shares it with the text read from the file (up to 1800).
+        maxLength={attachment ? 190 : 2000}
         inputRef={composerRef}
         followUp={!isEmpty}
         chapterLabel={`Chapitre ${currentChapter}`}

@@ -49,6 +49,7 @@ from models import (
     LLM_CALL_OK,
     LLM_CALL_QUEUE_TIMEOUT,
     LLM_CALL_RATE_LIMITED,
+    AnswerFeedback,
     ChatMessage,
     ChatSession,
     LlmCall,
@@ -166,6 +167,24 @@ class Failure(BaseModel):
     rate_limit_hits: int
 
 
+class RouteStats(BaseModel):
+    """Solves per prompt (PROBLEM, QUESTION, CODE, FOLLOW_UP) over 24h."""
+
+    route: str
+    calls: int
+    with_memory: int
+    avg_prompt_tokens: int
+    avg_memory_chars: int
+
+
+class FeedbackStats(BaseModel):
+    """Students' 👍 / 👎 on answers over 7 days, and the latest 👎."""
+
+    up: int
+    down: int
+    recent_down: list[dict]
+
+
 class Monitoring(BaseModel):
     generated_at: datetime
     models: list[ModelLoad]
@@ -175,6 +194,8 @@ class Monitoring(BaseModel):
     minutes: list[MinuteBucket]
     chat: ChatActivity
     failures: list[Failure]
+    routes: list[RouteStats] = []
+    feedback: FeedbackStats | None = None
 
 
 # --- helpers -------------------------------------------------------------------
@@ -433,6 +454,61 @@ def _failures(s, day_ago) -> list[Failure]:
     ]
 
 
+def _routes(s, day_ago) -> list[RouteStats]:
+    rows = s.execute(
+        select(
+            LlmCall.route,
+            func.count(),
+            func.count().filter(LlmCall.memory_chars > 0),
+            func.coalesce(func.avg(LlmCall.prompt_tokens), 0),
+            func.coalesce(func.avg(LlmCall.memory_chars).filter(LlmCall.memory_chars > 0), 0),
+        )
+        .where(LlmCall.created_at >= day_ago, LlmCall.route.is_not(None))
+        .group_by(LlmCall.route)
+        .order_by(func.count().desc())
+    ).all()
+    return [
+        RouteStats(
+            route=route,
+            calls=calls,
+            with_memory=with_memory,
+            avg_prompt_tokens=int(avg_prompt),
+            avg_memory_chars=int(avg_memory),
+        )
+        for route, calls, with_memory, avg_prompt, avg_memory in rows
+    ]
+
+
+def _feedback(s, now) -> FeedbackStats:
+    since = now - timedelta(days=7)
+    up, down = s.execute(
+        select(
+            func.count().filter(AnswerFeedback.rating == 1),
+            func.count().filter(AnswerFeedback.rating == -1),
+        ).where(AnswerFeedback.updated_at >= since)
+    ).one()
+    recent = s.execute(
+        select(
+            AnswerFeedback.updated_at,
+            AnswerFeedback.comment,
+            ChatSession.title,
+            ChatSession.chapitre,
+        )
+        .join(ChatSession, ChatSession.id == AnswerFeedback.session_id)
+        .where(AnswerFeedback.rating == -1, AnswerFeedback.updated_at >= since)
+        .order_by(AnswerFeedback.updated_at.desc())
+        .limit(6)
+    ).all()
+    return FeedbackStats(
+        up=up,
+        down=down,
+        recent_down=[
+            {"at": at, "comment": comment, "title": title, "chapitre": chapitre}
+            for at, comment, title, chapitre in recent
+        ],
+    )
+
+
 # --- route ---------------------------------------------------------------------
 
 
@@ -451,4 +527,6 @@ def monitoring() -> Monitoring:
             minutes=_minutes(s, now),
             chat=_chat(s, day_ago),
             failures=_failures(s, day_ago),
+            routes=_routes(s, day_ago),
+            feedback=_feedback(s, now),
         )
