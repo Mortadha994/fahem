@@ -209,6 +209,15 @@ def main() -> None:
                 row = s.get(User, uid)
                 if row is not None:
                     s.delete(row)
+            # The console's action log records what this run did to its own
+            # throwaway accounts; those entries must not stay in the real log.
+            from models import AdminAuditEntry
+
+            s.query(AdminAuditEntry).filter(
+                (AdminAuditEntry.admin_email.like(f"%{run_id}@example.com"))
+                | (AdminAuditEntry.target.like(f"%{run_id}@example.com"))
+                | (AdminAuditEntry.target_id.in_([str(uid) for uid in created]))
+            ).delete(synchronize_session=False)
         with session_scope() as s:
             left = s.query(User).filter(User.email.like(f"%{run_id}@example.com")).count()
         check("test users cleaned up", left == 0, f"{left} left")

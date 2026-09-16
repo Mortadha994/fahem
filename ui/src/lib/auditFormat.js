@@ -99,12 +99,34 @@ export function changesOf(entry) {
     .filter(
       ([key, change]) => FIELD_LABELS[key] && change && typeof change === "object"
     )
-    .map(([key, change]) => ({
-      key,
-      label: FIELD_LABELS[key],
-      old: formatValue(key, change.old, entry.action),
-      new: formatValue(key, change.new, entry.action),
-    }));
+    .map(([key, change]) => {
+      let old = formatValue(key, change.old, entry.action);
+      let next = formatValue(key, change.new, entry.action);
+      // Two long texts cut at the same place read as identical: show the
+      // part where they differ instead.
+      if (
+        old === next &&
+        typeof change.old === "string" &&
+        typeof change.new === "string"
+      ) {
+        [old, next] = differingExcerpts(change.old, change.new);
+      }
+      return { key, label: FIELD_LABELS[key], old, new: next };
+    });
+}
+
+/** « …the part around the first difference… » for two long strings. */
+export function differingExcerpts(a, b, width = 44) {
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  // Start a few words before the difference, on a word boundary.
+  const space = a.lastIndexOf(" ", Math.max(0, start - 16));
+  const from = space > 0 ? space + 1 : 0;
+  const cut = (text) => {
+    const piece = text.slice(from, from + width);
+    return `« ${from > 0 ? "…" : ""}${piece}${from + width < text.length ? "…" : ""} »`;
+  };
+  return [a.length ? cut(a) : "« »", b.length ? cut(b) : "« »"];
 }
 
 /** One line saying what happened. */

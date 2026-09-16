@@ -48,7 +48,8 @@ def main() -> None:
 
     with session_scope() as s:
         saved_settings = [
-            (r.key, r.value, r.updated_by) for r in s.scalars(select(AppSetting)).all()
+            (r.key, r.value, r.updated_by, r.updated_at)
+            for r in s.scalars(select(AppSetting)).all()
         ]
         admin = User(
             email=admin_email,
@@ -365,8 +366,10 @@ def main() -> None:
     finally:
         with session_scope() as s:
             s.execute(delete(AppSetting))
-            for key, value, by in saved_settings:
-                s.add(AppSetting(key=key, value=value, updated_by=by))
+            for key, value, by, at in saved_settings:
+                # updated_at too: the console shows who changed a setting and
+                # when, and a test run must not look like a change.
+                s.add(AppSetting(key=key, value=value, updated_by=by, updated_at=at))
             s.execute(delete(AdminAuditEntry).where(AdminAuditEntry.admin_email == admin_email))
             s.execute(delete(User).where(User.id.in_([admin_id, student_id])))
         runtime_settings.clear_cache()

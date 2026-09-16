@@ -72,6 +72,8 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
   const [confirming, setConfirming] = useState(null); // entry id
   const [reverting, setReverting] = useState(null);
   const [flash, setFlash] = useState(null);
+  // Bumped after a revert, which adds its own entry to the log.
+  const [reload, setReload] = useState(0);
   const request = useRef(0);
 
   const fail = useCallback(
@@ -99,7 +101,7 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
         setError(null);
       })
       .catch((err) => id === request.current && fail(err));
-  }, [category, query, version, fail]);
+  }, [category, query, version, reload, fail]);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -126,6 +128,7 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
       const controls = await revertAudit(entry.id);
       setConfirming(null);
       setFlash("Réglages rétablis.");
+      setReload((n) => n + 1);
       onReverted?.(controls);
     } catch (err) {
       fail(err);
