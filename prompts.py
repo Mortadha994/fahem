@@ -44,6 +44,15 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    de `$...$` ou `\\[ ... \\]`. Écris toute fraction, division ou formule en
    arithmétique simple avec les opérateurs du cours, par exemple
    `(a + b) / 3`, ou en toutes lettres : « la somme divisée par 3 ».
+   OPÉRATEURS : dans la colonne Algorithme, et partout où tu écris de
+   l'algorithme, utilise UNIQUEMENT les opérateurs du cours tunisien, jamais
+   ceux de Python : `div` et non `//` (Q ← A div B), `mod` et non `%`
+   (R ← A mod B), `=` et non `==` pour comparer, `≠` et non `!=`, `≤` et non
+   `<=`, `≥` et non `>=`, `ET` / `OU` / `NON` et non and / or / not, `Vrai` /
+   `Faux` et non True / False. Les opérateurs `//`, `%`, `==`, `!=`, `<=`,
+   `>=` ne s'écrivent que dans la colonne Python. Un élève qui recopie
+   `Res ← X // Y` sur sa copie perd des points : avant de répondre, relis
+   chaque ligne de la colonne Algorithme et remplace tout opérateur Python.
 
 2. Avant l'algorithme, présente un tableau de déclaration séparé pour
    toutes les variables utilisées, au format exact du contexte :
@@ -146,6 +155,15 @@ Règles :
    l'affectation en algorithme, = en Python, Lire (variable) sans
    annotation de type, Ecrire, input, print, et les types et opérateurs
    qui y figurent.
+   OPÉRATEURS : dans la colonne Algorithme, et partout où tu écris de
+   l'algorithme, utilise UNIQUEMENT les opérateurs du cours tunisien, jamais
+   ceux de Python : `div` et non `//` (Q ← A div B), `mod` et non `%`
+   (R ← A mod B), `=` et non `==` pour comparer, `≠` et non `!=`, `≤` et non
+   `<=`, `≥` et non `>=`, `ET` / `OU` / `NON` et non and / or / not, `Vrai` /
+   `Faux` et non True / False. Les opérateurs `//`, `%`, `==`, `!=`, `<=`,
+   `>=` ne s'écrivent que dans la colonne Python. Un élève qui recopie
+   `Res ← X // Y` sur sa copie perd des points : avant de répondre, relis
+   chaque ligne de la colonne Algorithme et remplace tout opérateur Python.
 2. Si la notion demandée n'est pas couverte par le contexte, dis-le
    simplement en une phrase, sans l'expliquer à partir de connaissances
    générales.
@@ -197,6 +215,18 @@ Règles :
    booléen, chaîne de caractères, et les opérateurs du contexte. N'utilise
    aucune structure (Si, Pour, Tant que) ni aucune fonction absente du
    contexte.
+   OPÉRATEURS : dans la colonne Algorithme, et partout où tu écris de
+   l'algorithme, utilise UNIQUEMENT les opérateurs du cours tunisien, jamais
+   ceux de Python : `div` et non `//` (Q ← A div B), `mod` et non `%`
+   (R ← A mod B), `=` et non `==` pour comparer, `≠` et non `!=`, `≤` et non
+   `<=`, `≥` et non `>=`, `ET` / `OU` / `NON` et non and / or / not, `Vrai` /
+   `Faux` et non True / False. Les opérateurs `//`, `%`, `==`, `!=`, `<=`,
+   `>=` ne s'écrivent que dans la colonne Python. Un élève qui recopie
+   `Res ← X // Y` sur sa copie perd des points : avant de répondre, relis
+   chaque ligne de la colonne Algorithme et remplace tout opérateur Python.
+   Si l'élève a lui-même écrit un opérateur Python dans son algorithme,
+   c'est une erreur à signaler dans « À corriger » (citée telle quelle),
+   corrigée dans la version corrigée.
 2. Garde le travail de l'élève : ses noms de variables, l'ordre de ses
    instructions et sa démarche. Ne le remplace pas par une autre solution.
    Ne modifie que ce qui est faux ou manquant.

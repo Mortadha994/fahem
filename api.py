@@ -38,6 +38,7 @@ import admin_chapters
 import admin_controls
 import admin_monitoring
 import ai_control
+import algo_notation
 import attachments
 import auth
 import chapter_store
@@ -439,6 +440,13 @@ def solve(
     except KeyError as exc:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set") from exc
 
+    # Course notation in the Algorithme column (div, mod, ≠...), even if the
+    # model slipped - the student reads and copies this answer as returned.
+    answer, fixed = algo_notation.normalize_answer(answer)
+    if fixed:
+        log.warning(
+            "rewrote %d Python operator(s) in the Algorithme column (route %s)", fixed, route
+        )
     violations, _ = check_constraints(answer, rendered)
 
     return SolveResponse(
@@ -719,7 +727,18 @@ def solve_stream(
             return
 
         answer = "".join(parts)
-        violations, notes = check_constraints(answer, rendered)
+        # The chat shows the Algorithme column in course notation whatever the
+        # model wrote (ui/src/lib/algoNotation.js); check that version, so a
+        # slip the student never sees is not reported as a violation - and
+        # log it, so the model's slips stay visible.
+        checked, fixed = algo_notation.normalize_answer(answer)
+        if fixed:
+            log.warning(
+                "rewrote %d Python operator(s) in the Algorithme column (route %s)",
+                fixed,
+                route,
+            )
+        violations, notes = check_constraints(checked, rendered)
         yield _sse(
             "done",
             {

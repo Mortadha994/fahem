@@ -1,5 +1,6 @@
 import { visit } from "unist-util-visit";
 import { realignPairs } from "./alignAlgoTable.js";
+import { algoText } from "./algoNotation.js";
 
 /**
  * Locates the "Algorithme | Python" solution table (prompts.py §6) in the
@@ -49,13 +50,17 @@ export default function remarkAlgoTable() {
           headerCell = cell;
           return;
         }
-        bodyLines.push(extractCellText(cell));
+        // Course notation (div, mod, ≠, ≤, ET...), even if the model wrote a
+        // Python operator here - see lib/algoNotation.js. The copy button
+        // gets the same text the student sees.
+        const text = algoText(extractCellText(cell));
+        bodyLines.push(text);
 
         cell.data ??= {};
         cell.data.hProperties = {
           ...cell.data.hProperties,
           "data-algo-col": "true",
-          "data-algo-text": extractCellText(cell),
+          "data-algo-text": text,
         };
       });
 
