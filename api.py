@@ -45,6 +45,7 @@ import gatekeeper
 import llm_queue
 import models
 import password_auth
+import public_overview
 import ratelimit
 from checker import check_constraints
 from config import CORS_ORIGINS, RATE_LIMIT_SOLVE
@@ -156,6 +157,10 @@ app.include_router(admin_monitoring.router)
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.
 app.include_router(chat_history.router)
+
+# What the public landing page shows (chapters, counts, features), no sign-in -
+# see public_overview.py. Cached, and reaches no model.
+app.include_router(public_overview.router)
 
 
 def _meta_scope(payload) -> tuple[str, str]:

@@ -4,18 +4,26 @@ import AuthDemo from "./AuthDemo.jsx";
 import LineByLine from "./LineByLine.jsx";
 import Badge from "./ui/Badge.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
-import { SCOPE_LABEL } from "../config.js";
+import { fetchOverview, listFr, plural } from "../lib/overview.js";
 
 /*
  * The public page: what Fahem is, for a student who has never heard of it and
  * has not been asked for an e-mail address yet.
  *
  * Everything stated here is checkable against the app, on purpose. There are
- * no testimonials, no student counts and no "utilisé par N lycées": the three
- * numbers in the strip are the chapter list in chapters.py, the exercises in
- * sample_problems.json and the corpus the retriever actually holds. A landing
- * page for 16-year-olds can be loud without being untrue, and an invented
- * figure is the one thing a student would be right to distrust.
+ * no testimonials, no student counts and no "utilisé par N lycées".
+ *
+ * And it follows the app by itself: the numbers, the programme, the scope
+ * label, the chapter FAQ, the syntax strip's extra pairs and the photo claims
+ * all come from GET /public/overview (public_overview.py), which counts the
+ * published chapters, their exercises and the extracts the retriever holds.
+ * Publish a chapter or add exercises in the console and this page says so
+ * within a minute - no edit here. Only a brand-new *kind* of feature needs a
+ * card added to FEATURES below. If the overview cannot be fetched, the page
+ * still renders, without the figures it could not check.
+ *
+ * A landing page for 16-year-olds can be loud without being untrue, and an
+ * invented figure is the one thing a student would be right to distrust.
  *
  * Visually it reuses the signed-out showcase treatment wholesale - the same
  * aurora, the same glass, the same gradient text, the same AuthDemo the
@@ -46,16 +54,78 @@ const GLYPHS = [
   { t: "*", x: "26%", y: "22%", s: "2.5rem", d: "29s", b: "4px", o: 0.1 },
 ];
 
-/** The three honest numbers: each one is a fact in this repo, not a claim. */
-const FACTS = [
-  { n: "2", unit: "langages", label: "Algorithme et Python, côte à côte" },
-  { n: "7", unit: "exercices", label: "de la série, corrigés à la demande" },
-  { n: "117", unit: "extraits", label: "de ton cours, cités à l'appui" },
-];
+/** The honest numbers, counted by the backend (public_overview.py). Without
+ *  the overview only the one that needs no counting is shown. */
+function factsFrom(overview) {
+  const facts = [
+    { n: "2", unit: "langages", label: "Algorithme et Python, côte à côte" },
+  ];
+  if (!overview) return facts;
+  const { exercises, excerpts, chapters_available: ready } = overview.totals;
+  facts.push({
+    n: String(exercises),
+    unit: exercises === 1 ? "exercice" : "exercices",
+    label: `dans ${plural(ready, "chapitre")}, corrigés à la demande`,
+  });
+  if (excerpts != null) {
+    facts.push({
+      n: String(excerpts),
+      unit: "extraits",
+      label: "de ton cours, cités à l'appui",
+    });
+  }
+  return facts;
+}
 
-/* The syntax strip: chapter 1 notation beside its Python, which is the whole
-   pitch in one line. Only what the available chapter covers - no Si or Pour
-   while those chapters are "à venir". */
+const shortNiveau = (label) => label.replace(/ année$/, "");
+const lowerFirst = (text) => text.charAt(0).toLowerCase() + text.slice(1);
+const isReady = (chapter) => chapter.status === "active";
+
+/** "2ème — 2 chapitres disponibles": the hero badge and the footer. */
+function scopeLabel(overview) {
+  if (!overview) return "Algorithmique — lycée";
+  const n = overview.totals.chapters_available;
+  const years = overview.totals.niveaux.map(shortNiveau).join(" · ") || "Lycée";
+  return `${years} — ${plural(n, "chapitre")} disponible${n > 1 ? "s" : ""}`;
+}
+
+/** The FAQ's "which chapters" answer, written from the live list. */
+function chaptersAnswer(overview) {
+  if (!overview)
+    return "La section Programme, plus haut, liste les chapitres disponibles.";
+  const name = (c) =>
+    `le chapitre ${c.id} de ${shortNiveau(c.niveau_label)} (${lowerFirst(c.title)})`;
+  const ready = overview.chapters.filter(isReady);
+  const coming = overview.chapters.filter((c) => !isReady(c));
+  let answer = ready.length
+    ? `Aujourd'hui : ${listFr(ready.map(name))}, avec ${plural(overview.totals.exercises, "exercice")} à résoudre.`
+    : "Aucun chapitre n'est encore publié.";
+  if (coming.length) {
+    answer += ` ${listFr(coming.map((c, i) => `${i === 0 ? "Le" : "le"} chapitre ${c.id}`))} ${
+      coming.length > 1 ? "sont annoncés" : "est annoncé"
+    } « à venir » — Fahem préfère le dire plutôt que répondre à côté.`;
+  }
+  return answer;
+}
+
+/* The syntax strip: course notation beside its Python, which is the whole
+   pitch in one line. Chapter 1's pairs always; a later chapter's pairs join
+   only once that chapter is published - no Si or Pour while "à venir". */
+const CHAPTER_SYNTAX = {
+  2: [
+    ["Si x > 0 Alors", "if x > 0 :"],
+    ["Sinon", "else :"],
+    ["a ET b", "a and b"],
+    ["a OU b", "a or b"],
+    ["a ≠ b", "a != b"],
+    ["Selon mois", "match mois :"],
+  ],
+  3: [
+    ["Pour i de 1 à n Faire", "for i in range(1, n + 1) :"],
+    ["Tant que x > 0 Faire", "while x > 0 :"],
+  ],
+};
+
 const SYNTAX = [
   ["x ← x + 1", "x = x + 1"],
   ["Lire (x)", "x = input()"],
@@ -110,6 +180,23 @@ const FEATURES = [
     title: "Il reste dans le programme",
     body: "Une question hors chapitre ? Il le dit. Un tuteur qui refuse d'inventer vaut mieux qu'un qui invente bien.",
   },
+  {
+    glyph: "▣",
+    title: "Une photo suffit",
+    body: "Photo, capture d'écran ou PDF de l'énoncé : Fahem le lit et le résout comme si tu l'avais tapé.",
+    // Shown only while the backend has a vision model (public_overview.py).
+    requires: "photo_attachments",
+  },
+  {
+    glyph: "◎",
+    title: "Adapté à ta classe",
+    body: "Ton niveau et ta section, choisis une fois : tu ne vois que les chapitres de ton année.",
+  },
+  {
+    glyph: "↺",
+    title: "Tes discussions te suivent",
+    body: "Ton historique est lié à ton compte : retrouve tes exercices sur ton téléphone comme sur l'ordinateur.",
+  },
 ];
 
 const STEPS = [
@@ -142,15 +229,25 @@ const VERSUS = {
   ],
 };
 
-const FAQ = [
+/** The FAQ, with the answers that depend on what is published built from the
+ *  overview. */
+const faqFrom = (overview) => [
   {
     q: "C'est gratuit ?",
     a: "Oui. Une adresse e-mail et un mot de passe, ou ton compte Google, et tu peux poser ta première question. Aucune carte bancaire.",
   },
   {
     q: "Quels chapitres sont couverts ?",
-    a: "Pour l'instant le chapitre 1 de 2ème : les structures de données et les structures simples. Les chapitres 2 et 3 sont annoncés comme « à venir » — Fahem préfère le dire plutôt que répondre à côté.",
+    a: chaptersAnswer(overview),
   },
+  ...(overview?.features.photo_attachments
+    ? [
+        {
+          q: "Je peux envoyer une photo de mon exercice ?",
+          a: "Oui : une photo, une capture d'écran ou un PDF. Fahem recopie l'énoncé, puis le résout comme un message tapé.",
+        },
+      ]
+    : []),
   {
     q: "Ce n'est pas de la triche ?",
     a: "Fahem fait ce qu'un bon corrigé fait : il montre la démarche, pas seulement le résultat. Ton prof, lui, te demandera de refaire l'exercice seul le jour du devoir — c'est pour ça que chaque réponse est expliquée et sourcée.",
@@ -248,14 +345,33 @@ export default function Landing() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
+  // What is published right now (null until known, or if it cannot be read).
+  const [overview, setOverview] = useState(null);
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchOverview().then((data) => {
+      if (cancelled) return;
+      setOverview(data);
+      setSettled(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Motion is loaded here rather than imported at the top: a static import
   // would put it in the main bundle the student app and the console share.
   // Reduced motion never downloads it, and if the import fails the page is
   // simply static - nothing waits on it to become visible.
+  //
+  // It starts once the overview has settled (fetchOverview gives up after
+  // 2.5s): landingMotion reads the page once - which elements to reveal, what
+  // each counter counts to - so it must see the real chapters and numbers.
   useEffect(() => {
     const root = pageRef.current;
-    if (!root || prefersReducedMotion()) return undefined;
+    if (!settled || !root || prefersReducedMotion()) return undefined;
     let cleanup;
     let cancelled = false;
     import("./landingMotion.js")
@@ -267,7 +383,22 @@ export default function Landing() {
       cancelled = true;
       cleanup?.();
     };
-  }, []);
+  }, [settled]);
+
+  const facts = factsFrom(overview);
+  const scope = scopeLabel(overview);
+  const faq = faqFrom(overview);
+  const photos = Boolean(overview?.features.photo_attachments);
+  const features = FEATURES.filter(
+    (f) => !f.requires || overview?.features[f.requires]
+  );
+  const programme = overview?.chapters ?? [];
+  const readyCount = programme.filter(isReady).length;
+  const comingCount = programme.length - readyCount;
+  const syntax = [
+    ...SYNTAX,
+    ...programme.filter(isReady).flatMap((c) => CHAPTER_SYNTAX[c.id] ?? []),
+  ];
 
   // The phone menu closes on Escape (focus goes back to its button, where the
   // student was) and whenever the window grows past the breakpoint that hides
@@ -410,7 +541,7 @@ export default function Landing() {
         {/* --- hero ------------------------------------------------------- */}
         <section className="lp-hero">
           <div className="lp-hero-copy">
-            <Badge className="lp-eyebrow">{SCOPE_LABEL}</Badge>
+            <Badge className="lp-eyebrow">{scope}</Badge>
 
             {/* Word by word: the plain words rise, then the gradient phrase
                 fades in as one inline run - split into boxes it could not wrap
@@ -424,10 +555,10 @@ export default function Landing() {
             </h1>
 
             <p className="lp-lead">
-              Colle l'énoncé d'un exercice. Fahem le résout en Algorithme et en Python —
-              avec <code>←</code>, <code>Lire</code>, <code>Ecrire</code> et{" "}
-              <code>mod</code> comme ton manuel — et te montre les parties du cours sur
-              lesquelles il s'appuie.
+              Colle l'énoncé d'un exercice{photos ? ", ou envoie-en une photo" : ""}.
+              Fahem le résout en Algorithme et en Python — avec <code>←</code>,{" "}
+              <code>Lire</code>, <code>Ecrire</code> et <code>mod</code> comme ton
+              manuel — et te montre les parties du cours sur lesquelles il s'appuie.
             </p>
 
             <div className="lp-cta-row">
@@ -473,7 +604,7 @@ export default function Landing() {
             twice so the loop wraps without a seam. */}
         <div className="lp-marquee" aria-hidden="true">
           <div className="lp-marquee-track">
-            {[...SYNTAX, ...SYNTAX].map(([algo, py], i) => (
+            {[...syntax, ...syntax].map(([algo, py], i) => (
               <span className="lp-marquee-item" key={i}>
                 <code className="lp-marquee-algo">{algo}</code>
                 <span className="lp-marquee-sep">⇄</span>
@@ -484,8 +615,8 @@ export default function Landing() {
         </div>
 
         {/* --- the three numbers ------------------------------------------ */}
-        <section className="lp-facts" aria-label="Fahem en trois chiffres">
-          {FACTS.map((f, i) => (
+        <section className="lp-facts" aria-label="Fahem en chiffres">
+          {facts.map((f, i) => (
             <div className="lp-fact" key={f.unit} data-reveal="" style={{ "--i": i }}>
               {/* Counts up on arrival; the moving digits are hidden from
                   screen readers, the real number beside them is not. */}
@@ -513,7 +644,7 @@ export default function Landing() {
           </header>
 
           <div className="lp-grid">
-            {FEATURES.map((f, i) => (
+            {features.map((f, i) => (
               <article
                 className="lp-card"
                 key={f.title}
@@ -640,55 +771,54 @@ export default function Landing() {
             <p className="lp-kicker">Programme</p>
             <h2 className="lp-h2">Ce qui est prêt, et ce qui arrive.</h2>
             <p className="lp-section-lead">
-              La liste est courte parce qu'elle est vraie : un chapitre entièrement
-              couvert vaut mieux que trois à moitié.
+              {overview
+                ? `${plural(readyCount, "chapitre")} prêt${readyCount > 1 ? "s" : ""}${
+                    comingCount ? `, ${comingCount} à venir` : ""
+                  }. La liste est courte parce qu'elle est vraie : elle se met à jour dès qu'un chapitre est publié.`
+                : "La liste est courte parce qu'elle est vraie : un chapitre entièrement couvert vaut mieux que trois à moitié."}
             </p>
           </header>
 
+          {/* One card per chapter in the catalogue, published or announced,
+              straight from /public/overview. */}
           <div className="lp-chapters">
-            <article className="lp-chapter is-ready" data-reveal="">
-              <div className="lp-chapter-top">
-                <span className="lp-chapter-n">2ème · Chapitre 1</span>
-                <Badge tone="success">Disponible</Badge>
-              </div>
-              <h3 className="lp-chapter-title">
-                Les structures de données et les structures simples
-              </h3>
+            {programme.map((c, i) => (
+              <article
+                className={`lp-chapter${isReady(c) ? " is-ready" : ""}`}
+                key={`${c.niveau}-${c.id}`}
+                data-reveal=""
+                style={{ "--i": i }}
+              >
+                <div className="lp-chapter-top">
+                  <span className="lp-chapter-n">
+                    {shortNiveau(c.niveau_label)} · Chapitre {c.id}
+                  </span>
+                  {isReady(c) ? (
+                    <Badge tone="success">Disponible</Badge>
+                  ) : (
+                    <Badge>À venir</Badge>
+                  )}
+                </div>
+                <h3 className="lp-chapter-title">{c.title}</h3>
+                {c.topics.length > 0 && (
+                  <p className="lp-chapter-body">{c.topics.join(" · ")}</p>
+                )}
+                {isReady(c) && (
+                  <p className="lp-chapter-meta">
+                    {c.exercises > 0
+                      ? `${plural(c.exercises, "exercice")} corrigé${c.exercises > 1 ? "s" : ""} à la demande`
+                      : "Pose tes propres exercices"}
+                    {c.excerpts ? ` · ${c.excerpts} extraits du cours` : ""}
+                  </p>
+                )}
+              </article>
+            ))}
+            {settled && !overview && (
               <p className="lp-chapter-body">
-                Types et constantes, affectation, entrée / sortie, opérateurs
-                arithmétiques — <code>mod</code>, <code>div</code> — et les structures
-                simples du chapitre. Le cours en PDF, la série d'exercices, et un
-                corrigé quand tu le demandes.
+                Le programme n'a pas pu être chargé. Connecte-toi pour voir les
+                chapitres de ton année.
               </p>
-            </article>
-
-            <article className="lp-chapter" data-reveal="" style={{ "--i": 1 }}>
-              <div className="lp-chapter-top">
-                <span className="lp-chapter-n">2ème · Chapitre 2</span>
-                <Badge>À venir</Badge>
-              </div>
-              <h3 className="lp-chapter-title">
-                Les structures de contrôle conditionnelles
-              </h3>
-              <p className="lp-chapter-body">
-                <code>Si … Alors … Sinon</code>, les conditions composées, le choix
-                multiple.
-              </p>
-            </article>
-
-            <article className="lp-chapter" data-reveal="" style={{ "--i": 2 }}>
-              <div className="lp-chapter-top">
-                <span className="lp-chapter-n">2ème · Chapitre 3</span>
-                <Badge>À venir</Badge>
-              </div>
-              <h3 className="lp-chapter-title">
-                Les structures de contrôle itératives
-              </h3>
-              <p className="lp-chapter-body">
-                <code>Pour</code>, <code>Tant que</code>, <code>Répéter</code>, et le
-                parcours d'un tableau.
-              </p>
-            </article>
+            )}
           </div>
         </section>
 
@@ -700,7 +830,7 @@ export default function Landing() {
           </header>
 
           <div className="lp-faq">
-            {FAQ.map((item, i) => (
+            {faq.map((item, i) => (
               <details
                 className="lp-faq-item"
                 key={item.q}
@@ -747,7 +877,7 @@ export default function Landing() {
           </span>
           Fahem
         </p>
-        <p className="lp-foot-scope">{SCOPE_LABEL}</p>
+        <p className="lp-foot-scope">{scope}</p>
         <nav className="lp-foot-nav" aria-label="Pied de page">
           <a href="#fonctionnalites">Ce que ça fait</a>
           <a href="#programme">Programme</a>

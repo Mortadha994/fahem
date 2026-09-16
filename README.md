@@ -111,6 +111,7 @@ then goes through the same gatekeeper.
 | **Rate limiting** | slowapi over Redis. Solving and attachment reading are limited **per user** (`10/minute;100/hour` by default, a shared budget); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
 | **Groq queue** | `llm_queue.py`: a Redis priority queue per model in front of every Groq call. Classifications rank ahead of solves, a solve waiting 20 s can no longer be jumped, a 429 is retried in the slot with `Retry-After`, and one request never waits more than 120 s in total. The UI gets `waiting` SSE events with the position. |
 | **AI monitoring** | `llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. |
+| **Landing page** | Updates itself: `public_overview.py` serves `GET /public/overview` (no sign-in, cached 60 s) — every chapter with its topics, exercise count and course-extract count, the totals, and feature switches — and `Landing.jsx` builds its numbers, programme cards, scope badge, chapter FAQ, syntax strip and photo claims from it. Publishing a chapter or adding exercises in the console shows up there within a minute; only a new *kind* of feature needs a card in `FEATURES`. |
 | **Chat history** | `chat_history.py` stores each account's discussions in the chat tables; every route is scoped to the caller's own rows. |
 | **Chapters** | `chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `admin_chapters.py` + `chapter_store.py` back the admin upload/publish workflow; `course_markdown.py` reads a Markdown-authored chapter. |
 
@@ -119,6 +120,7 @@ then goes through the same gatekeeper.
 | Route | Auth | What |
 | --- | --- | --- |
 | `GET /health` | — | `{"status":"ok","model":"…"}` |
+| `GET /public/overview` | — | What the landing page shows: chapters, exercise and extract counts, features |
 | `POST /auth/google` | — (IP-limited) | Exchange a Google ID token for a session cookie |
 | `POST /auth/signup` · `/login` | — (IP-limited) | Email + password account creation / sign-in |
 | `POST /auth/forgot-password` · `/reset-password` · `/resend-verification` · `GET /auth/verify-email` | — | The emailed verification and reset flow |
@@ -348,6 +350,7 @@ docker compose exec backend python test_chapters_admin.py   # chapter upload/pub
 docker compose exec backend python test_course_markdown.py  # Markdown chapter parsing
 docker compose exec backend python test_llm_queue.py  # Groq queue: priority, aging, deadline, 429 retry
 docker compose exec backend python test_llm_usage.py  # per-call recording and /admin/monitoring
+docker compose exec backend python test_public_overview.py  # what the landing page is told
 docker compose exec backend python test_gatekeeper_meta.py  # meta answers never leak reasoning (--live calls the model)
 docker compose exec backend python test_retrieval.py  # retrieval inspection (no assertions)
 docker compose exec backend python test_gatekeeper_adversarial.py   # adversarial transcripts; calls the model
@@ -482,6 +485,7 @@ admin_monitoring.py  /admin/monitoring: Groq load, usage, chat activity
 chat_history.py      /chat/sessions: each account's discussions
 llm_queue.py         Redis priority queue in front of every Groq call
 llm_usage.py         records every Groq call for the monitoring
+public_overview.py   /public/overview: live facts for the landing page
 chapter_store.py     the uploaded-chapter store behind the admin workflow
 chapters.py          /chapters: catalogue (year-scoped), exercises, lesson PDF
 attachments.py       reads an exercise from an attached photo or PDF

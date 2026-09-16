@@ -5834,6 +5834,13 @@ h3 {
   font-size: var(--text-sm);
   color: var(--fg-dim);
 }
+/* The counts under a published chapter (from /public/overview). */
+.lp-chapter-meta {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
 
 /* --- FAQ ------------------------------------------------------------------- */
 
