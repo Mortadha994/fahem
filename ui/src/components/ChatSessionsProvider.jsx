@@ -109,8 +109,11 @@ export default function ChatSessionsProvider({ children }) {
   /** Load one discussion in full (once), keeping anything written meanwhile. */
   const ensureLoaded = useCallback(
     (id) => {
+      // `latest` is synced in this provider's effect, which runs after the
+      // chat's own effects: a discussion that just arrived may not be in it
+      // yet. Only a discussion known to be complete is skipped.
       const current = latest.current.find((s) => s.id === id);
-      if (!current || current.loaded !== false) return Promise.resolve(current);
+      if (!id || (current && current.loaded !== false)) return Promise.resolve(current);
       if (loading.current.has(id)) return loading.current.get(id);
       const promise = fetchSession(id)
         .then((full) => {
