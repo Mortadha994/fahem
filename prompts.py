@@ -289,6 +289,7 @@ def build_messages(
     kind: str = "PROBLEM",
     profile: str | None = None,
     note: str | None = None,
+    memory: str | None = None,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
@@ -302,7 +303,12 @@ def build_messages(
     `note` is the student's own words sent with an attached exercise ("je n'ai
     pas compris comment calculer la moyenne"). It travels apart from the
     exercise text, so the question in it is answered rather than drowned in
-    the statement. Appended after .format, so braces in it are harmless."""
+    the statement. Appended after .format, so braces in it are harmless.
+
+    `memory` is the discussion so far (session_memory.memory_block): put
+    before the context and the request in the user message - quoted data,
+    never the system prompt - so it informs the answer without outranking
+    the rules."""
     system, user = _PROMPTS.get(kind, _PROMPTS["PROBLEM"])
     system_content = system.format(niveau=niveau, chapitre=chapitre)
     if profile:
@@ -323,6 +329,8 @@ def build_messages(
             "toute formule en arithmétique simple, par exemple (a + 2 * b) / 3, "
             "jamais en LaTeX."
         )
+    if memory:
+        user_content = f"{memory}\n\n{user_content}"
     return [
         {"role": "system", "content": system_content},
         {"role": "user", "content": user_content},

@@ -310,6 +310,22 @@ export default function Chat() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Session memory: what was said before this message, from the
+      // discussion as it is on screen (an answer that just finished is not
+      // saved yet, but it is here). Failed answers and the exchange being
+      // filled in (`reuse`) are left out; the server keeps the last exchanges
+      // and caps their size.
+      const skip = new Set(reuse ? [reuse.userId, reuse.assistantId] : []);
+      const history = session.messages
+        .filter(
+          (msg) =>
+            !skip.has(msg.id) &&
+            msg.content?.trim() &&
+            !(msg.role === "assistant" && (msg.error || msg.status === "error"))
+        )
+        .slice(-6)
+        .map((msg) => ({ role: msg.role, content: msg.content }));
+
       streamSolve(
         // The session's own chapter, not a global: an older discussion keeps
         // answering in the chapter it was started in.
@@ -318,6 +334,7 @@ export default function Chat() {
           niveau: session.niveau ?? NIVEAU,
           chapitre: session.chapitre ?? CHAPITRE,
           note,
+          history,
         },
         {
           signal: controller.signal,

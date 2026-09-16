@@ -16,7 +16,7 @@ export const BUSY_ERROR =
  * `signal` comes from an AbortController - that is what the stop button uses.
  */
 export async function streamSolve(
-  { problem, niveau, chapitre, note, k = 5 },
+  { problem, niveau, chapitre, note, history, k = 5 },
   {
     onMeta,
     onWaiting,
@@ -39,7 +39,16 @@ export async function streamSolve(
       credentials: "include",
       // `note`: the student's own words sent with an attached exercise, kept
       // apart from the exercise text so the question in it gets answered.
-      body: JSON.stringify({ problem, niveau, chapitre, note: note || undefined, k }),
+      // `history`: the discussion's earlier messages - the tutor's session
+      // memory (session_memory.py compacts and caps it on the server).
+      body: JSON.stringify({
+        problem,
+        niveau,
+        chapitre,
+        note: note || undefined,
+        history: history?.length ? history : undefined,
+        k,
+      }),
       signal,
     });
   } catch (err) {

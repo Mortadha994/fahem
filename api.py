@@ -50,6 +50,7 @@ import models
 import password_auth
 import public_overview
 import ratelimit
+import session_memory
 from checker import check_constraints
 from config import CORS_ORIGINS
 from context import build_context
@@ -240,6 +241,11 @@ class SolveRequest(BaseModel):
         "separate from the exercise text",
     )
     k: int = Field(default=5, ge=1, le=20, description="Retrieved extras budget")
+    history: list[session_memory.HistoryTurn] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The discussion's earlier messages, oldest first - the tutor's session memory. Compacted and capped server-side (session_memory.compact), so it cannot inflate a request.",
+    )
 
 
 def gate_text(payload: SolveRequest) -> str:
@@ -351,8 +357,15 @@ def solve(
     priority = llm_queue.priority_for(user.plan)
     # One deadline for all of this request's waiting (llm_queue.WaitBudget).
     budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
+    # What the tutor remembers of this discussion (session_memory.py).
+    memory = session_memory.compact(payload.history)
     try:
-        route = gatekeeper.classify(gate_text(payload), priority=priority, budget=budget)
+        route = gatekeeper.classify(
+            gate_text(payload),
+            priority=priority,
+            budget=budget,
+            previous=session_memory.router_excerpt(memory),
+        )
     except gatekeeper.Busy as exc:
         raise HTTPException(status_code=429, detail="model backend busy") from exc
 
@@ -395,7 +408,7 @@ def solve(
     # grounded pipeline for all three, each with its own prompt (prompts.py).
     try:
         context = build_context(
-            payload.problem,
+            session_memory.retrieval_query(payload.problem, memory),
             niveau=payload.niveau,
             chapitre=payload.chapitre,
             k=payload.k,
@@ -422,6 +435,7 @@ def solve(
         kind=route,
         profile=student_profile(user),
         note=(payload.note or "").strip() or None,
+        memory=session_memory.memory_block(memory),
     )
 
     try:
@@ -605,6 +619,8 @@ def solve_stream(
     # place in Groq's queue, the solve's, and every 429 sleep - so a student
     # hears "busy" within GROQ_QUEUE_TIMEOUT_SECONDS, not a multiple of it.
     budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
+    # What the tutor remembers of this discussion (session_memory.py).
+    memory = session_memory.compact(payload.history)
 
     def events():
         # The gatekeeper runs inside the stream rather than before it: under
@@ -614,7 +630,12 @@ def solve_stream(
         # build_context.
         try:
             route = yield from _relay(
-                gatekeeper.classify_steps(gate_text(payload), priority, budget)
+                gatekeeper.classify_steps(
+                    gate_text(payload),
+                    priority,
+                    budget,
+                    previous=session_memory.router_excerpt(memory),
+                )
             )
             if route == "OFF_TOPIC":
                 yield from _gatekeeper_stream(
@@ -646,7 +667,7 @@ def solve_stream(
         # refused before the stream opens, by _meta_scope above.
         try:
             context = build_context(
-                payload.problem,
+                session_memory.retrieval_query(payload.problem, memory),
                 niveau=payload.niveau,
                 chapitre=payload.chapitre,
                 k=payload.k,
@@ -675,6 +696,7 @@ def solve_stream(
             kind=route,
             profile=student_profile(user),
             note=(payload.note or "").strip() or None,
+            memory=session_memory.memory_block(memory),
         )
 
         yield _sse(
