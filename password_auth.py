@@ -55,6 +55,7 @@ from auth import (  # the shared mechanism
     UserOut,
     bind_user,
     create_session_token,
+    refuse_if_suspended,
     set_session_cookie,
 )
 from config import (
@@ -359,6 +360,9 @@ def login(request: Request, payload: LoginRequest, response: Response) -> UserOu
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED)
     if not verify_password(user.password_hash, payload.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED)
+    # Only after the password matched: a wrong guess must not learn that the
+    # account exists and is suspended.
+    refuse_if_suspended(user)
 
     now = datetime.now(timezone.utc)
     with session_scope() as s:
@@ -454,6 +458,9 @@ def reset_password(request: Request, payload: ResetPasswordRequest, response: Re
             .values(used_at=now)
         )
 
+    # The new password is kept (the link proved the address), but a suspended
+    # account still gets no session.
+    refuse_if_suspended(user)
     set_session_cookie(response, create_session_token(user_id))
     return UserOut.of(user)
 

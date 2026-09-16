@@ -915,6 +915,21 @@ def retry_after_seconds(headers) -> float:
     return _FALLBACK_RETRY_SECONDS
 
 
+# Where the 429 retry count comes from. None = config.GROQ_RETRY_MAX; the app
+# points it at the admin's live setting (api.py -> ai_control.retry_max), while
+# tests and scripts keep the config value.
+RETRY_MAX_SOURCE: Callable[[], int] | None = None
+
+
+def current_retry_max() -> int:
+    if RETRY_MAX_SOURCE is not None:
+        try:
+            return RETRY_MAX_SOURCE()
+        except Exception:
+            log.warning("retry max source failed; using GROQ_RETRY_MAX", exc_info=True)
+    return GROQ_RETRY_MAX
+
+
 def next_retry_delay(
     exc: Exception,
     attempts: int,
@@ -930,7 +945,7 @@ def next_retry_delay(
     wait that does not fit fails at once rather than sleeping part of it and
     failing anyway: the student hears "busy" as early as it is certain.
     """
-    max_retries = GROQ_RETRY_MAX if max_retries is None else max_retries
+    max_retries = current_retry_max() if max_retries is None else max_retries
     if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
         return None
     if attempts >= max_retries:
@@ -970,7 +985,7 @@ def retry_steps(
                     wanted = retry_after_seconds(exc.headers)
                     why = (
                         "retries used up"
-                        if attempts >= GROQ_RETRY_MAX
+                        if attempts >= current_retry_max()
                         else "Retry-After exceeds the remaining wait budget"
                     )
                     log.warning(
@@ -991,7 +1006,7 @@ def retry_steps(
                 model,
                 kind,
                 attempts + 1,
-                GROQ_RETRY_MAX,
+                current_retry_max(),
                 delay,
                 budget.remaining(),
             )

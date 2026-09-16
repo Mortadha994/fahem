@@ -75,7 +75,7 @@ export function errorMessage(err) {
     return field === "email" ? "Adresse e-mail invalide." : msg || "Données invalides.";
   }
   if (typeof detail === "string") {
-    if (status === 409 && detail.includes("admin"))
+    if (status === 409 && detail.includes("admin accounts cannot be deleted"))
       return "Un compte administrateur ne peut pas être supprimé ici. Retire d'abord le rôle avec promote_admin.py.";
     if (status === 400 && detail.includes("own account"))
       return "Tu ne peux pas supprimer ton propre compte.";
@@ -89,6 +89,12 @@ export const fetchAdminWhoAmI = () => request("/admin/whoami");
 export const fetchAdminStats = () => request("/admin/stats");
 /** Groq load, usage and chat activity (admin_monitoring.py). */
 export const fetchMonitoring = () => request("/admin/monitoring");
+/** Live AI settings, daily budget, queues, admin log (admin_controls.py). */
+export const fetchControls = () => request("/admin/controls");
+export const updateControls = (values) =>
+  request("/admin/controls", { method: "PUT", body: values });
+export const resetQueue = (model) =>
+  request("/admin/controls/queues/reset", { method: "POST", body: { model } });
 export const fetchUsers = (query) => request("/admin/users", { query });
 export const fetchUser = (id) => request(`/admin/users/${encodeURIComponent(id)}`);
 export const createUser = (body) => request("/admin/users", { method: "POST", body });
@@ -96,6 +102,13 @@ export const updateUser = (id, body) =>
   request(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", body });
 export const revokeSessions = (id) =>
   request(`/admin/users/${encodeURIComponent(id)}/revoke-sessions`, { method: "POST" });
+export const suspendUser = (id, reason) =>
+  request(`/admin/users/${encodeURIComponent(id)}/suspend`, {
+    method: "POST",
+    body: { reason },
+  });
+export const reactivateUser = (id) =>
+  request(`/admin/users/${encodeURIComponent(id)}/reactivate`, { method: "POST" });
 export const deleteUser = (id) =>
   request(`/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
 

@@ -35,7 +35,9 @@ from slowapi.errors import RateLimitExceeded
 
 import admin
 import admin_chapters
+import admin_controls
 import admin_monitoring
+import ai_control
 import attachments
 import auth
 import chapter_store
@@ -48,7 +50,7 @@ import password_auth
 import public_overview
 import ratelimit
 from checker import check_constraints
-from config import CORS_ORIGINS, RATE_LIMIT_SOLVE
+from config import CORS_ORIGINS
 from context import build_context
 from generate import GROQ_MODEL, generate, pick_backend
 from llm_stream import stream_groq
@@ -56,6 +58,9 @@ from prompts import build_messages
 from rag_store import get_model
 
 log = logging.getLogger("fahem.api")
+
+# The 429 retry count follows the admin console's live setting (ai_control).
+llm_queue.RETRY_MAX_SOURCE = ai_control.retry_max
 
 
 @asynccontextmanager
@@ -153,6 +158,9 @@ app.include_router(admin_chapters.router)
 
 # AI monitoring: Groq load and usage, chat activity. Same router-level gate.
 app.include_router(admin_monitoring.router)
+
+# AI controls: pause, daily budget guard, live limits, queue reset. Same gate.
+app.include_router(admin_controls.router)
 
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.
@@ -282,12 +290,13 @@ def health() -> dict:
 
 
 @app.post("/solve", response_model=SolveResponse)
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 def solve(
     request: Request,
     response: Response,
     payload: SolveRequest,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
 ) -> SolveResponse:
     """Solve one problem. Requires a signed-in user (Phase 1), rate-limited
     per user (Phase 2).
@@ -340,7 +349,7 @@ def solve(
     # Groq call this request makes waits its turn at this priority.
     priority = llm_queue.priority_for(user.plan)
     # One deadline for all of this request's waiting (llm_queue.WaitBudget).
-    budget = llm_queue.WaitBudget()
+    budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
     try:
         route = gatekeeper.classify(gate_text(payload), priority=priority, budget=budget)
     except gatekeeper.Busy as exc:
@@ -521,12 +530,13 @@ def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, start
 
 
 @app.post("/solve/stream")
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 def solve_stream(
     request: Request,
     response: Response,
     payload: SolveRequest,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
 ):
     """Streaming counterpart of /solve. Requires a signed-in user (Phase 1),
     sharing /solve's per-user rate limit (Phase 2).
@@ -586,7 +596,7 @@ def solve_stream(
     # One deadline for everything this request waits on - the classifier's
     # place in Groq's queue, the solve's, and every 429 sleep - so a student
     # hears "busy" within GROQ_QUEUE_TIMEOUT_SECONDS, not a multiple of it.
-    budget = llm_queue.WaitBudget()
+    budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
 
     def events():
         # The gatekeeper runs inside the stream rather than before it: under
@@ -734,11 +744,13 @@ class ExtractResponse(BaseModel):
 
 
 @app.post("/solve/extract", response_model=ExtractResponse)
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 async def solve_extract(
     request: Request,
     response: Response,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
+    _attachments: None = Depends(ai_control.require_attachments),
 ) -> ExtractResponse:
     """Read an exercise from a photo or a PDF attached in the chat.
 

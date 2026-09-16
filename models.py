@@ -162,6 +162,16 @@ class User(Base):
     niveau: Mapped[str | None] = mapped_column(Text, nullable=True)
     section: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Set by an admin to suspend the account (admin console): every session
+    # is refused and signing in again is refused too, until an admin
+    # reactivates it. Null means active. The reason is shown to the admin only.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # A personal solve rate limit ("5/minute;50/hour"), replacing the global
+    # one for this account only. Null means the global limit applies.
+    solve_rate_limit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -555,3 +565,41 @@ class ChapterExercise(Base):
     chapter: Mapped[UploadedChapter] = relationship(back_populates="exercises")
 
     __table_args__ = (Index("ix_chapter_exercises_chapter_position", "chapter_id", "position"),)
+
+
+# --- admin controls -------------------------------------------------------------
+#
+# Settings an admin changes from the console while the app runs (the AI pause,
+# the daily budget guard, the solve rate limit, ...). runtime_settings.py owns
+# the keys, their defaults and their validation; a row exists only for a key
+# that has been changed, so a missing row means "the default from config.py".
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict | list | str | int | float | bool | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AdminAuditEntry(Base):
+    """One thing an admin did from the console: who, when, what, to what."""
+
+    __tablename__ = "admin_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    admin_email: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (Index("ix_admin_audit_created_at", "created_at"),)

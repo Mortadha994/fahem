@@ -5,12 +5,49 @@ import {
   errorMessage,
   fetchUser,
   fullDate,
+  reactivateUser,
   revokeSessions,
+  suspendUser,
   UnauthorizedError,
   updateUser,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
 import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
+
+/* The school system, as the student's own profile question offers it
+   (models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
+const NIVEAUX = [
+  ["2eme", "2ème année"],
+  ["3eme", "3ème année"],
+  ["bac", "Bac"],
+];
+const SECTIONS = {
+  informatique: "Informatique",
+  math: "Mathématiques",
+  sciences: "Sciences expérimentales",
+  lettres: "Lettres",
+  technique: "Sciences techniques",
+  eco: "Économie et gestion",
+};
+const SECTIONS_BY_NIVEAU = {
+  "2eme": ["informatique", "sciences", "lettres", "eco"],
+  "3eme": Object.keys(SECTIONS),
+  bac: Object.keys(SECTIONS),
+};
+const LIMIT_RE = /^\s*(\d+)\s*\/\s*minute\s*;\s*(\d+)\s*\/\s*hour\s*$/i;
+
+/** The editable account fields, as the form holds them. */
+function accountForm(u) {
+  const limit = LIMIT_RE.exec(u.solve_rate_limit ?? "");
+  return {
+    niveau: u.niveau ?? "",
+    section: u.section ?? "",
+    plan: u.plan ?? "free",
+    customLimit: Boolean(u.solve_rate_limit),
+    perMinute: limit?.[1] ?? "5",
+    perHour: limit?.[2] ?? "50",
+  };
+}
 
 /**
  * One account: what it is, what can be edited, and the two consequential
@@ -29,8 +66,10 @@ export default function AdminUserDetail() {
   const [form, setForm] = useState(null);
   const [notice, setNotice] = useState(location.state?.created ? "Compte créé." : null);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(null); // save | revoke | delete
-  const [confirming, setConfirming] = useState(null); // revoke | delete
+  const [busy, setBusy] = useState(null); // save | account | suspend | reactivate | revoke | delete
+  const [confirming, setConfirming] = useState(null); // suspend | revoke | delete
+  const [control, setControl] = useState(null); // accountForm()
+  const [reason, setReason] = useState("");
 
   function fail(err) {
     if (err instanceof UnauthorizedError) onUnauthorized();
@@ -43,6 +82,7 @@ export default function AdminUserDetail() {
       .then((u) => {
         if (cancelled) return;
         setAccount(u);
+        setControl(accountForm(u));
         setForm({
           display_name: u.display_name ?? "",
           email_verified: u.email_verified,
@@ -105,6 +145,85 @@ export default function AdminUserDetail() {
     }
   }
 
+  const controlDirty =
+    control &&
+    account &&
+    (control.niveau !== (account.niveau ?? "") ||
+      control.section !== (account.section ?? "") ||
+      control.plan !== (account.plan ?? "free") ||
+      control.customLimit !== Boolean(account.solve_rate_limit) ||
+      (control.customLimit &&
+        `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour` !==
+          account.solve_rate_limit));
+  const sectionOk =
+    !control?.niveau || SECTIONS_BY_NIVEAU[control.niveau]?.includes(control.section);
+  const limitOk =
+    !control?.customLimit ||
+    (Number(control.perMinute) >= 1 && Number(control.perHour) >= 1);
+
+  async function saveControl(e) {
+    e.preventDefault();
+    setBusy("account");
+    setError(null);
+    setNotice(null);
+    const body = {
+      plan: control.plan,
+      solve_rate_limit: control.customLimit
+        ? `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour`
+        : null,
+    };
+    if (
+      control.niveau !== (account.niveau ?? "") ||
+      control.section !== (account.section ?? "")
+    ) {
+      body.niveau = control.niveau || null;
+      body.section = control.niveau ? control.section : null;
+    }
+    try {
+      const updated = await updateUser(account.id, body);
+      setAccount(updated);
+      setControl(accountForm(updated));
+      setNotice("Classe, offre et limite enregistrées.");
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doSuspend() {
+    setBusy("suspend");
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await suspendUser(account.id, reason);
+      setAccount(updated);
+      setConfirming(null);
+      setReason("");
+      setNotice(
+        "Compte suspendu : ses sessions sont fermées et il ne peut plus se connecter."
+      );
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doReactivate() {
+    setBusy("reactivate");
+    setError(null);
+    setNotice(null);
+    try {
+      setAccount(await reactivateUser(account.id));
+      setNotice("Compte réactivé : l'élève peut se reconnecter.");
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function doRevoke() {
     setBusy("revoke");
     setError(null);
@@ -153,6 +272,9 @@ export default function AdminUserDetail() {
               {isAdminAccount ? "Admin" : "Élève"}
             </span>
             {isSelf && <span className="adm-tag adm-tag-dim">Toi</span>}
+            {account.suspended_at && (
+              <span className="adm-tag adm-tag-danger">Suspendu</span>
+            )}
           </p>
         </div>
       </header>
@@ -233,8 +355,185 @@ export default function AdminUserDetail() {
         </div>
       </form>
 
+      {!isAdminAccount && control && (
+        <form className="adm-panel adm-form" onSubmit={saveControl}>
+          <h2 className="adm-h2">Classe, offre et limite</h2>
+          <div className="ctl-fields">
+            <label className="adm-field">
+              <span>Niveau</span>
+              <select
+                className="adm-input"
+                value={control.niveau}
+                onChange={(e) => {
+                  const niveau = e.target.value;
+                  setControl((c) => ({
+                    ...c,
+                    niveau,
+                    section: SECTIONS_BY_NIVEAU[niveau]?.includes(c.section)
+                      ? c.section
+                      : (SECTIONS_BY_NIVEAU[niveau]?.[0] ?? ""),
+                  }));
+                }}
+              >
+                <option value="">Non renseigné</option>
+                {NIVEAUX.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="adm-field">
+              <span>Section</span>
+              <select
+                className="adm-input"
+                value={control.section}
+                disabled={!control.niveau}
+                onChange={(e) => setControl((c) => ({ ...c, section: e.target.value }))}
+              >
+                {!control.niveau && <option value="">—</option>}
+                {(SECTIONS_BY_NIVEAU[control.niveau] ?? []).map((key) => (
+                  <option key={key} value={key}>
+                    {SECTIONS[key]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="adm-field">
+              <span>Offre</span>
+              <select
+                className="adm-input"
+                value={control.plan}
+                onChange={(e) => setControl((c) => ({ ...c, plan: e.target.value }))}
+              >
+                <option value="free">Gratuite</option>
+                <option value="paid">Payante (prioritaire dans la file)</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset className="ctl-field">
+            <legend>Limite de requêtes</legend>
+            <label className="adm-check">
+              <input
+                type="radio"
+                name="limit"
+                checked={!control.customLimit}
+                onChange={() => setControl((c) => ({ ...c, customLimit: false }))}
+              />
+              <span>Limite globale (réglée dans Surveillance IA)</span>
+            </label>
+            <label className="adm-check">
+              <input
+                type="radio"
+                name="limit"
+                checked={control.customLimit}
+                onChange={() => setControl((c) => ({ ...c, customLimit: true }))}
+              />
+              <span>Limite personnelle</span>
+            </label>
+            {control.customLimit && (
+              <span className="ctl-inline">
+                <input
+                  className="adm-input ctl-num"
+                  type="number"
+                  min={1}
+                  value={control.perMinute}
+                  onChange={(e) =>
+                    setControl((c) => ({ ...c, perMinute: e.target.value }))
+                  }
+                  aria-label="Requêtes par minute"
+                />
+                / min
+                <input
+                  className="adm-input ctl-num"
+                  type="number"
+                  min={1}
+                  value={control.perHour}
+                  onChange={(e) =>
+                    setControl((c) => ({ ...c, perHour: e.target.value }))
+                  }
+                  aria-label="Requêtes par heure"
+                />
+                / heure
+              </span>
+            )}
+          </fieldset>
+
+          <div className="adm-form-actions">
+            <button
+              className="adm-btn adm-btn-primary"
+              disabled={!controlDirty || !sectionOk || !limitOk || busy === "account"}
+            >
+              {busy === "account" ? "Enregistrement…" : "Enregistrer"}
+            </button>
+          </div>
+        </form>
+      )}
+
       <section className="adm-panel adm-danger">
         <h2 className="adm-h2">Actions sensibles</h2>
+
+        <div className="adm-danger-row">
+          <div>
+            <p className="adm-strong">
+              {account.suspended_at ? "Compte suspendu" : "Suspendre le compte"}
+            </p>
+            <p className="adm-muted adm-small">
+              {isSelf
+                ? "Tu ne peux pas suspendre ton propre compte."
+                : isAdminAccount
+                  ? "Un compte admin ne se suspend pas depuis la console."
+                  : account.suspended_at
+                    ? `Depuis le ${fullDate(account.suspended_at)}${
+                        account.suspended_reason
+                          ? ` — « ${account.suspended_reason} »`
+                          : ""
+                      }. L'élève ne peut plus se connecter.`
+                    : "Ferme ses sessions et bloque la connexion, sans rien effacer. Réversible."}
+            </p>
+            {confirming === "suspend" && (
+              <input
+                className="adm-input ctl-reason"
+                placeholder="Raison (visible par les admins seulement)"
+                maxLength={300}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                aria-label="Raison de la suspension"
+              />
+            )}
+          </div>
+          {account.suspended_at ? (
+            <button
+              className="adm-btn adm-btn-primary"
+              disabled={busy === "reactivate"}
+              onClick={doReactivate}
+            >
+              {busy === "reactivate" ? "Réactivation…" : "Réactiver"}
+            </button>
+          ) : confirming === "suspend" ? (
+            <span className="adm-confirm">
+              <button className="adm-btn" onClick={() => setConfirming(null)}>
+                Annuler
+              </button>
+              <button
+                className="adm-btn adm-btn-danger"
+                disabled={busy === "suspend"}
+                onClick={doSuspend}
+              >
+                Suspendre {name}
+              </button>
+            </span>
+          ) : (
+            <button
+              className="adm-btn adm-btn-warn"
+              disabled={isSelf || isAdminAccount}
+              onClick={() => setConfirming("suspend")}
+            >
+              Suspendre
+            </button>
+          )}
+        </div>
 
         <div className="adm-danger-row">
           <div>

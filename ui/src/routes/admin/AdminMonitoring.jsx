@@ -4,6 +4,7 @@ import { fetchMonitoring, relativeTime, UnauthorizedError } from "../../lib/admi
 import { useAuth } from "../../lib/authContext.js";
 import { SPRING_ENTER, rise, stagger } from "../../lib/motion.js";
 import CountUp from "../../components/CountUp.jsx";
+import AiControls from "../../components/admin/AiControls.jsx";
 
 /**
  * Surveillance IA: how hard Fahem is leaning on Groq, right now and over 24h.
@@ -106,7 +107,8 @@ export default function AdminMonitoring() {
         <div>
           <h1 className="adm-h1">Surveillance IA</h1>
           <p className="adm-sub">
-            Charge de Groq, consommation et activité du chat, en direct et sur 24 h.
+            Charge de Groq, consommation et activité du chat — et les commandes pour
+            agir dessus.
           </p>
         </div>
         <div className="mon-live">
@@ -147,6 +149,10 @@ export default function AdminMonitoring() {
             : " : Groq a refusé des appels ces 5 dernières minutes."}
         </m.p>
       ))}
+
+      {/* See and act in the same place: every control refreshes the
+          figures below as soon as it is applied. */}
+      <AiControls onChanged={load} />
 
       {!data ? (
         <div className="mon-skeleton">

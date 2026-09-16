@@ -25,7 +25,6 @@ from typing import Iterator
 
 import llm_queue
 import llm_usage
-from config import GROQ_QUEUE_TIMEOUT_SECONDS
 from generate import GROQ_MODEL, GROQ_URL
 
 
@@ -82,7 +81,8 @@ def stream_groq(
             # (llm_queue.aging_for).
             llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
             llm_queue.groq_max_concurrent(GROQ_MODEL),
-            GROQ_QUEUE_TIMEOUT_SECONDS,
+            # The request's own budget (the admin's live queue timeout).
+            budget.total,
             kind=llm_queue.KIND_SOLVE,
             budget=budget,
             age_after_seconds=age_after_seconds,

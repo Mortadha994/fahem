@@ -74,6 +74,13 @@ export async function streamSolve(
     return;
   }
 
+  // 503 with a sentence: an admin control (the AI paused, the daily budget
+  // guard) refused the request before any model call. Shown as it is.
+  if (response.status === 503) {
+    onError?.(await controlMessage(response));
+    return;
+  }
+
   if (!response.ok) {
     onError?.(GENERIC_ERROR);
     return;
@@ -128,6 +135,20 @@ export async function streamSolve(
   }
 }
 
+/**
+ * The sentence an admin control sent with its 503 ({detail: {code, message}},
+ * ai_control.py), or the busy message if there is none.
+ */
+async function controlMessage(response) {
+  try {
+    const body = await response.json();
+    const message = body?.detail?.message;
+    return typeof message === "string" && message ? message : BUSY_ERROR;
+  } catch {
+    return BUSY_ERROR;
+  }
+}
+
 /** The file types /solve/extract reads, and its size cap (config.py). */
 export const ATTACHMENT_TYPES = [
   "image/jpeg",
@@ -176,6 +197,10 @@ export async function extractAttachment(file, { signal } = {}) {
       rateLimited: true,
       retryAfter: Number.isFinite(header) && header > 0 ? header : null,
     };
+  }
+
+  if (response.status === 503) {
+    return { ok: false, error: await controlMessage(response) };
   }
 
   let body = null;

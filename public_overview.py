@@ -36,6 +36,7 @@ from pydantic import BaseModel
 import chapter_store
 import chapters
 import rag_store
+import runtime_settings
 from config import COLLECTION_NAME, GROQ_VISION_MODEL
 from models import NIVEAUX
 
@@ -181,7 +182,9 @@ def build_overview() -> Overview:
             niveaux=niveaux,
         ),
         features=Features(
-            photo_attachments=bool(GROQ_VISION_MODEL),
+            # Off when the admin switched photo reading off (runtime_settings).
+            photo_attachments=bool(GROQ_VISION_MODEL)
+            and bool(runtime_settings.get("attachments_enabled")),
             languages=["Algorithme", "Python"],
         ),
     )
