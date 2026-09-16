@@ -16,6 +16,7 @@ import {
 } from "../../lib/adminStatus.js";
 import AdminAvatar from "./AdminAvatar.jsx";
 import CommandPalette from "./CommandPalette.jsx";
+import Toaster from "./Toaster.jsx";
 import ThemeToggle from "../ThemeToggle.jsx";
 import {
   IconArrowLeft,
@@ -180,171 +181,181 @@ export default function AdminLayout() {
       <MotionConfig reducedMotion="user">
         <AdminStatusContext.Provider value={statusValue}>
           <div className={`adm adm-shell${navOpen ? " adm-nav-open" : ""}`}>
-            <aside className="adm-side" aria-label="Navigation administration">
-              <div className="adm-side-top">
-                <Link to="/admin" className="adm-brand" onClick={closeNav}>
-                  <span className="adm-brand-mark" aria-hidden="true">
-                    ←
-                  </span>
-                  <span className="adm-brand-text">
-                    Fahem
-                    <small>Console</small>
+            {/* Notifications at the bottom of the page, for every console screen. */}
+            <Toaster>
+              <aside className="adm-side" aria-label="Navigation administration">
+                <div className="adm-side-top">
+                  <Link to="/admin" className="adm-brand" onClick={closeNav}>
+                    <span className="adm-brand-mark" aria-hidden="true">
+                      ←
+                    </span>
+                    <span className="adm-brand-text">
+                      Fahem
+                      <small>Console</small>
+                    </span>
+                  </Link>
+                  <button
+                    className="adm-icon-btn adm-side-close"
+                    aria-label="Fermer le menu"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    <IconX />
+                  </button>
+                </div>
+
+                <button className="adm-search-btn" onClick={() => setPaletteOpen(true)}>
+                  <IconSearch size={16} />
+                  <span>Rechercher…</span>
+                  <kbd>Ctrl K</kbd>
+                </button>
+
+                <nav className="adm-side-nav">
+                  {NAV.map((group) => (
+                    <div className="adm-side-group" key={group.title}>
+                      <p className="adm-side-title">{group.title}</p>
+                      {group.items.map(
+                        ({ to, end, label: text, Icon, status: withStatus }) => (
+                          <NavLink
+                            key={to}
+                            to={to}
+                            end={end}
+                            className="adm-side-link"
+                            onClick={closeNav}
+                          >
+                            {({ isActive }) => (
+                              <>
+                                {isActive && (
+                                  <m.span
+                                    layoutId="adm-side-pill"
+                                    className="adm-side-pill"
+                                    transition={NAV_SPRING}
+                                  />
+                                )}
+                                <Icon className="adm-side-icon" />
+                                <span className="adm-side-label">{text}</span>
+                                {withStatus && status && status !== "on" && (
+                                  <span
+                                    className={`adm-dot is-${status}`}
+                                    title={STATUS_LABELS[status]}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </NavLink>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </nav>
+
+                <Link
+                  to="/admin/ia?onglet=controles"
+                  className={`adm-status-card is-${status ?? "unknown"}`}
+                  onClick={closeNav}
+                >
+                  <span className="adm-status-card-dot" aria-hidden="true" />
+                  <span>
+                    <span className="adm-status-card-title">
+                      {status ? STATUS_LABELS[status] : "État de l'IA…"}
+                    </span>
+                    <span className="adm-status-card-sub">
+                      {controls
+                        ? `${Math.round((controls.budget.used / (controls.budget.limit || 1)) * 100)} % du budget du jour`
+                        : "Chargement"}
+                    </span>
                   </span>
                 </Link>
-                <button
-                  className="adm-icon-btn adm-side-close"
-                  aria-label="Fermer le menu"
-                  onClick={() => setNavOpen(false)}
-                >
-                  <IconX />
-                </button>
-              </div>
 
-              <button className="adm-search-btn" onClick={() => setPaletteOpen(true)}>
-                <IconSearch size={16} />
-                <span>Rechercher…</span>
-                <kbd>Ctrl K</kbd>
-              </button>
-
-              <nav className="adm-side-nav">
-                {NAV.map((group) => (
-                  <div className="adm-side-group" key={group.title}>
-                    <p className="adm-side-title">{group.title}</p>
-                    {group.items.map(
-                      ({ to, end, label: text, Icon, status: withStatus }) => (
-                        <NavLink
-                          key={to}
-                          to={to}
-                          end={end}
-                          className="adm-side-link"
-                          onClick={closeNav}
-                        >
-                          {({ isActive }) => (
-                            <>
-                              {isActive && (
-                                <m.span
-                                  layoutId="adm-side-pill"
-                                  className="adm-side-pill"
-                                  transition={NAV_SPRING}
-                                />
-                              )}
-                              <Icon className="adm-side-icon" />
-                              <span className="adm-side-label">{text}</span>
-                              {withStatus && status && status !== "on" && (
-                                <span
-                                  className={`adm-dot is-${status}`}
-                                  title={STATUS_LABELS[status]}
-                                />
-                              )}
-                            </>
-                          )}
-                        </NavLink>
-                      )
-                    )}
+                <div className="adm-side-foot">
+                  <div className="adm-me">
+                    <AdminAvatar seed={user?.id} label={label} />
+                    <span className="adm-me-text">
+                      <span className="adm-me-name">{label}</span>
+                      <span className="adm-me-mail">{user?.email}</span>
+                    </span>
                   </div>
-                ))}
-              </nav>
-
-              <Link
-                to="/admin/ia?onglet=controles"
-                className={`adm-status-card is-${status ?? "unknown"}`}
-                onClick={closeNav}
-              >
-                <span className="adm-status-card-dot" aria-hidden="true" />
-                <span>
-                  <span className="adm-status-card-title">
-                    {status ? STATUS_LABELS[status] : "État de l'IA…"}
-                  </span>
-                  <span className="adm-status-card-sub">
-                    {controls
-                      ? `${Math.round((controls.budget.used / (controls.budget.limit || 1)) * 100)} % du budget du jour`
-                      : "Chargement"}
-                  </span>
-                </span>
-              </Link>
-
-              <div className="adm-side-foot">
-                <div className="adm-me">
-                  <AdminAvatar seed={user?.id} label={label} />
-                  <span className="adm-me-text">
-                    <span className="adm-me-name">{label}</span>
-                    <span className="adm-me-mail">{user?.email}</span>
-                  </span>
-                </div>
-                <div className="adm-me-actions">
-                  <ThemeToggle className="adm-theme" />
-                  <Link to="/" className="adm-icon-btn" title="Retour à l'app">
-                    <IconArrowLeft />
-                    <span className="sr-only">Retour à l'app</span>
-                  </Link>
-                  <button className="adm-icon-btn" title="Déconnexion" onClick={logout}>
-                    <IconLogout />
-                    <span className="sr-only">Déconnexion</span>
-                  </button>
-                </div>
-              </div>
-            </aside>
-            {navOpen && (
-              <div
-                className="adm-scrim"
-                onClick={() => setNavOpen(false)}
-                aria-hidden="true"
-              />
-            )}
-
-            <div className="adm-content">
-              <header className="adm-top">
-                <button
-                  className="adm-icon-btn adm-top-menu"
-                  aria-label="Menu"
-                  aria-expanded={navOpen}
-                  onClick={() => setNavOpen(true)}
-                >
-                  <IconMenu />
-                </button>
-                <p className="adm-top-title">
-                  <span className="adm-top-crumb">Console</span>
-                  <span aria-hidden="true">/</span>
-                  <span className="adm-top-page">{pageTitle(location.pathname)}</span>
-                </p>
-                <div className="adm-top-right">
-                  {status && (
-                    <Link
-                      to="/admin/ia?onglet=controles"
-                      className={`adm-pill is-${status}`}
-                      aria-label={`${STATUS_LABELS[status]} — ouvrir les contrôles`}
-                    >
-                      <span className="adm-pill-dot" aria-hidden="true" />
-                      {STATUS_LABELS[status]}
+                  <div className="adm-me-actions">
+                    <ThemeToggle className="adm-theme" />
+                    <Link to="/" className="adm-icon-btn" title="Retour à l'app">
+                      <IconArrowLeft />
+                      <span className="sr-only">Retour à l'app</span>
                     </Link>
-                  )}
-                  <button
-                    className="adm-icon-btn adm-top-search"
-                    aria-label="Rechercher"
-                    onClick={() => setPaletteOpen(true)}
-                  >
-                    <IconSearch />
-                  </button>
+                    <button
+                      className="adm-icon-btn"
+                      title="Déconnexion"
+                      onClick={logout}
+                    >
+                      <IconLogout />
+                      <span className="sr-only">Déconnexion</span>
+                    </button>
+                  </div>
                 </div>
-              </header>
+              </aside>
+              {navOpen && (
+                <div
+                  className="adm-scrim"
+                  onClick={() => setNavOpen(false)}
+                  aria-hidden="true"
+                />
+              )}
 
-              <main className="adm-main">
-                <AnimatePresence mode="wait" initial={false}>
-                  <m.div
-                    key={section}
-                    className="adm-route"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
+              <div className="adm-content">
+                <header className="adm-top">
+                  <button
+                    className="adm-icon-btn adm-top-menu"
+                    aria-label="Menu"
+                    aria-expanded={navOpen}
+                    onClick={() => setNavOpen(true)}
                   >
-                    {outlet}
-                  </m.div>
-                </AnimatePresence>
-              </main>
-            </div>
+                    <IconMenu />
+                  </button>
+                  <p className="adm-top-title">
+                    <span className="adm-top-crumb">Console</span>
+                    <span aria-hidden="true">/</span>
+                    <span className="adm-top-page">{pageTitle(location.pathname)}</span>
+                  </p>
+                  <div className="adm-top-right">
+                    {status && (
+                      <Link
+                        to="/admin/ia?onglet=controles"
+                        className={`adm-pill is-${status}`}
+                        aria-label={`${STATUS_LABELS[status]} — ouvrir les contrôles`}
+                      >
+                        <span className="adm-pill-dot" aria-hidden="true" />
+                        {STATUS_LABELS[status]}
+                      </Link>
+                    )}
+                    <button
+                      className="adm-icon-btn adm-top-search"
+                      aria-label="Rechercher"
+                      onClick={() => setPaletteOpen(true)}
+                    >
+                      <IconSearch />
+                    </button>
+                  </div>
+                </header>
 
-            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+                <main className="adm-main">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <m.div
+                      key={section}
+                      className="adm-route"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18, ease: "easeOut" }}
+                    >
+                      {outlet}
+                    </m.div>
+                  </AnimatePresence>
+                </main>
+              </div>
+
+              <CommandPalette
+                open={paletteOpen}
+                onClose={() => setPaletteOpen(false)}
+              />
+            </Toaster>
           </div>
         </AdminStatusContext.Provider>
       </MotionConfig>

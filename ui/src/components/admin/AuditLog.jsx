@@ -10,6 +10,7 @@ import {
   UnauthorizedError,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import { useToast } from "../../lib/toast.js";
 import {
   CATEGORY_OF,
   changesOf,
@@ -71,7 +72,7 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
   const [error, setError] = useState(null);
   const [confirming, setConfirming] = useState(null); // entry id
   const [reverting, setReverting] = useState(null);
-  const [flash, setFlash] = useState(null);
+  const toast = useToast();
   // Bumped after a revert, which adds its own entry to the log.
   const [reload, setReload] = useState(0);
   const request = useRef(0);
@@ -115,7 +116,8 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
       setItems((list) => [...list, ...page.items]);
       setNextBefore(page.next_before);
     } catch (err) {
-      fail(err);
+      if (err instanceof UnauthorizedError) onUnauthorized();
+      else toast.error(errorMessage(err));
     } finally {
       setLoadingMore(false);
     }
@@ -127,11 +129,12 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
     try {
       const controls = await revertAudit(entry.id);
       setConfirming(null);
-      setFlash("Réglages rétablis.");
+      toast.success("Réglages rétablis.");
       setReload((n) => n + 1);
       onReverted?.(controls);
     } catch (err) {
-      fail(err);
+      if (err instanceof UnauthorizedError) onUnauthorized();
+      else toast.error(errorMessage(err));
     } finally {
       setReverting(null);
     }
@@ -182,12 +185,6 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
           </button>
         ))}
       </div>
-
-      {flash && (
-        <p className="adm-notice" role="status">
-          {flash}
-        </p>
-      )}
       {error && (
         <p className="adm-alert" role="alert">
           {error}
@@ -311,7 +308,6 @@ export default function AuditLog({ version = 0, onReverted, queueLabels = {} }) 
                                 <button
                                   className="log-revert"
                                   onClick={() => {
-                                    setFlash(null);
                                     setConfirming(entry.id);
                                   }}
                                 >

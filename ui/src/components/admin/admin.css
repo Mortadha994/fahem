@@ -2779,3 +2779,132 @@ a.log-target:hover {
     flex-basis: 100%;
   }
 }
+
+/* --- toasts at the bottom of the page (Toaster.jsx) ------------------------------------- */
+.adm-toaster {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 60;
+  width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* Centred on the content, not on the whole window, when the sidebar is shown. */
+@media (min-width: 861px) {
+  .adm-toaster {
+    left: calc(50% + 128px);
+  }
+}
+.adm-toast-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-toast {
+  --tone: var(--adm-accent);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 12px 12px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--adm-surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0 0 1px var(--adm-line),
+    0 12px 32px -12px rgb(20 10 60 / 0.35),
+    0 2px 6px rgb(20 10 60 / 0.08);
+  color: var(--adm-fg);
+  pointer-events: auto;
+  touch-action: pan-x;
+  cursor: grab;
+}
+.adm-toast:active {
+  cursor: grabbing;
+}
+.adm-toast.is-success {
+  --tone: var(--adm-ok);
+}
+.adm-toast.is-error {
+  --tone: var(--adm-danger);
+}
+.adm-toast-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone) 15%, var(--adm-surface));
+  color: var(--tone);
+}
+.adm-toast-message {
+  flex: 1;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+.adm-toast-action {
+  flex: none;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.adm-toast-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--adm-accent) 20%, var(--adm-surface));
+}
+.adm-toast-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--adm-dim);
+  cursor: pointer;
+}
+.adm-toast-close:hover {
+  background: var(--adm-surface-2);
+  color: var(--adm-fg);
+}
+.adm-toast-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--tone);
+  opacity: 0.55;
+  transform-origin: 0 50%;
+  animation-name: adm-toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes adm-toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-toast-timer {
+    animation: none;
+    opacity: 0;
+  }
+}

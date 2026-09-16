@@ -5,11 +5,13 @@ import {
   fetchControls,
   relativeTime,
   resetQueue,
+  revertAudit,
   UnauthorizedError,
   updateControls,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
 import { useAdminStatus } from "../../lib/adminStatus.js";
+import { useToast } from "../../lib/toast.js";
 import { formatValue } from "../../lib/auditFormat.js";
 import AuditLog from "./AuditLog.jsx";
 import { SPRING_ENTER, rise } from "../../lib/motion.js";
@@ -102,7 +104,7 @@ export default function AiControls({ onChanged }) {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(null); // pause | guard | save | reset:<model>
   const [confirming, setConfirming] = useState(null); // pause | reset:<model>
-  const [notice, setNotice] = useState(null);
+  const toast = useToast();
   const [error, setError] = useState(null);
   // Bumped by every applied change, so the action log below reloads.
   const [version, setVersion] = useState(0);
@@ -141,20 +143,42 @@ export default function AiControls({ onChanged }) {
     };
   }, [fail]);
 
+  // Everything a change touches: this panel, the log, the page, the status.
+  function applied(next, resetForm) {
+    apply(next, { resetForm });
+    setVersion((v) => v + 1);
+    onChanged?.();
+    refreshStatus();
+  }
+
   async function run(kind, action, success) {
     setBusy(kind);
     setError(null);
-    setNotice(null);
     try {
       const next = await action();
-      apply(next, { resetForm: kind === "save" || !dirty });
-      setNotice(success);
+      applied(next, kind === "save" || !dirty);
       setConfirming(null);
-      setVersion((v) => v + 1);
-      onChanged?.();
-      refreshStatus();
+      // The change just logged, when it can be put back: offer to, in the toast.
+      const entry = next.audit?.[0];
+      const undo =
+        entry?.revertible && entry.action === "settings.update"
+          ? {
+              label: "Annuler",
+              run: async () => {
+                try {
+                  applied(await revertAudit(entry.id), true);
+                  toast.info("Changement annulé.");
+                } catch (err) {
+                  if (err instanceof UnauthorizedError) onUnauthorized();
+                  else toast.error(errorMessage(err));
+                }
+              },
+            }
+          : undefined;
+      toast.success(success, { action: undo });
     } catch (err) {
-      fail(err);
+      if (err instanceof UnauthorizedError) onUnauthorized();
+      else toast.error(errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -217,11 +241,6 @@ export default function AiControls({ onChanged }) {
           </span>
         </header>
 
-        {notice && (
-          <p className="adm-notice" role="status">
-            {notice}
-          </p>
-        )}
         {error && (
           <p className="adm-alert" role="alert">
             {error}

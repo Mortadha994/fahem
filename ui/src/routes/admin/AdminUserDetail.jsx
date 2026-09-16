@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deleteUser,
@@ -12,6 +12,7 @@ import {
   updateUser,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import { useToast } from "../../lib/toast.js";
 import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
 import AdminTabs from "../../components/admin/AdminTabs.jsx";
 import { IconShield, IconUser } from "../../components/admin/icons.jsx";
@@ -66,8 +67,7 @@ export default function AdminUserDetail() {
   const [account, setAccount] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [form, setForm] = useState(null);
-  const [notice, setNotice] = useState(location.state?.created ? "Compte créé." : null);
-  const [error, setError] = useState(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(null); // save | account | suspend | reactivate | revoke | delete
   const [confirming, setConfirming] = useState(null); // suspend | revoke | delete
   const [control, setControl] = useState(null); // accountForm()
@@ -75,8 +75,19 @@ export default function AdminUserDetail() {
 
   function fail(err) {
     if (err instanceof UnauthorizedError) onUnauthorized();
-    else setError(errorMessage(err));
+    else toast.error(errorMessage(err));
   }
+
+  // Arriving from "Créer un compte": say so once (the ref survives StrictMode's
+  // double effect in development).
+  const announced = useRef(false);
+  const created = Boolean(location.state?.created);
+  useEffect(() => {
+    if (created && !announced.current) {
+      announced.current = true;
+      toast.success("Compte créé.");
+    }
+  }, [created, toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +138,6 @@ export default function AdminUserDetail() {
   async function save(e) {
     e.preventDefault();
     setBusy("save");
-    setError(null);
-    setNotice(null);
     try {
       const updated = await updateUser(account.id, {
         display_name: form.display_name,
@@ -139,7 +148,7 @@ export default function AdminUserDetail() {
         display_name: updated.display_name ?? "",
         email_verified: updated.email_verified,
       });
-      setNotice("Modifications enregistrées.");
+      toast.success("Modifications enregistrées.");
     } catch (err) {
       fail(err);
     } finally {
@@ -166,8 +175,6 @@ export default function AdminUserDetail() {
   async function saveControl(e) {
     e.preventDefault();
     setBusy("account");
-    setError(null);
-    setNotice(null);
     const body = {
       plan: control.plan,
       solve_rate_limit: control.customLimit
@@ -185,7 +192,7 @@ export default function AdminUserDetail() {
       const updated = await updateUser(account.id, body);
       setAccount(updated);
       setControl(accountForm(updated));
-      setNotice("Classe, offre et limite enregistrées.");
+      toast.success("Classe, offre et limite enregistrées.");
     } catch (err) {
       fail(err);
     } finally {
@@ -195,14 +202,12 @@ export default function AdminUserDetail() {
 
   async function doSuspend() {
     setBusy("suspend");
-    setError(null);
-    setNotice(null);
     try {
       const updated = await suspendUser(account.id, reason);
       setAccount(updated);
       setConfirming(null);
       setReason("");
-      setNotice(
+      toast.success(
         "Compte suspendu : ses sessions sont fermées et il ne peut plus se connecter."
       );
     } catch (err) {
@@ -214,11 +219,9 @@ export default function AdminUserDetail() {
 
   async function doReactivate() {
     setBusy("reactivate");
-    setError(null);
-    setNotice(null);
     try {
       setAccount(await reactivateUser(account.id));
-      setNotice("Compte réactivé : l'élève peut se reconnecter.");
+      toast.success("Compte réactivé : l'élève peut se reconnecter.");
     } catch (err) {
       fail(err);
     } finally {
@@ -228,14 +231,12 @@ export default function AdminUserDetail() {
 
   async function doRevoke() {
     setBusy("revoke");
-    setError(null);
-    setNotice(null);
     try {
       setAccount(await revokeSessions(account.id));
       setConfirming(null);
       // Revoking your own sessions includes this one; the next call 401s and
       // App.jsx sends you to sign in, which is the honest outcome.
-      setNotice("Toutes les sessions de ce compte ont été fermées.");
+      toast.success("Toutes les sessions de ce compte ont été fermées.");
     } catch (err) {
       fail(err);
     } finally {
@@ -245,7 +246,6 @@ export default function AdminUserDetail() {
 
   async function doDelete() {
     setBusy("delete");
-    setError(null);
     try {
       await deleteUser(account.id);
       navigate("/admin/utilisateurs", { replace: true });
@@ -274,17 +274,6 @@ export default function AdminUserDetail() {
       <Link to="/admin/utilisateurs" className="adm-back">
         ← Utilisateurs
       </Link>
-
-      {notice && (
-        <p className="adm-notice" role="status">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p className="adm-alert" role="alert">
-          {error}
-        </p>
-      )}
 
       <div className="adm-user-layout">
         {/* Who this is, always in view while editing. */}
