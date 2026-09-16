@@ -9,6 +9,7 @@ import {
   updateControls,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import { useAdminStatus } from "../../lib/adminStatus.js";
 import { SPRING_ENTER, rise } from "../../lib/motion.js";
 
 /**
@@ -107,6 +108,9 @@ function describe(entry) {
 
 export default function AiControls({ onChanged }) {
   const { onUnauthorized } = useAuth();
+  // The sidebar card and the top bar pill show the same status: refresh them
+  // as soon as a control changes it.
+  const { refresh: refreshStatus } = useAdminStatus();
   const [data, setData] = useState(null);
   const [form, setForm] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -159,6 +163,7 @@ export default function AiControls({ onChanged }) {
       setNotice(success);
       setConfirming(null);
       onChanged?.();
+      refreshStatus();
     } catch (err) {
       fail(err);
     } finally {

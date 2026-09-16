@@ -13,6 +13,8 @@ import {
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
 import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
+import AdminTabs from "../../components/admin/AdminTabs.jsx";
+import { IconShield, IconUser } from "../../components/admin/icons.jsx";
 
 /* The school system, as the student's own profile question offers it
    (models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
@@ -256,28 +258,22 @@ export default function AdminUserDetail() {
 
   const name = account.display_name || account.email;
 
+  const niveauLabel = NIVEAUX.find(([key]) => key === account.niveau)?.[1];
+  const tabs = [
+    { id: "profil", label: "Profil", Icon: IconUser },
+    {
+      id: "securite",
+      label: "Sécurité",
+      Icon: IconShield,
+      badge: account.suspended_at ? <span className="adm-dot is-paused" /> : null,
+    },
+  ];
+
   return (
-    <div className="adm-page adm-page-narrow">
+    <div className="adm-page">
       <Link to="/admin/utilisateurs" className="adm-back">
         ← Utilisateurs
       </Link>
-
-      <header className="adm-profile">
-        <AdminAvatar seed={account.id} label={name} size="lg" />
-        <div>
-          <h1 className="adm-h1">{account.display_name || "Sans nom"}</h1>
-          <p className="adm-sub">
-            {account.email}
-            <span className={`adm-tag adm-tag-${account.role}`}>
-              {isAdminAccount ? "Admin" : "Élève"}
-            </span>
-            {isSelf && <span className="adm-tag adm-tag-dim">Toi</span>}
-            {account.suspended_at && (
-              <span className="adm-tag adm-tag-danger">Suspendu</span>
-            )}
-          </p>
-        </div>
-      </header>
 
       {notice && (
         <p className="adm-notice" role="status">
@@ -290,313 +286,400 @@ export default function AdminUserDetail() {
         </p>
       )}
 
-      <section className="adm-panel">
-        <h2 className="adm-h2">Informations</h2>
-        <dl className="adm-facts">
-          <div>
-            <dt>Identifiant</dt>
-            <dd>
-              <code>{account.id}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>Connexion</dt>
-            <dd>
-              {account.auth_method === "google" ? "Google" : "E-mail + mot de passe"}
-            </dd>
-          </div>
-          <div>
-            <dt>Inscrit le</dt>
-            <dd>{fullDate(account.created_at)}</dd>
-          </div>
-          <div>
-            <dt>Dernière connexion</dt>
-            <dd>{fullDate(account.last_login_at)}</dd>
-          </div>
-          <div>
-            <dt>Sessions fermées le</dt>
-            <dd>{fullDate(account.sessions_valid_after)}</dd>
-          </div>
-        </dl>
-      </section>
+      <div className="adm-user-layout">
+        {/* Who this is, always in view while editing. */}
+        <aside className="adm-panel adm-id-card">
+          <AdminAvatar seed={account.id} label={name} size="lg" />
+          <h1 className="adm-h1">{account.display_name || "Sans nom"}</h1>
+          <p className="adm-muted adm-id-mail">{account.email}</p>
+          <p className="adm-id-tags">
+            <span className={`adm-tag adm-tag-${account.role}`}>
+              {isAdminAccount ? "Admin" : "Élève"}
+            </span>
+            {isSelf && <span className="adm-tag adm-tag-dim">Toi</span>}
+            {account.suspended_at && (
+              <span className="adm-tag adm-tag-danger">Suspendu</span>
+            )}
+            {account.plan === "paid" && (
+              <span className="adm-tag adm-tag-ok">Payant</span>
+            )}
+          </p>
 
-      <form className="adm-panel adm-form" onSubmit={save}>
-        <h2 className="adm-h2">Modifier</h2>
-        <label className="adm-field">
-          <span>Nom affiché</span>
-          <input
-            className="adm-input"
-            required
-            maxLength={80}
-            value={form.display_name}
-            onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
-          />
-        </label>
-        <label className="adm-check">
-          <input
-            type="checkbox"
-            checked={form.email_verified}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, email_verified: e.target.checked }))
+          {!isAdminAccount && (
+            <dl className="adm-id-stats">
+              <div>
+                <dt>Classe</dt>
+                <dd>
+                  {niveauLabel
+                    ? `${niveauLabel}${account.section ? ` · ${SECTIONS[account.section]}` : ""}`
+                    : "Non renseignée"}
+                </dd>
+              </div>
+              <div>
+                <dt>Offre</dt>
+                <dd>{account.plan === "paid" ? "Payante" : "Gratuite"}</dd>
+              </div>
+              <div>
+                <dt>Limite</dt>
+                <dd>
+                  {account.solve_rate_limit
+                    ? account.solve_rate_limit.replace(";", " · ")
+                    : "Globale"}
+                </dd>
+              </div>
+            </dl>
+          )}
+
+          <dl className="adm-facts adm-facts-compact">
+            <div>
+              <dt>Identifiant</dt>
+              <dd>
+                <code>{account.id}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Connexion</dt>
+              <dd>
+                {account.auth_method === "google" ? "Google" : "E-mail + mot de passe"}
+              </dd>
+            </div>
+            <div>
+              <dt>Inscrit le</dt>
+              <dd>{fullDate(account.created_at)}</dd>
+            </div>
+            <div>
+              <dt>Dernière connexion</dt>
+              <dd>{fullDate(account.last_login_at)}</dd>
+            </div>
+            <div>
+              <dt>Sessions fermées le</dt>
+              <dd>{fullDate(account.sessions_valid_after)}</dd>
+            </div>
+          </dl>
+        </aside>
+
+        <div className="adm-user-main">
+          <AdminTabs label="Sections du compte" tabs={tabs}>
+            {(tab) =>
+              tab === "profil" ? (
+                <div className="adm-stack">
+                  <form className="adm-panel adm-form" onSubmit={save}>
+                    <h2 className="adm-h2">Modifier</h2>
+                    <label className="adm-field">
+                      <span>Nom affiché</span>
+                      <input
+                        className="adm-input"
+                        required
+                        maxLength={80}
+                        value={form.display_name}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, display_name: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <label className="adm-check">
+                      <input
+                        type="checkbox"
+                        checked={form.email_verified}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, email_verified: e.target.checked }))
+                        }
+                      />
+                      <span>Adresse e-mail confirmée</span>
+                    </label>
+                    <p className="adm-muted adm-small">
+                      L'adresse e-mail et le rôle ne se modifient pas depuis la console.
+                    </p>
+                    <div className="adm-form-actions">
+                      <button
+                        className="adm-btn adm-btn-primary"
+                        disabled={!dirty || busy === "save"}
+                      >
+                        {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+                      </button>
+                    </div>
+                  </form>
+
+                  {!isAdminAccount && control && (
+                    <form className="adm-panel adm-form" onSubmit={saveControl}>
+                      <h2 className="adm-h2">Classe, offre et limite</h2>
+                      <div className="ctl-fields">
+                        <label className="adm-field">
+                          <span>Niveau</span>
+                          <select
+                            className="adm-input"
+                            value={control.niveau}
+                            onChange={(e) => {
+                              const niveau = e.target.value;
+                              setControl((c) => ({
+                                ...c,
+                                niveau,
+                                section: SECTIONS_BY_NIVEAU[niveau]?.includes(c.section)
+                                  ? c.section
+                                  : (SECTIONS_BY_NIVEAU[niveau]?.[0] ?? ""),
+                              }));
+                            }}
+                          >
+                            <option value="">Non renseigné</option>
+                            {NIVEAUX.map(([key, label]) => (
+                              <option key={key} value={key}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="adm-field">
+                          <span>Section</span>
+                          <select
+                            className="adm-input"
+                            value={control.section}
+                            disabled={!control.niveau}
+                            onChange={(e) =>
+                              setControl((c) => ({ ...c, section: e.target.value }))
+                            }
+                          >
+                            {!control.niveau && <option value="">—</option>}
+                            {(SECTIONS_BY_NIVEAU[control.niveau] ?? []).map((key) => (
+                              <option key={key} value={key}>
+                                {SECTIONS[key]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="adm-field">
+                          <span>Offre</span>
+                          <select
+                            className="adm-input"
+                            value={control.plan}
+                            onChange={(e) =>
+                              setControl((c) => ({ ...c, plan: e.target.value }))
+                            }
+                          >
+                            <option value="free">Gratuite</option>
+                            <option value="paid">
+                              Payante (prioritaire dans la file)
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <fieldset className="ctl-field">
+                        <legend>Limite de requêtes</legend>
+                        <label className="adm-check">
+                          <input
+                            type="radio"
+                            name="limit"
+                            checked={!control.customLimit}
+                            onChange={() =>
+                              setControl((c) => ({ ...c, customLimit: false }))
+                            }
+                          />
+                          <span>Limite globale (réglée dans Surveillance IA)</span>
+                        </label>
+                        <label className="adm-check">
+                          <input
+                            type="radio"
+                            name="limit"
+                            checked={control.customLimit}
+                            onChange={() =>
+                              setControl((c) => ({ ...c, customLimit: true }))
+                            }
+                          />
+                          <span>Limite personnelle</span>
+                        </label>
+                        {control.customLimit && (
+                          <span className="ctl-inline">
+                            <input
+                              className="adm-input ctl-num"
+                              type="number"
+                              min={1}
+                              value={control.perMinute}
+                              onChange={(e) =>
+                                setControl((c) => ({ ...c, perMinute: e.target.value }))
+                              }
+                              aria-label="Requêtes par minute"
+                            />
+                            / min
+                            <input
+                              className="adm-input ctl-num"
+                              type="number"
+                              min={1}
+                              value={control.perHour}
+                              onChange={(e) =>
+                                setControl((c) => ({ ...c, perHour: e.target.value }))
+                              }
+                              aria-label="Requêtes par heure"
+                            />
+                            / heure
+                          </span>
+                        )}
+                      </fieldset>
+
+                      <div className="adm-form-actions">
+                        <button
+                          className="adm-btn adm-btn-primary"
+                          disabled={
+                            !controlDirty ||
+                            !sectionOk ||
+                            !limitOk ||
+                            busy === "account"
+                          }
+                        >
+                          {busy === "account" ? "Enregistrement…" : "Enregistrer"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div className="adm-stack">
+                  <section className="adm-panel adm-danger">
+                    <h2 className="adm-h2">Actions sensibles</h2>
+
+                    <div className="adm-danger-row">
+                      <div>
+                        <p className="adm-strong">
+                          {account.suspended_at
+                            ? "Compte suspendu"
+                            : "Suspendre le compte"}
+                        </p>
+                        <p className="adm-muted adm-small">
+                          {isSelf
+                            ? "Tu ne peux pas suspendre ton propre compte."
+                            : isAdminAccount
+                              ? "Un compte admin ne se suspend pas depuis la console."
+                              : account.suspended_at
+                                ? `Depuis le ${fullDate(account.suspended_at)}${
+                                    account.suspended_reason
+                                      ? ` — « ${account.suspended_reason} »`
+                                      : ""
+                                  }. L'élève ne peut plus se connecter.`
+                                : "Ferme ses sessions et bloque la connexion, sans rien effacer. Réversible."}
+                        </p>
+                        {confirming === "suspend" && (
+                          <input
+                            className="adm-input ctl-reason"
+                            placeholder="Raison (visible par les admins seulement)"
+                            maxLength={300}
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            aria-label="Raison de la suspension"
+                          />
+                        )}
+                      </div>
+                      {account.suspended_at ? (
+                        <button
+                          className="adm-btn adm-btn-primary"
+                          disabled={busy === "reactivate"}
+                          onClick={doReactivate}
+                        >
+                          {busy === "reactivate" ? "Réactivation…" : "Réactiver"}
+                        </button>
+                      ) : confirming === "suspend" ? (
+                        <span className="adm-confirm">
+                          <button
+                            className="adm-btn"
+                            onClick={() => setConfirming(null)}
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            className="adm-btn adm-btn-danger"
+                            disabled={busy === "suspend"}
+                            onClick={doSuspend}
+                          >
+                            Suspendre {name}
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="adm-btn adm-btn-warn"
+                          disabled={isSelf || isAdminAccount}
+                          onClick={() => setConfirming("suspend")}
+                        >
+                          Suspendre
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="adm-danger-row">
+                      <div>
+                        <p className="adm-strong">Fermer toutes les sessions</p>
+                        <p className="adm-muted adm-small">
+                          Déconnecte ce compte sur tous ses appareils. Il pourra se
+                          reconnecter.
+                        </p>
+                      </div>
+                      {confirming === "revoke" ? (
+                        <span className="adm-confirm">
+                          <button
+                            className="adm-btn"
+                            onClick={() => setConfirming(null)}
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            className="adm-btn adm-btn-warn"
+                            disabled={busy === "revoke"}
+                            onClick={doRevoke}
+                          >
+                            Confirmer
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="adm-btn"
+                          onClick={() => setConfirming("revoke")}
+                        >
+                          Déconnecter
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="adm-danger-row">
+                      <div>
+                        <p className="adm-strong">Supprimer le compte</p>
+                        <p className="adm-muted adm-small">
+                          {isSelf
+                            ? "Tu ne peux pas supprimer ton propre compte."
+                            : isAdminAccount
+                              ? "Un compte admin doit d'abord perdre son rôle via promote_admin.py."
+                              : "Définitif : le compte et ses données sont effacés."}
+                        </p>
+                      </div>
+                      {confirming === "delete" ? (
+                        <span className="adm-confirm">
+                          <button
+                            className="adm-btn"
+                            onClick={() => setConfirming(null)}
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            className="adm-btn adm-btn-danger"
+                            disabled={busy === "delete"}
+                            onClick={doDelete}
+                          >
+                            Supprimer {name}
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="adm-btn adm-btn-danger-ghost"
+                          disabled={isSelf || isAdminAccount}
+                          onClick={() => setConfirming("delete")}
+                        >
+                          Supprimer
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              )
             }
-          />
-          <span>Adresse e-mail confirmée</span>
-        </label>
-        <p className="adm-muted adm-small">
-          L'adresse e-mail et le rôle ne se modifient pas depuis la console.
-        </p>
-        <div className="adm-form-actions">
-          <button
-            className="adm-btn adm-btn-primary"
-            disabled={!dirty || busy === "save"}
-          >
-            {busy === "save" ? "Enregistrement…" : "Enregistrer"}
-          </button>
+          </AdminTabs>
         </div>
-      </form>
-
-      {!isAdminAccount && control && (
-        <form className="adm-panel adm-form" onSubmit={saveControl}>
-          <h2 className="adm-h2">Classe, offre et limite</h2>
-          <div className="ctl-fields">
-            <label className="adm-field">
-              <span>Niveau</span>
-              <select
-                className="adm-input"
-                value={control.niveau}
-                onChange={(e) => {
-                  const niveau = e.target.value;
-                  setControl((c) => ({
-                    ...c,
-                    niveau,
-                    section: SECTIONS_BY_NIVEAU[niveau]?.includes(c.section)
-                      ? c.section
-                      : (SECTIONS_BY_NIVEAU[niveau]?.[0] ?? ""),
-                  }));
-                }}
-              >
-                <option value="">Non renseigné</option>
-                {NIVEAUX.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="adm-field">
-              <span>Section</span>
-              <select
-                className="adm-input"
-                value={control.section}
-                disabled={!control.niveau}
-                onChange={(e) => setControl((c) => ({ ...c, section: e.target.value }))}
-              >
-                {!control.niveau && <option value="">—</option>}
-                {(SECTIONS_BY_NIVEAU[control.niveau] ?? []).map((key) => (
-                  <option key={key} value={key}>
-                    {SECTIONS[key]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="adm-field">
-              <span>Offre</span>
-              <select
-                className="adm-input"
-                value={control.plan}
-                onChange={(e) => setControl((c) => ({ ...c, plan: e.target.value }))}
-              >
-                <option value="free">Gratuite</option>
-                <option value="paid">Payante (prioritaire dans la file)</option>
-              </select>
-            </label>
-          </div>
-
-          <fieldset className="ctl-field">
-            <legend>Limite de requêtes</legend>
-            <label className="adm-check">
-              <input
-                type="radio"
-                name="limit"
-                checked={!control.customLimit}
-                onChange={() => setControl((c) => ({ ...c, customLimit: false }))}
-              />
-              <span>Limite globale (réglée dans Surveillance IA)</span>
-            </label>
-            <label className="adm-check">
-              <input
-                type="radio"
-                name="limit"
-                checked={control.customLimit}
-                onChange={() => setControl((c) => ({ ...c, customLimit: true }))}
-              />
-              <span>Limite personnelle</span>
-            </label>
-            {control.customLimit && (
-              <span className="ctl-inline">
-                <input
-                  className="adm-input ctl-num"
-                  type="number"
-                  min={1}
-                  value={control.perMinute}
-                  onChange={(e) =>
-                    setControl((c) => ({ ...c, perMinute: e.target.value }))
-                  }
-                  aria-label="Requêtes par minute"
-                />
-                / min
-                <input
-                  className="adm-input ctl-num"
-                  type="number"
-                  min={1}
-                  value={control.perHour}
-                  onChange={(e) =>
-                    setControl((c) => ({ ...c, perHour: e.target.value }))
-                  }
-                  aria-label="Requêtes par heure"
-                />
-                / heure
-              </span>
-            )}
-          </fieldset>
-
-          <div className="adm-form-actions">
-            <button
-              className="adm-btn adm-btn-primary"
-              disabled={!controlDirty || !sectionOk || !limitOk || busy === "account"}
-            >
-              {busy === "account" ? "Enregistrement…" : "Enregistrer"}
-            </button>
-          </div>
-        </form>
-      )}
-
-      <section className="adm-panel adm-danger">
-        <h2 className="adm-h2">Actions sensibles</h2>
-
-        <div className="adm-danger-row">
-          <div>
-            <p className="adm-strong">
-              {account.suspended_at ? "Compte suspendu" : "Suspendre le compte"}
-            </p>
-            <p className="adm-muted adm-small">
-              {isSelf
-                ? "Tu ne peux pas suspendre ton propre compte."
-                : isAdminAccount
-                  ? "Un compte admin ne se suspend pas depuis la console."
-                  : account.suspended_at
-                    ? `Depuis le ${fullDate(account.suspended_at)}${
-                        account.suspended_reason
-                          ? ` — « ${account.suspended_reason} »`
-                          : ""
-                      }. L'élève ne peut plus se connecter.`
-                    : "Ferme ses sessions et bloque la connexion, sans rien effacer. Réversible."}
-            </p>
-            {confirming === "suspend" && (
-              <input
-                className="adm-input ctl-reason"
-                placeholder="Raison (visible par les admins seulement)"
-                maxLength={300}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                aria-label="Raison de la suspension"
-              />
-            )}
-          </div>
-          {account.suspended_at ? (
-            <button
-              className="adm-btn adm-btn-primary"
-              disabled={busy === "reactivate"}
-              onClick={doReactivate}
-            >
-              {busy === "reactivate" ? "Réactivation…" : "Réactiver"}
-            </button>
-          ) : confirming === "suspend" ? (
-            <span className="adm-confirm">
-              <button className="adm-btn" onClick={() => setConfirming(null)}>
-                Annuler
-              </button>
-              <button
-                className="adm-btn adm-btn-danger"
-                disabled={busy === "suspend"}
-                onClick={doSuspend}
-              >
-                Suspendre {name}
-              </button>
-            </span>
-          ) : (
-            <button
-              className="adm-btn adm-btn-warn"
-              disabled={isSelf || isAdminAccount}
-              onClick={() => setConfirming("suspend")}
-            >
-              Suspendre
-            </button>
-          )}
-        </div>
-
-        <div className="adm-danger-row">
-          <div>
-            <p className="adm-strong">Fermer toutes les sessions</p>
-            <p className="adm-muted adm-small">
-              Déconnecte ce compte sur tous ses appareils. Il pourra se reconnecter.
-            </p>
-          </div>
-          {confirming === "revoke" ? (
-            <span className="adm-confirm">
-              <button className="adm-btn" onClick={() => setConfirming(null)}>
-                Annuler
-              </button>
-              <button
-                className="adm-btn adm-btn-warn"
-                disabled={busy === "revoke"}
-                onClick={doRevoke}
-              >
-                Confirmer
-              </button>
-            </span>
-          ) : (
-            <button className="adm-btn" onClick={() => setConfirming("revoke")}>
-              Déconnecter
-            </button>
-          )}
-        </div>
-
-        <div className="adm-danger-row">
-          <div>
-            <p className="adm-strong">Supprimer le compte</p>
-            <p className="adm-muted adm-small">
-              {isSelf
-                ? "Tu ne peux pas supprimer ton propre compte."
-                : isAdminAccount
-                  ? "Un compte admin doit d'abord perdre son rôle via promote_admin.py."
-                  : "Définitif : le compte et ses données sont effacés."}
-            </p>
-          </div>
-          {confirming === "delete" ? (
-            <span className="adm-confirm">
-              <button className="adm-btn" onClick={() => setConfirming(null)}>
-                Annuler
-              </button>
-              <button
-                className="adm-btn adm-btn-danger"
-                disabled={busy === "delete"}
-                onClick={doDelete}
-              >
-                Supprimer {name}
-              </button>
-            </span>
-          ) : (
-            <button
-              className="adm-btn adm-btn-danger-ghost"
-              disabled={isSelf || isAdminAccount}
-              onClick={() => setConfirming("delete")}
-            >
-              Supprimer
-            </button>
-          )}
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
