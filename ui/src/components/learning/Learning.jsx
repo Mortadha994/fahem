@@ -40,7 +40,7 @@ const noise = (i, salt) => {
 };
 
 /** A one-shot burst of confetti from the centre of its parent. */
-export function Burst({ count = 22, spread = 120 }) {
+export function Burst({ count = 32, spread = 170 }) {
   const reduce = useReducedMotion();
   if (reduce) return null;
   return (
@@ -63,7 +63,11 @@ export function Burst({ count = 22, spread = 120 }) {
               rotate: noise(i, 3) * 540 - 270,
               opacity: [1, 1, 0],
             }}
-            transition={{ duration: 1.1 + noise(i, 4) * 0.4, ease: "easeOut" }}
+            transition={{
+              duration: 1.6 + noise(i, 4) * 0.6,
+              ease: "easeOut",
+              opacity: { times: [0, 0.75, 1], duration: 1.6 + noise(i, 4) * 0.6 },
+            }}
           />
         );
       })}
