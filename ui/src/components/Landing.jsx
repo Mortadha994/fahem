@@ -450,6 +450,7 @@ export default function Landing() {
           <nav className="lp-nav" aria-label="Sections de la page">
             {/* Slides under the current section's link (landingMotion.js). */}
             <span className="lp-nav-pill" aria-hidden="true" />
+            <a href="#essayer">Essayer</a>
             <a href="#fonctionnalites">Ce que ça fait</a>
             <a href="#etapes">Comment ça marche</a>
             <a href="#programme">Programme</a>
