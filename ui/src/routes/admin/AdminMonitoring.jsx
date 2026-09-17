@@ -5,8 +5,14 @@ import { useAuth } from "../../lib/authContext.js";
 import { SPRING_ENTER, rise, stagger } from "../../lib/motion.js";
 import CountUp from "../../components/CountUp.jsx";
 import AiControls from "../../components/admin/AiControls.jsx";
+import AuditLog from "../../components/admin/AuditLog.jsx";
 import AdminTabs from "../../components/admin/AdminTabs.jsx";
-import { IconActivity, IconClock, IconSliders } from "../../components/admin/icons.jsx";
+import {
+  IconActivity,
+  IconClock,
+  IconShield,
+  IconSliders,
+} from "../../components/admin/icons.jsx";
 
 /**
  * Surveillance IA: how hard Fahem is leaning on Groq, right now and over 24h.
@@ -26,12 +32,14 @@ import { IconActivity, IconClock, IconSliders } from "../../components/admin/ico
 
 const REFRESH_MS = 10_000;
 
-/* Three tabs instead of one long page: what is happening now, what can be
-   changed, and what happened over the day. The tab is in the URL
+/* Four tabs instead of one long page: what is happening now, what can be
+   changed, who changed what (the action log, apart from the controls so each
+   stays readable), and what happened over the day. The tab is in the URL
    (?onglet=), so the sidebar's AI status card opens the controls directly. */
 const TABS = [
   { id: "direct", label: "En direct", Icon: IconActivity },
   { id: "controles", label: "Contrôles", Icon: IconSliders },
+  { id: "journal", label: "Journal", Icon: IconShield },
   { id: "historique", label: "24 heures", Icon: IconClock },
 ];
 
@@ -168,6 +176,14 @@ export default function AdminMonitoring() {
             // See and act in the same place: every control refreshes the
             // figures as soon as it is applied.
             <AiControls onChanged={load} />
+          ) : tab === "journal" ? (
+            // Every admin action, filterable, with revert for settings.
+            <AuditLog
+              queueLabels={Object.fromEntries(
+                (data?.models ?? []).map((mdl) => [mdl.model, mdl.label])
+              )}
+              onReverted={load}
+            />
           ) : !data ? (
             <div className="mon-skeleton">
               <div className="adm-skel adm-skel-block" aria-hidden="true" />

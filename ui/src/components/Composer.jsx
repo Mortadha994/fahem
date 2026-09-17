@@ -198,23 +198,34 @@ export default function Composer({
           <div className="composer-modes">
             {onModeChange && (
               <div
-                className="mode-switch"
+                className={`mode-switch is-${mode}`}
                 role="radiogroup"
                 aria-label="Façon de répondre"
               >
+                {/* One pill sliding under the two choices (a transform: the
+                    student app has no layout animations). */}
+                <m.span
+                  className="mode-pill"
+                  aria-hidden="true"
+                  initial={false}
+                  animate={{ x: mode === "guided" ? "100%" : "0%" }}
+                  transition={SPRING_HOVER}
+                />
                 {[
                   [
                     "full",
+                    "📖",
                     "Solution complète",
                     "La solution entière, avec le tableau et la trace",
                   ],
                   [
                     "guided",
+                    "🧭",
                     "Mode guidé",
                     "Des indices étape par étape avant la solution",
                   ],
-                ].map(([value, label, title]) => (
-                  <button
+                ].map(([value, icon, label, title]) => (
+                  <m.button
                     key={value}
                     type="button"
                     role="radio"
@@ -223,32 +234,40 @@ export default function Composer({
                     onClick={() => onModeChange(value)}
                     disabled={streaming}
                     title={title}
+                    whileTap={{ scale: 0.95 }}
                   >
-                    {mode === value && (
-                      <m.span
-                        layoutId="mode-pill"
-                        className="mode-pill"
-                        transition={SPRING_HOVER}
-                      />
-                    )}
+                    <m.span
+                      className="mode-icon"
+                      aria-hidden="true"
+                      animate={
+                        mode === value
+                          ? { scale: [1, 1.35, 1], rotate: [0, -12, 0] }
+                          : { scale: 1 }
+                      }
+                      transition={{ duration: 0.45 }}
+                    >
+                      {icon}
+                    </m.span>
                     <span className="mode-label">{label}</span>
-                  </button>
+                  </m.button>
                 ))}
               </div>
             )}
             {onCheck && (
-              <button
+              <m.button
                 type="button"
                 className="composer-check"
                 onClick={onCheck}
                 disabled={!canSend}
                 title="Colle ton algorithme ou ton programme : Fahem le corrige ligne par ligne"
+                whileHover={canSend ? { y: -2 } : undefined}
+                whileTap={canSend ? { scale: 0.95 } : undefined}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M9 11.5 11.5 14 16 9.5M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
                 </svg>
                 Vérifier ma réponse
-              </button>
+              </m.button>
             )}
           </div>
         )}

@@ -66,6 +66,9 @@ export default function Chat() {
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState("");
+  // The answer that just finished in front of the student: its celebrations
+  // (confetti, the step rail filling) play once, not when a discussion is reopened.
+  const [freshId, setFreshId] = useState(null);
   // Answers being written, per discussion. Each discussion has its own stream
   // and its own stop button: switching to another discussion while one answer
   // is written neither blocks it nor lets "Arrêter" hit the wrong one.
@@ -549,6 +552,7 @@ export default function Chat() {
               ...(done.check ? { check: done.check } : {}),
               ...(done.practice ? { practice: done.practice } : {}),
             }));
+            setFreshId(assistantId);
             // The server saved the exchange; the next save builds on its version.
             setVersion(sessionId, done.session_version);
           },
@@ -1174,6 +1178,8 @@ export default function Chat() {
                         : undefined
                     }
                     guidedAvailable={features.guided}
+                    fresh={msg.id === freshId}
+                    live={msg.id === lastMessageId}
                     onPropose={
                       msg.id === lastMessageId &&
                       ((msg.guided && msg.guided.step < 4) || msg.practice) &&

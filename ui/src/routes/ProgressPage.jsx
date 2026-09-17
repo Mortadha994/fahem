@@ -11,6 +11,8 @@ import Alert from "../components/ui/Alert.jsx";
 import Badge from "../components/ui/Badge.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import Skeleton from "../components/ui/Skeleton.jsx";
+import CountUp from "../components/CountUp.jsx";
+import { Burst } from "../components/learning/Learning.jsx";
 
 /**
  * Ma progression: where the student is in each chapter (réussis by themselves,
@@ -75,6 +77,8 @@ export default function ProgressPage() {
           initial="hidden"
           animate="show"
         >
+          <Summary chapters={data.chapters} />
+
           <section className="prog-chapters" aria-label="Chapitres">
             {data.chapters.length === 0 && (
               <EmptyState size="sm">
@@ -82,7 +86,12 @@ export default function ProgressPage() {
               </EmptyState>
             )}
             {data.chapters.map((c) => (
-              <m.article key={c.id} className="prog-card surface" variants={rise}>
+              <m.article
+                key={c.id}
+                className="prog-card surface"
+                variants={rise}
+                whileHover={{ y: -3 }}
+              >
                 <header className="prog-card-head">
                   <div>
                     <p className="prog-card-meta">Chapitre {c.id}</p>
@@ -91,7 +100,7 @@ export default function ProgressPage() {
                     </h2>
                   </div>
                   <p className="prog-score">
-                    <span className="prog-score-num">{c.done}</span>
+                    <CountUp className="prog-score-num" value={c.done} />
                     <span className="prog-score-total"> / {c.total} réussis</span>
                   </p>
                 </header>
@@ -135,7 +144,11 @@ export default function ProgressPage() {
                 ) : (
                   c.total > 0 && (
                     <p className="prog-all-done">
-                      🎉 Tous les exercices de ce chapitre sont réussis !
+                      <span className="prog-trophy">
+                        🏆
+                        <Burst count={16} spread={80} />
+                      </span>
+                      Tous les exercices de ce chapitre sont réussis !
                     </p>
                   )
                 )}
@@ -223,6 +236,114 @@ export default function ProgressPage() {
         </m.div>
       )}
     </main>
+  );
+}
+
+const MOODS = [
+  {
+    upTo: 0,
+    emoji: "🚀",
+    title: "C'est parti !",
+    sub: "Choisis un exercice et vérifie ta solution : ta première réussite t'attend.",
+  },
+  {
+    upTo: 0.25,
+    emoji: "🌱",
+    title: "Beau début !",
+    sub: "Chaque exercice réussi seul compte. Continue sur ta lancée.",
+  },
+  {
+    upTo: 0.5,
+    emoji: "⚡",
+    title: "Tu avances bien !",
+    sub: "Tu as déjà fait une belle partie du programme.",
+  },
+  {
+    upTo: 0.99,
+    emoji: "🔥",
+    title: "Plus que quelques-uns !",
+    sub: "La ligne d'arrivée est en vue.",
+  },
+  {
+    upTo: 1,
+    emoji: "🏆",
+    title: "Champion !",
+    sub: "Tous les exercices sont réussis. Essaie les exercices similaires plus difficiles !",
+  },
+];
+
+/** All chapters at once: a ring for the exercises solved alone, and a word of encouragement. */
+function Summary({ chapters }) {
+  const total = chapters.reduce((n, c) => n + c.total, 0);
+  const done = chapters.reduce((n, c) => n + c.done, 0);
+  const seen = chapters.reduce((n, c) => n + c.solution_seen, 0);
+  const ratio = total ? done / total : 0;
+  const mood = MOODS.find((x) => ratio <= x.upTo) ?? MOODS[MOODS.length - 1];
+  const r = 44;
+  const circumference = 2 * Math.PI * r;
+  return (
+    <m.section className="prog-hero surface" variants={rise} aria-label="Résumé">
+      <div
+        className="prog-ring"
+        role="img"
+        aria-label={`${done} exercices réussis sur ${total}`}
+      >
+        <svg viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="prog-ring-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#22c55e" />
+              <stop offset="100%" stopColor="#6b26d9" />
+            </linearGradient>
+          </defs>
+          <circle className="prog-ring-track" cx="50" cy="50" r={r} />
+          <m.circle
+            className="prog-ring-fill"
+            cx="50"
+            cy="50"
+            r={r}
+            strokeDasharray={circumference}
+            initial={{ strokeDashoffset: circumference }}
+            animate={{ strokeDashoffset: circumference * (1 - ratio) }}
+            transition={{ ...SPRING_ENTER, visualDuration: 1.1, delay: 0.3 }}
+          />
+        </svg>
+        <span className="prog-ring-text">
+          <CountUp className="prog-ring-num" value={done} />
+          <span className="prog-ring-total">/ {total}</span>
+        </span>
+      </div>
+      <div className="prog-hero-text">
+        <p className="prog-hero-title">
+          <m.span
+            className="prog-hero-emoji"
+            aria-hidden="true"
+            initial={{ scale: 0, rotate: -40 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{
+              type: "spring",
+              visualDuration: 0.5,
+              bounce: 0.5,
+              delay: 0.5,
+            }}
+          >
+            {mood.emoji}
+          </m.span>
+          {mood.title}
+        </p>
+        <p className="prog-hero-sub">{mood.sub}</p>
+        <p className="prog-hero-stats">
+          <span className="prog-stat is-done">
+            <b>{done}</b> réussis seul
+          </span>
+          <span className="prog-stat is-seen">
+            <b>{seen}</b> avec la solution
+          </span>
+          <span className="prog-stat">
+            <b>{total}</b> exercices au programme
+          </span>
+        </p>
+      </div>
+    </m.section>
   );
 }
 

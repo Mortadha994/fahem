@@ -7024,3 +7024,696 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ============================================================================================
+   Learning features, v2: playful motion and polish (components/learning/Learning.jsx,
+   Composer mode switch, PythonRunner, ProgressPage). Appended last so it wins over the
+   first versions above. Colours come from the app tokens; dark mode follows them.
+   ============================================================================================ */
+
+/* --- confetti ---------------------------------------------------------------------------------- */
+.fx-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.fx-piece {
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 7px;
+  height: 10px;
+  border-radius: 2px;
+}
+.fx-piece.is-round {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* --- composer: mode switch and check -------------------------------------------------------------- */
+.mode-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.mode-switch .mode-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  inset-inline-end: auto;
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 4px 12px rgb(107 38 217 / 0.14);
+}
+.mode-switch.is-guided .mode-pill {
+  background: linear-gradient(135deg, #7c3aed, #6b26d9);
+}
+.mode-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+  transition: color 200ms;
+}
+.mode-switch.is-guided .mode-option.is-on {
+  color: #fff;
+}
+.mode-icon {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+}
+.composer-check {
+  min-height: 2.25rem;
+  background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    linear-gradient(135deg, #22c55e, #6b26d9) border-box;
+  border: 1.5px solid transparent;
+}
+.composer-check:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgb(107 38 217 / 0.16);
+}
+
+/* --- Mode guidé: step chip and rail ------------------------------------------------------------------ */
+.gs {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgb(107 38 217 / 0.1), transparent 60%),
+    var(--bg-alt);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+}
+.gs-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-3);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.gs-chip b {
+  color: var(--accent);
+}
+.gs-chip-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 2px 8px rgb(107 38 217 / 0.16);
+  font-size: 1.05rem;
+}
+.gs-rail-wrap {
+  position: relative;
+}
+.gs-track {
+  position: absolute;
+  top: 0.8rem;
+  left: 12.5%;
+  right: 12.5%;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.gs-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #6b26d9);
+  transform-origin: left;
+}
+.gs-rail {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gs-step {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.gs-step + .gs-step::before {
+  content: none;
+}
+.gs-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+.gs-step.is-done .gs-dot {
+  border-color: #22c55e;
+  background: #22c55e;
+  color: #fff;
+}
+.gs-step.is-current .gs-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgb(107 38 217 / 0.18);
+}
+.gs-ping {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+}
+.gs-check {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gs-label {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.gs-step.is-current .gs-label {
+  color: var(--fg);
+  font-weight: 800;
+}
+
+/* guided / practice buttons */
+.guided-actions {
+  gap: var(--space-2);
+}
+.guided-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 2.5rem;
+  transition:
+    border-color 180ms,
+    color 180ms,
+    box-shadow 180ms;
+}
+.guided-btn.is-primary {
+  border: 0;
+  background: linear-gradient(135deg, #7c3aed, #6b26d9 60%, #5b21b6);
+  box-shadow: 0 6px 18px rgb(107 38 217 / 0.3);
+}
+.guided-btn.is-primary:hover {
+  filter: none;
+  box-shadow: 0 10px 24px rgb(107 38 217 / 0.38);
+}
+.guided-arrow {
+  display: inline-block;
+  transition: transform 200ms;
+}
+.guided-btn:hover .guided-arrow {
+  transform: translateX(3px);
+}
+
+/* --- Vérifier ma réponse: verdict card ------------------------------------------------------------ */
+.vc {
+  --vc-tone: #16a34a;
+  --vc-soft: rgb(34 197 94 / 0.12);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--vc-tone) 35%, transparent);
+  background:
+    radial-gradient(120% 160% at 0% 50%, var(--vc-soft), transparent 70%), var(--bg);
+}
+.vc.is-presque {
+  --vc-tone: #d97706;
+  --vc-soft: rgb(245 158 11 / 0.14);
+}
+.vc.is-a_revoir {
+  --vc-tone: #dc2626;
+  --vc-soft: rgb(239 68 68 / 0.12);
+}
+.vc-emoji-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: var(--vc-soft);
+}
+.vc-emoji {
+  display: inline-block;
+  font-size: 1.9rem;
+  line-height: 1;
+}
+.vc-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vc-label {
+  color: var(--vc-tone);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.vc-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  line-height: var(--leading-tight);
+}
+.vc-sub {
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.check-correction {
+  border-top: 0;
+  padding-top: 0;
+}
+.check-chevron {
+  display: inline-block;
+}
+.check-correction-body {
+  overflow: hidden;
+  margin-top: 0;
+}
+.check-correction-inner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--bg-alt);
+}
+
+/* --- Exercice similaire: challenge card and menu ----------------------------------------------------- */
+.pc {
+  --pc-tone: #6b26d9;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    linear-gradient(135deg, var(--pc-tone), #ec4899 60%, #f59e0b) border-box;
+  border: 2px solid transparent;
+  overflow: hidden;
+}
+.pc.is-easier {
+  --pc-tone: #16a34a;
+}
+.pc.is-harder {
+  --pc-tone: #dc2626;
+}
+.pc-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in srgb, var(--pc-tone) 9%, var(--bg));
+}
+.pc-dice {
+  display: inline-block;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.pc-title {
+  font-weight: 800;
+  font-size: var(--text-lg);
+}
+.pc-level {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--pc-tone);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc-tone) 35%, transparent);
+}
+.pc-body {
+  padding: var(--space-2) var(--space-4) var(--space-3);
+}
+.practice-trigger.is-open {
+  color: var(--accent);
+}
+.practice-plus {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.practice-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.practice-level.is-easier:hover {
+  border-color: #16a34a;
+  color: #16a34a;
+}
+.practice-level.is-harder:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+/* --- Python runner ------------------------------------------------------------------------------------ */
+.py-run-wrap {
+  margin: var(--space-2) 0 var(--space-4);
+}
+.py-run-open {
+  margin: 0;
+  background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    linear-gradient(135deg, #3776ab, #ffd43b) border-box;
+  border: 1.5px solid transparent;
+}
+.py-run-open:hover {
+  border-color: transparent;
+  color: var(--fg);
+  box-shadow: 0 6px 16px rgb(55 118 171 / 0.22);
+}
+.py-run-play {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #fff;
+  font-size: 0.6rem;
+}
+.py-run {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.py-run-inner {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.py-run-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.py-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 6px 16px rgb(22 163 74 / 0.28);
+}
+.py-run-btn:disabled {
+  opacity: 0.85;
+}
+.py-run-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(255 255 255 / 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: py-spin 0.7s linear infinite;
+}
+@keyframes py-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.py-run-output {
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #0f172a;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 0.25);
+}
+.py-run-output.is-ok {
+  box-shadow:
+    0 0 0 2px rgb(34 197 94 / 0.55),
+    0 10px 28px rgb(15 23 42 / 0.25);
+}
+.py-run-output.is-error {
+  box-shadow:
+    0 0 0 2px rgb(239 68 68 / 0.6),
+    0 10px 28px rgb(15 23 42 / 0.25);
+}
+.py-term-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #1e293b;
+}
+.py-term-bar i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+.py-term-bar i:nth-child(2) {
+  background: #f59e0b;
+}
+.py-term-bar i:nth-child(3) {
+  background: #22c55e;
+}
+.py-term-bar span {
+  margin-left: auto;
+  color: #94a3b8;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.py-run-output.is-ok .py-term-bar span {
+  color: #4ade80;
+}
+.py-run-output.is-error .py-term-bar span {
+  color: #f87171;
+}
+.py-run-output pre {
+  border-radius: 0;
+  background: transparent;
+}
+.py-term-line {
+  display: block;
+}
+.py-term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  vertical-align: text-bottom;
+  background: #e2e8f0;
+  animation: py-blink 1s steps(1) infinite;
+}
+@keyframes py-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.py-run-error {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgb(239 68 68 / 0.14);
+  color: #fecaca;
+}
+
+/* --- Ma progression: hero ---------------------------------------------------------------------------- */
+.prog-hero {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(90% 140% at 100% 0%, rgb(236 72 153 / 0.1), transparent 55%),
+    radial-gradient(90% 140% at 0% 100%, rgb(34 197 94 / 0.12), transparent 55%),
+    var(--bg);
+}
+.prog-ring {
+  position: relative;
+  flex: none;
+  width: 8.5rem;
+  height: 8.5rem;
+}
+.prog-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.prog-ring-track {
+  fill: none;
+  stroke: var(--bg-alt);
+  stroke-width: 10;
+}
+.prog-ring-fill {
+  fill: none;
+  stroke: url(#prog-ring-grad);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+.prog-ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  padding-top: 2.9rem;
+  gap: 2px;
+}
+.prog-ring-num {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+}
+.prog-ring-total {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+.prog-hero-text {
+  min-width: 0;
+}
+.prog-hero-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 800;
+}
+.prog-hero-emoji {
+  display: inline-block;
+  font-size: 1.8rem;
+}
+.prog-hero-sub {
+  margin: 4px 0 var(--space-3);
+  color: var(--fg-dim);
+}
+.prog-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+.prog-stat {
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  font-size: var(--text-sm);
+}
+.prog-stat.is-done {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.prog-stat.is-seen {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.prog-card {
+  transition: box-shadow 200ms;
+}
+.prog-card:hover {
+  box-shadow: 0 12px 30px rgb(107 38 217 / 0.1);
+}
+.prog-trophy {
+  position: relative;
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 1.3rem;
+}
+.prog-next {
+  background:
+    radial-gradient(100% 140% at 100% 0%, rgb(107 38 217 / 0.1), transparent 60%),
+    var(--bg-alt);
+}
+
+/* --- responsive ------------------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .prog-hero {
+    flex-direction: column;
+    text-align: center;
+    padding: var(--space-4);
+  }
+  .prog-hero-title,
+  .prog-hero-stats {
+    justify-content: center;
+  }
+  .vc {
+    align-items: flex-start;
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+  .vc-emoji-wrap {
+    width: 2.8rem;
+    height: 2.8rem;
+  }
+  .vc-emoji {
+    font-size: 1.5rem;
+  }
+  .vc-title {
+    font-size: var(--text-md);
+  }
+}
+@media (max-width: 560px) {
+  .gs {
+    padding: var(--space-3);
+  }
+  .gs-label {
+    font-size: 0.68rem;
+  }
+  .guided-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .guided-btn {
+    justify-content: center;
+  }
+  .mode-option {
+    padding: 0 var(--space-2);
+    font-size: var(--text-xs);
+  }
+  .pc-level {
+    margin-left: 0;
+  }
+  .py-run-inner {
+    padding: var(--space-3);
+  }
+  .py-run-actions .py-run-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .py-run-spinner,
+  .py-term-cursor {
+    animation: none;
+  }
+}

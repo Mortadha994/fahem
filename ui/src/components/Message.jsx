@@ -5,14 +5,15 @@ import GroundingStrip from "./GroundingStrip.jsx";
 import Alert from "./ui/Alert.jsx";
 import Badge from "./ui/Badge.jsx";
 import { SPRING_ENTER, pop } from "../lib/motion.js";
+import { practiceStatement } from "../lib/learning.js";
 import {
-  GUIDED_STEPS,
-  PRACTICE_LEVELS,
-  practiceStatement,
-  VERDICTS,
-  splitCorrection,
-  withoutVerdictLine,
-} from "../lib/learning.js";
+  ActionButton,
+  ActionRow,
+  CheckedAnswer,
+  GuidedSteps,
+  PracticeCard,
+  PracticeMenu,
+} from "./learning/Learning.jsx";
 
 /**
  * Student messages are shaded and constrained in width; assistant messages are
@@ -55,6 +56,8 @@ function Message({
   onPractice,
   onPracticeStart,
   guidedAvailable,
+  fresh = false,
+  live = false,
 }) {
   if (message.role === "user") {
     return (
@@ -135,10 +138,22 @@ function Message({
         </Alert>
       ) : (
         <>
-          {message.guided && <GuidedSteps step={message.guided.step} />}
+          {message.guided && (
+            <GuidedSteps step={message.guided.step} fresh={fresh} live={live} />
+          )}
           {content ? (
             message.check || message.route === "CHECK" ? (
-              <CheckedAnswer content={content} verdict={message.check?.verdict} />
+              <CheckedAnswer
+                content={content}
+                verdict={message.check?.verdict}
+                fresh={fresh}
+              />
+            ) : message.practice ? (
+              <PracticeCard
+                content={content}
+                difficulty={message.practice.difficulty}
+                fresh={fresh}
+              />
             ) : (
               <Markdown>{content}</Markdown>
             )
@@ -225,60 +240,52 @@ function Message({
               attempt (checked), or the whole solution. */}
           {/* A generated exercise: take it on, guided or not, or answer it. */}
           {finished && message.practice && (onPracticeStart || onPropose) && (
-            <div className="guided-actions">
+            <ActionRow fresh={fresh}>
               {onPracticeStart && guidedAvailable && (
-                <button
-                  type="button"
-                  className="guided-btn is-primary"
+                <ActionButton
+                  tone="primary"
                   onClick={() => onPracticeStart(practiceStatement(content), "guided")}
                 >
-                  Me guider pas à pas
-                </button>
+                  🧭 Me guider pas à pas
+                </ActionButton>
               )}
               {onPropose && (
-                <button type="button" className="guided-btn" onClick={onPropose}>
-                  Je propose ma solution
-                </button>
+                <ActionButton onClick={onPropose}>
+                  ✍️ Je propose ma solution
+                </ActionButton>
               )}
               {onPracticeStart && (
-                <button
-                  type="button"
-                  className="guided-btn is-quiet"
+                <ActionButton
+                  tone="quiet"
                   onClick={() => onPracticeStart(practiceStatement(content), "full")}
                 >
                   Voir la solution
-                </button>
+                </ActionButton>
               )}
-            </div>
+            </ActionRow>
           )}
 
           {finished && !message.practice && (onGuided || onPropose) && (
-            <div className="guided-actions">
+            <ActionRow fresh={fresh}>
               {onGuided && (
-                <button
-                  type="button"
-                  className="guided-btn is-primary"
-                  onClick={() => onGuided("next_step")}
-                >
-                  {guidedStep === 3 ? "Dernière étape" : "Indice suivant"}
-                  <span aria-hidden="true"> →</span>
-                </button>
+                <ActionButton tone="primary" onClick={() => onGuided("next_step")}>
+                  {guidedStep === 3 ? "🏁 Dernière étape" : "💡 Indice suivant"}
+                  <span className="guided-arrow" aria-hidden="true">
+                    →
+                  </span>
+                </ActionButton>
               )}
               {onPropose && (
-                <button type="button" className="guided-btn" onClick={onPropose}>
-                  Je propose ma solution
-                </button>
+                <ActionButton onClick={onPropose}>
+                  ✍️ Je propose ma solution
+                </ActionButton>
               )}
               {onGuided && (
-                <button
-                  type="button"
-                  className="guided-btn is-quiet"
-                  onClick={() => onGuided("show_solution")}
-                >
+                <ActionButton tone="quiet" onClick={() => onGuided("show_solution")}>
                   Voir la solution
-                </button>
+                </ActionButton>
               )}
-            </div>
+            </ActionRow>
           )}
 
           <GroundingStrip pinned={pinned} retrieved={retrieved} />
@@ -331,117 +338,6 @@ function waitingText(waiting) {
     return `${base} ${ahead} demande${ahead > 1 ? "s" : ""} avant la tienne.`;
   }
   return `${base} c'est bientôt ton tour.`;
-}
-
-/** "Exercice similaire", then how hard: a small menu of three levels. */
-function PracticeMenu({ onPick }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <span className="practice-menu">
-      <button
-        type="button"
-        className="msg-action"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Exercice similaire
-      </button>
-      {open && (
-        <span className="practice-levels" role="group" aria-label="Difficulté">
-          {PRACTICE_LEVELS.map((level) => (
-            <button
-              key={level.value}
-              type="button"
-              className="practice-level"
-              onClick={() => {
-                setOpen(false);
-                onPick(level.value);
-              }}
-            >
-              {level.label}
-            </button>
-          ))}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** Where a guided exercise is: Comprendre → Indice → Squelette → Solution. */
-function GuidedSteps({ step }) {
-  const current = GUIDED_STEPS.find((s) => s.step === step);
-  return (
-    <ol
-      className="guided-steps"
-      aria-label={`Mode guidé, étape ${step} sur 4 : ${current?.label ?? ""}`}
-    >
-      {GUIDED_STEPS.map((s) => (
-        <li
-          key={s.step}
-          className={`guided-step${s.step < step ? " is-done" : ""}${
-            s.step === step ? " is-current" : ""
-          }`}
-          aria-current={s.step === step ? "step" : undefined}
-        >
-          <span className="guided-step-dot" aria-hidden="true">
-            {s.step < step ? "✓" : s.step}
-          </span>
-          <span className="guided-step-label">{s.label}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/**
- * A checked solution: the verdict as a badge, the review, and the full
- * correction folded away - the student reads what to fix before seeing it done.
- */
-function CheckedAnswer({ content, verdict }) {
-  const [open, setOpen] = useState(false);
-  const { review, correction } = splitCorrection(content);
-  const shown = VERDICTS[verdict];
-  return (
-    <>
-      {shown && (
-        <m.div
-          className="check-verdict-wrap"
-          variants={pop}
-          initial="hidden"
-          animate="show"
-        >
-          <Badge tone={shown.tone} className={`check-verdict is-${verdict}`}>
-            <span aria-hidden="true">{shown.icon}</span> Verdict : {shown.label}
-          </Badge>
-        </m.div>
-      )}
-      <Markdown>{shown ? withoutVerdictLine(review) : review}</Markdown>
-      {correction && (
-        <div className="check-correction">
-          <button
-            type="button"
-            className="guided-btn"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-          >
-            {open ? "Masquer la correction complète" : "Voir la correction complète"}
-          </button>
-          {open && (
-            <m.div
-              className="check-correction-body"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0, transition: SPRING_ENTER }}
-            >
-              <Markdown>{correction}</Markdown>
-            </m.div>
-          )}
-        </div>
-      )}
-    </>
-  );
 }
 
 /**
