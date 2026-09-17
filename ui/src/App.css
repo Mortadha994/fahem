@@ -7717,3 +7717,14 @@ h3 {
     animation: none;
   }
 }
+
+/* Phone polish (checked at 390 px). */
+.pc-title {
+  white-space: nowrap;
+}
+.pc-level {
+  flex: none;
+}
+.prog-legend .prog-dot {
+  flex: none;
+}

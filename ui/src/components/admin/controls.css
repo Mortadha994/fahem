@@ -688,3 +688,37 @@
     flex: 1;
   }
 }
+
+/* A stepper fills its limit cell, so narrow cells never clip its buttons. */
+.cx-limit .cx-stepper {
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+}
+.cx-limit .cx-step-input {
+  flex: 1;
+  min-width: 2.5rem;
+  width: auto;
+}
+.cx-limit .cx-step-btn {
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  /* Five guard choices in one even row instead of a ragged wrap. */
+  .cx-budget .cx-seg {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-radius: 14px;
+  }
+  .cx-budget .cx-seg-btn {
+    padding: 0 4px;
+  }
+  .cx-hero-main {
+    gap: 10px;
+  }
+  .cx-orb {
+    width: 40px;
+    height: 40px;
+  }
+}
