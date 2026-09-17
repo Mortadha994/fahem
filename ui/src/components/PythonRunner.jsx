@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+﻿import { useId, useMemo, useState } from "react";
 import { inputCalls, runPython } from "../lib/pythonRunner.js";
 
 /**
@@ -9,7 +9,7 @@ import { inputCalls, runPython } from "../lib/pythonRunner.js";
 export default function PythonRunner({ code }) {
   const calls = useMemo(() => inputCalls(code), [code]);
   const [open, setOpen] = useState(false);
-  const [values, setValues] = useState(() => calls.map(() => ""));
+  const [values, setValues] = useState([]);
   const [state, setState] = useState("idle"); // idle | loading | running | done
   const [result, setResult] = useState(null);
   const baseId = useId();
@@ -58,13 +58,16 @@ export default function PythonRunner({ code }) {
                 className="py-run-input"
                 value={values[i] ?? ""}
                 onChange={(e) =>
-                  setValues((prev) =>
-                    prev.map((v, j) => (j === i ? e.target.value : v))
-                  )
+                  setValues((prev) => {
+                    // By index, not prev.map: the runner can mount while the
+                    // answer still streams, before every input() is there.
+                    const next = [...prev];
+                    next[i] = e.target.value;
+                    return next;
+                  })
                 }
                 placeholder="ta valeur"
                 autoComplete="off"
-                inputMode="decimal"
               />
             </label>
           ))}

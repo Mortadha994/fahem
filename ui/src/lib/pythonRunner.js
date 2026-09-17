@@ -136,10 +136,22 @@ export function runPython(code, inputs = [], { onStarted } = {}) {
 /** The input() calls of a program, in order: [{ prompt }]. */
 export function inputCalls(code) {
   const calls = [];
-  const re = /\binput\s*\(\s*(?:"([^"]*)"|'([^']*)')?[^)]*\)/g;
+  const re = /\binput\s*\(([^()]*)\)/g;
   let match;
-  while ((match = re.exec(code)))
-    calls.push({ prompt: (match[1] ?? match[2] ?? "").trim() });
+  while ((match = re.exec(code))) {
+    // "Saisir la moyenne de " + mat1 + " : "  ->  Saisir la moyenne de ‹mat1› :
+    const prompt = match[1]
+      .split("+")
+      .map((part) => {
+        const p = part.trim();
+        const quoted = /^(["'])(.*)\1$/.exec(p);
+        return quoted ? quoted[2] : p ? `‹${p}›` : "";
+      })
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    calls.push({ prompt });
+  }
   return calls;
 }
 
