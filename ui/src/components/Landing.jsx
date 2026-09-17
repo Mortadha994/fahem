@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
-import LineByLine from "./LineByLine.jsx";
 import LandingDemo from "./LandingDemo.jsx";
 import Badge from "./ui/Badge.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
@@ -139,7 +138,6 @@ const SYNTAX = [
 const MENU = [
   { href: "#essayer", label: "Essayer sans compte" },
   { href: "#fonctionnalites", label: "Ce que ça fait" },
-  { href: "#ligne-a-ligne", label: "Ligne à ligne" },
   { href: "#etapes", label: "Comment ça marche" },
   { href: "#programme", label: "Programme" },
   { href: "#questions", label: "Questions" },
@@ -670,24 +668,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* --- line by line (interactive) --------------------------------- */}
-        <section className="lp-section" id="ligne-a-ligne">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Essaie</p>
-            <h2 className="lp-h2">
-              Ligne à ligne,{" "}
-              <span className="auth-gradient-text">sans rien retraduire</span>.
-            </h2>
-            <p className="lp-section-lead">
-              Choisis un exercice, puis passe sur une ligne : tu vois sa version Python
-              et ce qui change entre les deux.
-            </p>
-          </header>
-          <div data-reveal="">
-            <LineByLine />
-          </div>
-        </section>
-
         {/* --- how it works ----------------------------------------------- */}
         <section className="lp-section" id="etapes">
           <header className="lp-section-head" data-reveal="">
@@ -904,7 +884,7 @@ export default function Landing() {
 
       {/* On a phone the only call to action was at the very top; this one
           follows the visitor down the page. */}
-      <div className="lp-sticky-cta" aria-hidden="false">
+      <aside className="lp-sticky-cta" aria-label="Créer un compte">
         <Link
           className="btn btn-primary btn-md lp-btn"
           to="/connexion"
@@ -912,7 +892,7 @@ export default function Landing() {
         >
           Commencer — c'est gratuit
         </Link>
-      </div>
+      </aside>
 
       <footer className="lp-foot">
         <p className="lp-foot-brand">
