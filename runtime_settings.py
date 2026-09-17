@@ -14,6 +14,9 @@ console's "Contrôle de l'IA" panel:
   queue_timeout_seconds     int    how long one request may wait for Groq
   retry_max                 int    429 retries inside a slot
   attachments_enabled       bool   photo / PDF reading on or off
+  guided_mode_enabled       bool   the chat's "Mode guidé" (hints before the solution)
+  check_answer_enabled      bool   the chat's "Vérifier ma réponse"
+  default_chat_mode         str    "full" or "guided": a new discussion's mode
 
 A row in app_settings exists only for a key that was changed; get() falls
 back to the default. Values are validated on the way in (set_many), so
@@ -95,6 +98,12 @@ def _message(value: Any) -> str:
     return value.strip()
 
 
+def _chat_mode(value: Any) -> str:
+    if value not in ("full", "guided"):
+        raise InvalidSetting("Mode attendu : « full » (solution complète) ou « guided » (guidé).")
+    return value
+
+
 @dataclass(frozen=True)
 class Spec:
     default: Any
@@ -111,6 +120,9 @@ SPECS: dict[str, Spec] = {
     "queue_timeout_seconds": Spec(int(GROQ_QUEUE_TIMEOUT_SECONDS), _int_between(15, 600)),
     "retry_max": Spec(GROQ_RETRY_MAX, _int_between(0, 5)),
     "attachments_enabled": Spec(True, _bool),
+    "guided_mode_enabled": Spec(True, _bool),
+    "check_answer_enabled": Spec(True, _bool),
+    "default_chat_mode": Spec("full", _chat_mode),
 }
 
 

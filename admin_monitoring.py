@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import delete, distinct, func, select
+from sqlalchemy.dialects.postgresql import array as pg_array
 
 import auth
 import llm_queue
@@ -185,6 +186,17 @@ class FeedbackStats(BaseModel):
     recent_down: list[dict]
 
 
+class LearningStats(BaseModel):
+    """Mode guidé and Vérifier ma réponse over 7 days (discussions active since)."""
+
+    guided_answers: int
+    guided_by_step: dict[str, int]
+    guided_leaks: int  # a step 1-3 answer that gave the full solution anyway
+    checks: int
+    verdicts: dict[str, int]  # correct / presque / a_revoir / unknown
+    top_findings: list[dict]  # [{kind, count}] - the notation mistakes found most
+
+
 class Monitoring(BaseModel):
     generated_at: datetime
     models: list[ModelLoad]
@@ -196,6 +208,7 @@ class Monitoring(BaseModel):
     failures: list[Failure]
     routes: list[RouteStats] = []
     feedback: FeedbackStats | None = None
+    learning: LearningStats | None = None
 
 
 # --- helpers -------------------------------------------------------------------
@@ -509,6 +522,46 @@ def _feedback(s, now) -> FeedbackStats:
     )
 
 
+def _learning(s, now) -> LearningStats:
+    since = now - timedelta(days=7)
+    rows = s.scalars(
+        select(ChatMessage.extra)
+        .join(ChatSession, ChatSession.id == ChatMessage.session_id)
+        .where(
+            ChatMessage.role == "assistant",
+            ChatSession.updated_at >= since,
+            func.jsonb_exists_any(ChatMessage.extra, pg_array(["guided", "check"])),
+        )
+    ).all()
+    by_step = {str(n): 0 for n in range(1, 5)}
+    verdicts = {"correct": 0, "presque": 0, "a_revoir": 0, "unknown": 0}
+    findings: dict[str, int] = {}
+    guided = leaks = checks = 0
+    for extra in rows:
+        g = extra.get("guided") if isinstance(extra, dict) else None
+        c = extra.get("check") if isinstance(extra, dict) else None
+        if isinstance(g, dict) and str(g.get("step")) in by_step:
+            guided += 1
+            by_step[str(g["step"])] += 1
+            leaks += bool(g.get("leak"))
+        if isinstance(c, dict):
+            checks += 1
+            verdict = c.get("verdict")
+            verdicts[verdict if verdict in verdicts else "unknown"] += 1
+            for kind in c.get("findings") or []:
+                findings[kind] = findings.get(kind, 0) + 1
+    return LearningStats(
+        guided_answers=guided,
+        guided_by_step=by_step,
+        guided_leaks=leaks,
+        checks=checks,
+        verdicts=verdicts,
+        top_findings=[
+            {"kind": k, "count": n} for k, n in sorted(findings.items(), key=lambda kv: -kv[1])[:6]
+        ],
+    )
+
+
 # --- route ---------------------------------------------------------------------
 
 
@@ -529,4 +582,5 @@ def monitoring() -> Monitoring:
             failures=_failures(s, day_ago),
             routes=_routes(s, day_ago),
             feedback=_feedback(s, now),
+            learning=_learning(s, now),
         )

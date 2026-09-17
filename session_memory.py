@@ -160,3 +160,17 @@ def is_follow_up(problem: str, memory: list[dict[str, str]], note: str | None = 
     the FOLLOW_UP prompt, whichever grounded route the classifier picked. An
     attachment (a note beside a read file) is a new exercise, not a follow-up."""
     return bool(memory) and not (note or "").strip() and len(problem.strip()) < FOLLOW_UP_CHARS
+
+
+_STATEMENT = re.compile(
+    r"^\W*(?:exercice\s*\d*\s*[:.-]?\s*)?(?:(?:é|e)cri(?:re|s|vez)\s+(?:un|une|l')\s*"
+    r"(?:algorithme|programme|script|solution)|soit\b|on (?:veut|donne|se propose)|"
+    r"(?:é|e)crire\s+(?:un|une)\b)|\b(?:algorithme|programme)\s+qui\b",
+    re.IGNORECASE,
+)
+
+
+def looks_like_statement(problem: str) -> bool:
+    """An exercise statement ("Écrire un algorithme qui…"), however short - a new
+    exercise, not a reply inside the one under way (Mode guidé)."""
+    return bool(_STATEMENT.search(problem.strip()[:300]))

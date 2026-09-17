@@ -47,6 +47,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import auth
+import runtime_settings
 from db import session_scope
 from models import AnswerFeedback, ChatMessage, ChatSession, User
 
@@ -78,6 +79,38 @@ class MessageIn(BaseModel):
     note: str | None = Field(default=None, max_length=500)
     readingKind: str | None = Field(default=None, max_length=16)
     route: str | None = Field(default=None, max_length=16)
+    # Mode guidé: {"step": 1-4, "exerciseId": the user message it started from}.
+    guided: dict[str, Any] | None = None
+    # Vérifier ma réponse: {"verdict": correct|presque|a_revoir|None, "findings": [kinds]}.
+    check: dict[str, Any] | None = None
+    # How the student sent it: "guided" or "check" (absent: a normal message).
+    mode: str | None = Field(default=None, max_length=16)
+
+
+def _guided(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Only the known keys, bounded - these rows are written by the browser."""
+    if not isinstance(value, dict):
+        return None
+    step = value.get("step")
+    if not isinstance(step, int) or not 1 <= step <= 4:
+        return None
+    out: dict[str, Any] = {"step": step}
+    if isinstance(value.get("exerciseId"), str):
+        out["exerciseId"] = value["exerciseId"][:80]
+    if value.get("leak") is True:
+        out["leak"] = True  # a hint step that gave the whole solution (api.solve_stream)
+    return out
+
+
+def _check(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    verdict = value.get("verdict")
+    findings = value.get("findings")
+    return {
+        "verdict": verdict if verdict in ("correct", "presque", "a_revoir") else None,
+        "findings": [str(k)[:16] for k in findings[:20]] if isinstance(findings, list) else [],
+    }
 
 
 class SessionIn(BaseModel):
@@ -119,12 +152,12 @@ def _message_out(m: ChatMessage, feedback: dict[str, int]) -> dict[str, Any]:
             pinned=grounding.get("pinned", []),
             retrieved=grounding.get("retrieved", []),
         )
-        for key in ("readingKind", "route"):
+        for key in ("readingKind", "route", "guided", "check"):
             if extra.get(key):
                 msg[key] = extra[key]
         if cid in feedback:
             msg["feedback"] = feedback[cid]
-    for key in ("error", "attachment", "note"):
+    for key in ("error", "attachment", "note", "mode"):
         if extra.get(key):
             msg[key] = extra[key]
     return msg
@@ -178,6 +211,9 @@ def _apply_message(row: ChatMessage, m: MessageIn, position: int) -> bool:
             "note": m.note,
             "readingKind": m.readingKind,
             "route": m.route,
+            "guided": _guided(m.guided),
+            "check": _check(m.check),
+            "mode": m.mode if m.mode in ("guided", "check") else None,
         }.items()
         if v
     } or None
@@ -204,6 +240,19 @@ def _apply_message(row: ChatMessage, m: MessageIn, position: int) -> bool:
 # --- routes --------------------------------------------------------------------------
 
 router = APIRouter(prefix="/chat", tags=["chat history"])
+
+
+@router.get("/features")
+def chat_features(_user: User = Depends(auth.get_current_user)) -> dict[str, Any]:
+    """What the chat offers right now, as the admin set it: Mode guidé,
+    Vérifier ma réponse, and the mode a new discussion starts in."""
+    guided = bool(runtime_settings.get("guided_mode_enabled"))
+    return {
+        "guided": guided,
+        "check": bool(runtime_settings.get("check_answer_enabled")),
+        "attachments": bool(runtime_settings.get("attachments_enabled")),
+        "defaultMode": runtime_settings.get("default_chat_mode") if guided else "full",
+    }
 
 
 @router.get("/sessions")
