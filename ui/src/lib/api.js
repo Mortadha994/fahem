@@ -16,7 +16,26 @@ export const BUSY_ERROR =
  * `signal` comes from an AbortController - that is what the stop button uses.
  */
 export async function streamSolve(
-  { problem, niveau, chapitre, note, history, k = 5 },
+  {
+    problem,
+    niveau,
+    chapitre,
+    note,
+    history,
+    k = 5,
+    // Where the exchange belongs (the server saves it when the answer ends).
+    session_id,
+    user_message_id,
+    assistant_message_id,
+    title,
+    attachment,
+    // Mode guidé / Vérifier ma réponse (see api.py learning_route).
+    mode,
+    step,
+    action,
+    exercise,
+    exercise_id,
+  },
   {
     onMeta,
     onWaiting,
@@ -48,6 +67,16 @@ export async function streamSolve(
         note: note || undefined,
         history: history?.length ? history : undefined,
         k,
+        session_id,
+        user_message_id,
+        assistant_message_id,
+        title,
+        attachment: attachment || undefined,
+        mode: mode && mode !== "full" ? mode : undefined,
+        step: step || undefined,
+        action: action || undefined,
+        exercise: exercise ? exercise.slice(0, 2000) : undefined,
+        exercise_id: exercise_id || undefined,
       }),
       signal,
     });

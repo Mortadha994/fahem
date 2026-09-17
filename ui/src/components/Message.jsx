@@ -5,6 +5,12 @@ import GroundingStrip from "./GroundingStrip.jsx";
 import Alert from "./ui/Alert.jsx";
 import Badge from "./ui/Badge.jsx";
 import { SPRING_ENTER, pop } from "../lib/motion.js";
+import {
+  GUIDED_STEPS,
+  VERDICTS,
+  splitCorrection,
+  withoutVerdictLine,
+} from "../lib/learning.js";
 
 /**
  * Student messages are shaded and constrained in width; assistant messages are
@@ -35,7 +41,15 @@ const enterAssistant = {
  */
 export default memo(Message);
 
-function Message({ message, streaming, onRetry, onEdit, onFeedback }) {
+function Message({
+  message,
+  streaming,
+  onRetry,
+  onEdit,
+  onFeedback,
+  onGuided,
+  onPropose,
+}) {
   if (message.role === "user") {
     return (
       <m.div className="msg msg-user" {...enterUser}>
@@ -64,6 +78,9 @@ function Message({ message, streaming, onRetry, onEdit, onFeedback }) {
             <span className={`msg-note${message.content ? "" : " is-alone"}`}>
               {message.note}
             </span>
+          )}
+          {message.mode === "check" && (
+            <span className="msg-mode-tag">Vérifier ma réponse</span>
           )}
           {message.content}
         </div>
@@ -112,8 +129,13 @@ function Message({ message, streaming, onRetry, onEdit, onFeedback }) {
         </Alert>
       ) : (
         <>
+          {message.guided && <GuidedSteps step={message.guided.step} />}
           {content ? (
-            <Markdown>{content}</Markdown>
+            message.check || message.route === "CHECK" ? (
+              <CheckedAnswer content={content} verdict={message.check?.verdict} />
+            ) : (
+              <Markdown>{content}</Markdown>
+            )
           ) : (
             streaming && (
               <p className="thinking" role="status">
@@ -193,6 +215,37 @@ function Message({ message, streaming, onRetry, onEdit, onFeedback }) {
             <p className="msg-stopped">Réponse arrêtée avant la fin.</p>
           )}
 
+          {/* The guided exercise's next move: another hint, the student's own
+              attempt (checked), or the whole solution. */}
+          {finished && (onGuided || onPropose) && (
+            <div className="guided-actions">
+              {onGuided && (
+                <button
+                  type="button"
+                  className="guided-btn is-primary"
+                  onClick={() => onGuided("next_step")}
+                >
+                  {message.guided.step === 3 ? "Dernière étape" : "Indice suivant"}
+                  <span aria-hidden="true"> →</span>
+                </button>
+              )}
+              {onPropose && (
+                <button type="button" className="guided-btn" onClick={onPropose}>
+                  Je propose ma solution
+                </button>
+              )}
+              {onGuided && (
+                <button
+                  type="button"
+                  className="guided-btn is-quiet"
+                  onClick={() => onGuided("show_solution")}
+                >
+                  Voir la solution
+                </button>
+              )}
+            </div>
+          )}
+
           <GroundingStrip pinned={pinned} retrieved={retrieved} />
 
           {/* Actions on a finished answer: copy all of it (the Algorithme
@@ -242,6 +295,80 @@ function waitingText(waiting) {
     return `${base} ${ahead} demande${ahead > 1 ? "s" : ""} avant la tienne.`;
   }
   return `${base} c'est bientôt ton tour.`;
+}
+
+/** Where a guided exercise is: Comprendre → Indice → Squelette → Solution. */
+function GuidedSteps({ step }) {
+  const current = GUIDED_STEPS.find((s) => s.step === step);
+  return (
+    <ol
+      className="guided-steps"
+      aria-label={`Mode guidé, étape ${step} sur 4 : ${current?.label ?? ""}`}
+    >
+      {GUIDED_STEPS.map((s) => (
+        <li
+          key={s.step}
+          className={`guided-step${s.step < step ? " is-done" : ""}${
+            s.step === step ? " is-current" : ""
+          }`}
+          aria-current={s.step === step ? "step" : undefined}
+        >
+          <span className="guided-step-dot" aria-hidden="true">
+            {s.step < step ? "✓" : s.step}
+          </span>
+          <span className="guided-step-label">{s.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * A checked solution: the verdict as a badge, the review, and the full
+ * correction folded away - the student reads what to fix before seeing it done.
+ */
+function CheckedAnswer({ content, verdict }) {
+  const [open, setOpen] = useState(false);
+  const { review, correction } = splitCorrection(content);
+  const shown = VERDICTS[verdict];
+  return (
+    <>
+      {shown && (
+        <m.div
+          className="check-verdict-wrap"
+          variants={pop}
+          initial="hidden"
+          animate="show"
+        >
+          <Badge tone={shown.tone} className={`check-verdict is-${verdict}`}>
+            <span aria-hidden="true">{shown.icon}</span> Verdict : {shown.label}
+          </Badge>
+        </m.div>
+      )}
+      <Markdown>{shown ? withoutVerdictLine(review) : review}</Markdown>
+      {correction && (
+        <div className="check-correction">
+          <button
+            type="button"
+            className="guided-btn"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? "Masquer la correction complète" : "Voir la correction complète"}
+          </button>
+          {open && (
+            <m.div
+              className="check-correction-body"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: SPRING_ENTER }}
+            >
+              <Markdown>{correction}</Markdown>
+            </m.div>
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 /**

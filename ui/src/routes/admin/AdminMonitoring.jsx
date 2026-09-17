@@ -273,6 +273,13 @@ export default function AdminMonitoring() {
                   <FeedbackPanel feedback={data.feedback} />
                 </m.section>
               </div>
+
+              <m.section className="adm-panel" variants={rise}>
+                <header className="adm-panel-head">
+                  <h2 className="adm-h2">Apprentissage — 7 jours</h2>
+                </header>
+                <LearningPanel learning={data.learning} />
+              </m.section>
             </div>
           )
         }
@@ -580,7 +587,85 @@ const ROUTES = {
   QUESTION: "Question de cours",
   CODE: "Code à corriger",
   FOLLOW_UP: "Suite d'échange",
+  GUIDED: "Mode guidé",
+  CHECK: "Vérifier ma réponse",
 };
+
+const FINDINGS = {
+  operator: "Opérateur Python en algorithme (//, %, !=…)",
+  assignment: "Affectation écrite avec =",
+  lire: "Type dans Lire",
+  declaration: "Tableau de déclaration absent",
+};
+
+/** Mode guidé and Vérifier ma réponse over 7 days. */
+function LearningPanel({ learning }) {
+  if (!learning || learning.guided_answers + learning.checks === 0)
+    return (
+      <p className="adm-empty">Ni mode guidé ni vérification ces 7 derniers jours.</p>
+    );
+  const verdictTotal =
+    learning.verdicts.correct + learning.verdicts.presque + learning.verdicts.a_revoir;
+  return (
+    <div className="adm-stack">
+      <div className="mon-learning-row">
+        <div>
+          <p className="adm-strong">
+            Mode guidé : {nf.format(learning.guided_answers)} réponses
+          </p>
+          <p className="adm-muted adm-small">
+            Compréhension {learning.guided_by_step["1"]} · Indice{" "}
+            {learning.guided_by_step["2"]} · Squelette {learning.guided_by_step["3"]} ·
+            Solution {learning.guided_by_step["4"]}
+          </p>
+        </div>
+        {learning.guided_leaks > 0 ? (
+          <span className="adm-tag adm-tag-warn">
+            {learning.guided_leaks} solution{learning.guided_leaks > 1 ? "s" : ""}{" "}
+            donnée
+            {learning.guided_leaks > 1 ? "s" : ""} trop tôt
+          </span>
+        ) : (
+          <span className="adm-tag">aucune fuite</span>
+        )}
+      </div>
+      <div className="mon-learning-row">
+        <div>
+          <p className="adm-strong">Vérifications : {nf.format(learning.checks)}</p>
+          <p className="adm-muted adm-small">
+            ✓ Correct {learning.verdicts.correct} · ≈ Presque{" "}
+            {learning.verdicts.presque} · ✗ À revoir {learning.verdicts.a_revoir}
+            {learning.verdicts.unknown
+              ? ` · sans verdict ${learning.verdicts.unknown}`
+              : ""}
+          </p>
+        </div>
+      </div>
+      {verdictTotal > 0 && (
+        <Meter
+          label="Solutions à revoir"
+          ratio={learning.verdicts.a_revoir / verdictTotal}
+          value={`${Math.round((learning.verdicts.a_revoir / verdictTotal) * 100)} %`}
+        />
+      )}
+      {learning.top_findings.length > 0 && (
+        <div>
+          <p className="adm-strong adm-small">
+            Erreurs de notation les plus fréquentes
+          </p>
+          <ul className="adm-list">
+            {learning.top_findings.map((f) => (
+              <li key={f.kind} className="mon-failure">
+                <span className="mon-failure-main">{FINDINGS[f.kind] ?? f.kind}</span>
+                <span className="adm-tag">{f.count}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Which prompt answered, and how much of it was the discussion's memory. */
 function RouteTable({ routes }) {

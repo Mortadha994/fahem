@@ -16,6 +16,11 @@ import { SPRING_HOVER } from "../lib/motion.js";
  * is held by Chat.jsx (`attachment`), which also validates it (`onAttach`),
  * so this component only collects it and shows it.
  *
+ * Modes: `onModeChange` shows the Solution complète / Mode guidé switch
+ * (`mode` is the discussion's), and `onCheck` the "Vérifier ma réponse"
+ * button, which sends the box's content to be corrected instead of answered.
+ * Either is hidden when the admin turned it off.
+ *
  * `followUp` switches the placeholder once the thread has messages.
  * `chapterLabel` is shown as a chip, because the chapter decides which syntax
  * the answer will use. `inputRef` lets the chat put the caret in the box.
@@ -24,6 +29,9 @@ export default function Composer({
   value,
   onChange,
   onSend,
+  onCheck,
+  mode = "full",
+  onModeChange,
   onStop,
   streaming,
   disabled = false,
@@ -156,9 +164,13 @@ export default function Composer({
           placeholder={
             attachment
               ? "Ajoute une précision si tu veux (facultatif)…"
-              : followUp
-                ? "Pose une question de suivi, ou colle un autre énoncé…"
-                : "Un exercice, une question, ton programme… ou une photo 📎"
+              : mode === "guided"
+                ? followUp
+                  ? "Réponds à la question de Fahem, ou colle un autre énoncé…"
+                  : "Colle ton énoncé : Fahem te guide étape par étape…"
+                : followUp
+                  ? "Pose une question de suivi, ou colle un autre énoncé…"
+                  : "Un exercice, une question, ton programme… ou une photo 📎"
           }
           aria-label="Ton message"
           aria-describedby={showCount ? "composer-count" : undefined}
@@ -181,6 +193,64 @@ export default function Composer({
           <p className="composer-error" role="alert">
             {attachError}
           </p>
+        )}
+        {(onModeChange || onCheck) && (
+          <div className="composer-modes">
+            {onModeChange && (
+              <div
+                className="mode-switch"
+                role="radiogroup"
+                aria-label="Façon de répondre"
+              >
+                {[
+                  [
+                    "full",
+                    "Solution complète",
+                    "La solution entière, avec le tableau et la trace",
+                  ],
+                  [
+                    "guided",
+                    "Mode guidé",
+                    "Des indices étape par étape avant la solution",
+                  ],
+                ].map(([value, label, title]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === value}
+                    className={`mode-option${mode === value ? " is-on" : ""}`}
+                    onClick={() => onModeChange(value)}
+                    disabled={streaming}
+                    title={title}
+                  >
+                    {mode === value && (
+                      <m.span
+                        layoutId="mode-pill"
+                        className="mode-pill"
+                        transition={SPRING_HOVER}
+                      />
+                    )}
+                    <span className="mode-label">{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {onCheck && (
+              <button
+                type="button"
+                className="composer-check"
+                onClick={onCheck}
+                disabled={!canSend}
+                title="Colle ton algorithme ou ton programme : Fahem le corrige ligne par ligne"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 11.5 11.5 14 16 9.5M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
+                </svg>
+                Vérifier ma réponse
+              </button>
+            )}
+          </div>
         )}
         <div className="composer-bar">
           <div className="composer-context">

@@ -80,6 +80,9 @@ function formFrom(settings) {
     queueTimeout: String(settings.queue_timeout_seconds.value),
     retryMax: String(settings.retry_max.value),
     attachments: settings.attachments_enabled.value,
+    guided: settings.guided_mode_enabled.value,
+    check: settings.check_answer_enabled.value,
+    defaultMode: settings.default_chat_mode.value,
   };
 }
 
@@ -91,6 +94,9 @@ function formValues(form) {
     queue_timeout_seconds: Number(form.queueTimeout),
     retry_max: Number(form.retryMax),
     attachments_enabled: form.attachments,
+    guided_mode_enabled: form.guided,
+    check_answer_enabled: form.check,
+    default_chat_mode: form.guided ? form.defaultMode : "full",
   };
 }
 
@@ -481,6 +487,34 @@ export default function AiControls({ onChanged }) {
                 />
                 <span>Lecture des photos et PDF</span>
               </label>
+              <label className="adm-check ctl-field">
+                <input
+                  type="checkbox"
+                  checked={form.guided}
+                  onChange={(e) => update({ guided: e.target.checked })}
+                />
+                <span>Mode guidé (indices étape par étape)</span>
+              </label>
+              <label className="adm-check ctl-field">
+                <input
+                  type="checkbox"
+                  checked={form.check}
+                  onChange={(e) => update({ check: e.target.checked })}
+                />
+                <span>Vérifier ma réponse (correction des solutions des élèves)</span>
+              </label>
+              <label className="ctl-field">
+                <span>Mode d'une nouvelle discussion</span>
+                <select
+                  className="adm-input"
+                  value={form.guided ? form.defaultMode : "full"}
+                  disabled={!form.guided}
+                  onChange={(e) => update({ defaultMode: e.target.value })}
+                >
+                  <option value="full">Solution complète</option>
+                  <option value="guided">Mode guidé</option>
+                </select>
+              </label>
             </div>
             <SettingMeta
               settings={settings}
@@ -489,6 +523,9 @@ export default function AiControls({ onChanged }) {
                 "queue_timeout_seconds",
                 "retry_max",
                 "attachments_enabled",
+                "guided_mode_enabled",
+                "check_answer_enabled",
+                "default_chat_mode",
               ]}
             />
             <div className="adm-form-actions">
@@ -507,6 +544,9 @@ export default function AiControls({ onChanged }) {
                     queueTimeout: String(settings.queue_timeout_seconds.default),
                     retryMax: String(settings.retry_max.default),
                     attachments: settings.attachments_enabled.default,
+                    guided: settings.guided_mode_enabled.default,
+                    check: settings.check_answer_enabled.default,
+                    defaultMode: settings.default_chat_mode.default,
                   });
                 }}
               >

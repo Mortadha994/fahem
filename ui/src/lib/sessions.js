@@ -100,6 +100,9 @@ export function sessionPayload(session) {
       note: m.note ?? null,
       readingKind: m.readingKind ?? null,
       route: m.route ?? null,
+      guided: m.guided ?? null,
+      check: m.check ?? null,
+      mode: m.mode ?? null,
     })),
   };
 }
@@ -161,6 +164,11 @@ export function saveSession(session, { keepalive = false } = {}) {
     }),
     keepalive,
   });
+}
+
+/** What the chat offers, as the admin set it: { guided, check, attachments, defaultMode }. */
+export function fetchChatFeatures() {
+  return call("/chat/features");
 }
 
 /** A 👍 (1) / 👎 (-1) on an answer, or 0 to take it back. */

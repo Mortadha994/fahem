@@ -32,6 +32,9 @@ export const FIELD_LABELS = {
   queue_timeout_seconds: "Attente max",
   retry_max: "Réessais (429)",
   attachments_enabled: "Photos et PDF",
+  guided_mode_enabled: "Mode guidé",
+  check_answer_enabled: "Vérifier ma réponse",
+  default_chat_mode: "Mode par défaut",
   // account fields
   display_name: "Nom",
   email_verified: "E-mail confirmé",
@@ -65,6 +68,11 @@ export function formatValue(key, value, action = "") {
       return value ? "en pause" : "active";
     case "attachments_enabled":
       return value ? "activées" : "désactivées";
+    case "guided_mode_enabled":
+    case "check_answer_enabled":
+      return value ? "activé" : "désactivé";
+    case "default_chat_mode":
+      return value === "guided" ? "guidé" : "solution complète";
     case "email_verified":
       return value ? "oui" : "non";
     case "daily_budget_guard_pct":

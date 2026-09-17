@@ -13,7 +13,8 @@ import {
   ATTACHMENT_TYPES,
   ATTACHMENT_MAX_BYTES,
 } from "../lib/api.js";
-import { sendFeedback, titleFrom } from "../lib/sessions.js";
+import { fetchChatFeatures, sendFeedback, titleFrom } from "../lib/sessions.js";
+import { ACTION_LABELS, guidedState } from "../lib/learning.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
 import { hasQuestion } from "../lib/sessionGroups.js";
@@ -163,6 +164,40 @@ export default function Chat() {
     ensureLoaded(activeId).catch(() => setFailedId(activeId));
   }, [activeId, activeLoading, ensureLoaded]);
 
+  // Mode guidé / Vérifier ma réponse, as the admin set them. Off until known:
+  // a failed fetch leaves the chat as it was before these modes existed.
+  const [features, setFeatures] = useState({
+    guided: false,
+    check: false,
+    defaultMode: "full",
+  });
+  useEffect(() => {
+    let cancelled = false;
+    fetchChatFeatures()
+      .then((f) => !cancelled && f && setFeatures(f))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // The mode the student picked per discussion; otherwise a discussion with a
+  // guided exercise under way stays guided, and a new one takes the default.
+  const [modeById, setModeById] = useState({});
+  const modeFor = useCallback(
+    (session) => {
+      if (!features.guided) return "full";
+      const picked = session ? modeById[session.id] : modeById.__new__;
+      if (picked) return picked;
+      if (session && guidedState(session.messages)) return "guided";
+      return features.defaultMode === "guided" ? "guided" : "full";
+    },
+    [features, modeById]
+  );
+  const modeRef = useRef(modeFor);
+  useEffect(() => {
+    modeRef.current = modeFor;
+  }, [modeFor]);
+
   // Phase 9: the chapters a new discussion can be about. Fetched once; a
   // failure just leaves the picker hidden and the default chapter in place.
   const [chapterList, setChapterList] = useState([]);
@@ -300,8 +335,16 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session, { reuse, note, attachment } = {}) => {
+    (problem, session, { reuse, note, attachment, mode: askedMode, action } = {}) => {
       const sessionId = session.id;
+      // Mode guidé: the exercise under way (its step, the statement it came
+      // from) is read from the discussion as it is before this message.
+      const mode = askedMode ?? modeRef.current(session);
+      const skipIds = new Set(reuse ? [reuse.userId, reuse.assistantId] : []);
+      const guided =
+        mode === "guided"
+          ? guidedState(session.messages.filter((msg) => !skipIds.has(msg.id)))
+          : null;
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
       setAnnouncement("");
@@ -347,6 +390,7 @@ export default function Chat() {
                 // A retried attachment keeps its note and its file chip.
                 ...(note ? { note } : {}),
                 ...(attachment ? { attachment } : {}),
+                ...(mode !== "full" ? { mode } : {}),
               },
               {
                 id: assistantId,
@@ -408,6 +452,11 @@ export default function Chat() {
           assistant_message_id: assistantId,
           title,
           attachment,
+          mode,
+          step: guided?.step,
+          action,
+          exercise: guided?.exercise,
+          exercise_id: guided?.exerciseId,
         },
         {
           signal: controller.signal,
@@ -421,6 +470,7 @@ export default function Chat() {
                 pinned: meta.pinned ?? [],
                 retrieved: meta.retrieved ?? [],
                 ...(meta.route ? { route: meta.route } : {}),
+                ...(meta.guided ? { guided: meta.guided } : {}),
               };
               if (msg.status === "waiting") {
                 next.status = "streaming";
@@ -475,13 +525,18 @@ export default function Chat() {
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
               // pass on content the checker never meaningfully looked at.
-              status: !hasRealAlgorithmeSolution(msg.content)
-                ? "none"
-                : done.warnings?.length
-                  ? "warned"
-                  : "clean",
+              // A guided hint (steps 1-3) is not a solution to vouch for.
+              status:
+                !hasRealAlgorithmeSolution(msg.content) ||
+                (done.guided && done.guided.step < 4)
+                  ? "none"
+                  : done.warnings?.length
+                    ? "warned"
+                    : "clean",
               warnings: done.warnings ?? [],
               ...(done.route ? { route: done.route } : {}),
+              ...(done.guided ? { guided: done.guided } : {}),
+              ...(done.check ? { check: done.check } : {}),
             }));
             // The server saved the exchange; the next save builds on its version.
             setVersion(sessionId, done.session_version);
@@ -521,7 +576,11 @@ export default function Chat() {
             const { waiting: _waiting, ...rest } = msg;
             return {
               ...rest,
-              status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
+              status:
+                hasRealAlgorithmeSolution(msg.content) &&
+                !(msg.guided && msg.guided.step < 4)
+                  ? "clean"
+                  : "none",
             };
           });
         });
@@ -539,7 +598,7 @@ export default function Chat() {
    * of treating them as more of the statement.
    */
   const sendAttachment = useCallback(
-    async (file, kind, name, note, session) => {
+    async (file, kind, name, note, session, { mode } = {}) => {
       const sessionId = session.id;
       const stamp = Date.now();
       const userId = `u_${stamp}`;
@@ -625,43 +684,83 @@ export default function Chat() {
         reuse: { userId, assistantId },
         note,
         attachment: { name, kind },
+        mode,
       });
     },
     [patchLast, setSessions, onUnauthorized, send, startStream, endStream]
   );
 
-  const handleSend = useCallback(() => {
-    const problem = draft.trim();
-    if (streaming || activeLoading) return;
-    if (attachment) {
+  // `mode`: "check" for Vérifier ma réponse; otherwise the discussion's mode.
+  const submit = useCallback(
+    (mode) => {
+      const problem = draft.trim();
+      if (streaming || activeLoading) return;
       const session = active ?? createSession(chapterChoice);
+      const chosen = mode ?? modeRef.current(active ? session : null);
+      if (!active && chosen !== "full" && mode !== "check") {
+        // The mode picked before the discussion existed now belongs to it.
+        setModeById((prev) => ({ ...prev, [session.id]: chosen, __new__: undefined }));
+      }
+      if (attachment) {
+        setDraft("");
+        setAttachment(null);
+        setAttachError("");
+        sendAttachment(
+          attachment.file,
+          attachment.kind,
+          attachment.name,
+          problem,
+          session,
+          {
+            mode: chosen,
+          }
+        );
+        return;
+      }
+      if (!problem) return;
       setDraft("");
-      setAttachment(null);
-      setAttachError("");
-      sendAttachment(
-        attachment.file,
-        attachment.kind,
-        attachment.name,
-        problem,
-        session
-      );
-      return;
-    }
-    if (!problem) return;
-    const session = active ?? createSession(chapterChoice);
-    setDraft("");
-    send(problem, session);
-  }, [
-    draft,
-    streaming,
-    activeLoading,
-    active,
-    createSession,
-    send,
-    sendAttachment,
-    attachment,
-    chapterChoice,
-  ]);
+      send(problem, session, { mode: chosen });
+    },
+    [
+      draft,
+      streaming,
+      activeLoading,
+      active,
+      createSession,
+      send,
+      sendAttachment,
+      attachment,
+      chapterChoice,
+    ]
+  );
+  const handleSend = useCallback(() => submit(), [submit]);
+  const handleCheck = useCallback(() => submit("check"), [submit]);
+
+  const chooseMode = useCallback(
+    (mode) =>
+      setModeById((prev) => ({ ...prev, [activeIdRef.current ?? "__new__"]: mode })),
+    []
+  );
+
+  /** A guided answer's buttons: the next step, or the whole solution. */
+  const guidedAction = useCallback(
+    (action) => {
+      if (!active || streaming || activeLoading) return;
+      send(ACTION_LABELS[action], active, { mode: "guided", action });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
+  /** "Je propose ma solution": the composer, ready for the student's work. */
+  const proposeSolution = useCallback(() => {
+    setDraft((current) => current || "Voici ma solution :\n");
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
 
   /**
    * "Réessayer" on a failed answer: drop the failed exchange (the question
@@ -685,7 +784,11 @@ export default function Chat() {
     send(
       question,
       { ...active, messages: kept },
-      { attachment: lastUserMsg.attachment, note: lastUserMsg.note }
+      {
+        attachment: lastUserMsg.attachment,
+        note: lastUserMsg.note,
+        mode: lastUserMsg.mode ?? undefined,
+      }
     );
   }, [active, streaming, setSessions, send]);
 
@@ -985,6 +1088,26 @@ export default function Chat() {
                         : undefined
                     }
                     onFeedback={msg.role === "assistant" ? giveFeedback : undefined}
+                    // The guided buttons, on the latest answer of an exercise
+                    // still under way.
+                    onGuided={
+                      msg.id === lastMessageId &&
+                      msg.guided &&
+                      msg.guided.step < 4 &&
+                      !msg.error &&
+                      !streaming &&
+                      features.guided
+                        ? guidedAction
+                        : undefined
+                    }
+                    onPropose={
+                      msg.id === lastMessageId &&
+                      msg.guided &&
+                      features.check &&
+                      !streaming
+                        ? proposeSolution
+                        : undefined
+                    }
                   />
                 ))}
               </AnimatePresence>
@@ -1033,6 +1156,9 @@ export default function Chat() {
         value={draft}
         onChange={setDraft}
         onSend={handleSend}
+        onCheck={features.check ? handleCheck : undefined}
+        mode={modeFor(active)}
+        onModeChange={features.guided ? chooseMode : undefined}
         onStop={handleStop}
         streaming={streaming}
         disabled={activeLoading}
