@@ -6652,3 +6652,141 @@ h3 {
     flex: 1;
   }
 }
+
+/* --- Exécuter le Python (PythonRunner.jsx) --------------------------------------------------- */
+.py-run-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-2) 0 var(--space-3);
+  min-height: 2.25rem;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.py-run-open:hover {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.py-run-open:focus-visible,
+.py-run-btn:focus-visible,
+.py-run-close:focus-visible,
+.py-run-input:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.py-run {
+  margin: var(--space-2) 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.py-run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.py-run-title {
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+.py-run-close {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.py-run-close:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+.py-run-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.py-run-field {
+  display: grid;
+  gap: 4px;
+}
+.py-run-label {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+.py-run-input {
+  min-height: 2.25rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+.py-run-note {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.py-run-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+}
+.py-run-btn {
+  min-height: 2.25rem;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--ok);
+  color: #fff;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+.py-run-btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+.py-run-hint {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+.py-run-output {
+  margin-top: var(--space-3);
+}
+.py-run-output pre {
+  margin: 0;
+  min-height: 2.5rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+.py-run-error {
+  margin: var(--space-2) 0 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}

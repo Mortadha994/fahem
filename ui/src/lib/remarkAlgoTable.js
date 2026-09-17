@@ -64,6 +64,23 @@ export default function remarkAlgoTable() {
         };
       });
 
+      // The Python column as one program, for "Exécuter le Python"
+      // (components/PythonRunner.jsx), read after the realignment above.
+      const pythonLines = pythonProgram(
+        table.children
+          .slice(1)
+          .filter((row) => row.type === "tableRow")
+          .map((row) => ({
+            algo: extractCellText(row.children?.[algoIndex] ?? { children: [] }),
+            py: extractCellText(row.children?.[pythonIndex] ?? { children: [] }),
+          }))
+      );
+      table.data ??= {};
+      table.data.hProperties = {
+        ...table.data.hProperties,
+        "data-python-code": pythonLines.join("\n"),
+      };
+
       if (headerCell) {
         headerCell.data ??= {};
         headerCell.data.hProperties = {
@@ -74,6 +91,32 @@ export default function remarkAlgoTable() {
       }
     });
   };
+}
+
+/**
+ * The Python column as a runnable program. A table cell loses its leading
+ * spaces, so blocks are re-indented: a line ending with ":" opens one,
+ * `else` / `elif` sit one level out, and the algorithm's "Fin si" / "Fin pour"
+ * / "Fin tant que" row closes it.
+ */
+export function pythonProgram(rows) {
+  const lines = [];
+  let level = 0;
+  for (const { algo, py } of rows) {
+    if (/^\s*fin\s*(si|pour|tant)/i.test(algo) && !py.trim()) {
+      level = Math.max(0, level - 1);
+      continue;
+    }
+    for (const raw of py.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const branch = /^(else|elif)\b/.test(line);
+      const indent = branch ? Math.max(0, level - 1) : level;
+      lines.push(`${"    ".repeat(indent)}${line}`);
+      if (line.endsWith(":") && !branch) level += 1;
+    }
+  }
+  return lines;
 }
 
 /**

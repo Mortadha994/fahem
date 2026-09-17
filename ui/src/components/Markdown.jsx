@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import remarkAlgoTable from "../lib/remarkAlgoTable.js";
 import { AlgoHeaderCell, AlgoBodyCell } from "./AlgoCode.jsx";
+import PythonRunner from "./PythonRunner.jsx";
 
 // Highlighting is deliberately tag-only (`detect: false`, the default, set
 // explicitly here so nobody "fixes" it later).
@@ -31,11 +32,17 @@ const REMARK_PLUGINS = [remarkGfm, remarkAlgoTable];
 // A block-level <table> shrink-wraps its columns, so the Algorithme|Python
 // panel could never span the answer's width however much room there was;
 // with the wrapper doing the scrolling, the table stays a real table.
-function ScrollTable({ node: _node, ...rest }) {
+//
+// The Algorithme|Python table also gets "Exécuter le Python" under it
+// (remarkAlgoTable.js hands over the Python column as data-python-code).
+function ScrollTable({ node: _node, "data-python-code": pythonCode, ...rest }) {
   return (
-    <div className="md-table">
-      <table {...rest} />
-    </div>
+    <>
+      <div className="md-table">
+        <table {...rest} />
+      </div>
+      {pythonCode ? <PythonRunner code={pythonCode} /> : null}
+    </>
   );
 }
 
