@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
+import ai_control
 import api
 import auth
 import chapters
@@ -74,6 +75,10 @@ def main() -> None:
         me_id, other_id = me.id, other.id
 
     client = TestClient(api.app)
+    # The AI's live availability (pause, daily budget guard) is an admin
+    # setting, not what these tests are about: a real instance whose budget
+    # guard is on would otherwise refuse every solve below.
+    api.app.dependency_overrides[ai_control.require_ai_available] = lambda: None
 
     def as_user(uid):
         client.cookies.clear()
@@ -375,6 +380,7 @@ def main() -> None:
         check("progress: signed in only", client.get("/progress").status_code == 401)
     finally:
         gatekeeper.classify_steps, api.build_context, api.stream_groq, runtime_settings.get = saved
+        api.app.dependency_overrides.clear()
         llm_queue._sync_client().delete(limit_key)
         with session_scope() as s:
             s.execute(delete(User).where(User.id.in_([me_id, other_id])))

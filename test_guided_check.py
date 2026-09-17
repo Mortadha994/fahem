@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
 import admin_monitoring
+import ai_control
 import answer_check
 import api
 import auth
@@ -76,6 +77,10 @@ def main() -> None:
         me_id = me.id
 
     client = TestClient(api.app)
+    # The AI's live availability (pause, daily budget guard) is an admin
+    # setting, not what these tests are about: a real instance whose budget
+    # guard is on would otherwise refuse every solve below.
+    api.app.dependency_overrides[ai_control.require_ai_available] = lambda: None
     client.cookies.set(auth.SESSION_COOKIE_NAME, auth.create_session_token(me_id))
 
     state = {"route": "PROBLEM", "classified": 0, "answer": HINT, "stream": []}
@@ -371,6 +376,7 @@ def main() -> None:
         )
     finally:
         gatekeeper.classify_steps, api.build_context, api.stream_groq, runtime_settings.get = saved
+        api.app.dependency_overrides.clear()
         with session_scope() as s:
             s.execute(delete(User).where(User.id == me_id))
 
