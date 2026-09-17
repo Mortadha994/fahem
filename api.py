@@ -896,6 +896,9 @@ def solve_stream(
             memory=memory_text,
             step=step,
             exercise=exercise,
+            # Neither a new exercise nor a button: the student answering the
+            # tutor's question at this step.
+            reply=prompt_route == "GUIDED" and not starts_exercise and not payload.action,
             precheck=answer_check.findings_block(findings) if prompt_route == "CHECK" else None,
         )
 

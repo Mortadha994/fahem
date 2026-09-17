@@ -373,9 +373,12 @@ N'écris aucune ligne d'algorithme ni de Python.""",
     2: """ÉTAPE 2 / 4 - INDICE.
 Réponds avec :
 1. Si l'élève a proposé quelque chose, ce qui est juste et ce qui manque (une phrase).
-2. « Indice » : la méthode en 2 à 4 phrases (quel calcul, quel opérateur du
-   cours, dans quel ordre), avec au plus UNE instruction d'algorithme en exemple.
-3. Une question qui l'invite à écrire le calcul principal lui-même.
+2. « Indice » : la méthode en 2 à 4 phrases - quelle idée, quel opérateur du
+   cours, dans quel ordre. Montre au plus UN calcul en exemple (une seule
+   instruction d'algorithme) : les autres calculs, c'est à l'élève de les
+   trouver. Ne donne JAMAIS toutes les formules, même en phrase ou entre
+   parenthèses.
+3. Une question qui l'invite à écrire lui-même un calcul que tu n'as pas donné.
 Pas de tableau Algorithme | Python.""",
     3: """ÉTAPE 3 / 4 - SQUELETTE.
 Réponds avec :
@@ -405,8 +408,17 @@ GUIDED_USER_PROMPT = """Contexte (syntaxe et exemples du cours) :
 
 Dernier message de l'élève :
 {query}
-
+{reply_note}
 {step_instructions}"""
+
+GUIDED_REPLY_NOTE = """
+Ce dernier message est la RÉPONSE de l'élève à ta question précédente (voir la
+mémoire), pas une nouvelle demande. Commence par lui dire précisément ce qui est
+juste et ce qui manque ou est faux dans sa réponse. Ne répète pas ce que tu as
+déjà écrit dans ta réponse précédente. Puis, dans le cadre de l'étape ci-dessous :
+si sa réponse est juste, félicite-le en une phrase et invite-le à appuyer sur
+« Indice suivant » ; sinon, aide-le à corriger avec une nouvelle question.
+"""
 
 
 # --- CHECK: "Vérifier ma réponse" ------------------------------------------------------
@@ -504,6 +516,7 @@ def build_messages(
     step: int | None = None,
     exercise: str | None = None,
     precheck: str | None = None,
+    reply: bool = False,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
@@ -525,7 +538,8 @@ def build_messages(
     the rules.
 
     GUIDED takes `step` (1-4) and `exercise`, the statement the guided
-    exercise started from (the query may be only "Indice suivant"). CHECK
+    exercise started from (the query may be only "Indice suivant"), and
+    `reply` when the message answers the tutor's question mid-step. CHECK
     takes `precheck`, answer_check.findings_block's facts."""
     system, user = _PROMPTS.get(kind, _PROMPTS["PROBLEM"])
     system_content = system.format(niveau=niveau, chapitre=chapitre)
@@ -536,6 +550,7 @@ def build_messages(
             context=context,
             query=query,
             exercise=exercise or query,
+            reply_note=GUIDED_REPLY_NOTE if reply else "",
             step_instructions=GUIDED_STEPS[min(4, max(1, step or 1))],
         )
     elif kind == "CHECK":

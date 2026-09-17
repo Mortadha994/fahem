@@ -205,6 +205,10 @@ def main() -> None:
             done["guided"]["step"] == 2 and state["classified"] == 0,
             (done, state["classified"]),
         )
+        check(
+            "guided: the reply is answered as a reply (checked, not the step repeated)",
+            "RÉPONSE de l'élève" in last["messages"][1]["content"],
+        )
 
         done, last, leaked = solve(
             "Indice suivant",

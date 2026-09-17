@@ -788,6 +788,10 @@ export default function Chat() {
         attachment: lastUserMsg.attachment,
         note: lastUserMsg.note,
         mode: lastUserMsg.mode ?? undefined,
+        // A guided button's message is sent again as that button.
+        action: Object.keys(ACTION_LABELS).find(
+          (key) => lastUserMsg.mode === "guided" && ACTION_LABELS[key] === question
+        ),
       }
     );
   }, [active, streaming, setSessions, send]);
@@ -1103,6 +1107,7 @@ export default function Chat() {
                     onPropose={
                       msg.id === lastMessageId &&
                       msg.guided &&
+                      msg.guided.step < 4 &&
                       features.check &&
                       !streaming
                         ? proposeSolution
