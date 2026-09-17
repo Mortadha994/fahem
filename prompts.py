@@ -501,8 +501,9 @@ PRACTICE_LEVELS = {
     "easier": "PLUS FACILE : moins de données ou un calcul de moins, mêmes notions.",
     "same": "MÊME NIVEAU : autant de données et de calculs, dans une autre situation.",
     "harder": (
-        "PLUS DIFFICILE : une donnée ou un calcul de plus, en combinant les notions - "
-        "toujours sans aucune notion absente du contexte."
+        "PLUS DIFFICILE : davantage de données ou de calculs enchaînés, avec les MÊMES "
+        "notions - jamais une notion nouvelle (une condition ou une boucle n'est pas "
+        "« plus difficile », elle est hors programme si le contexte ne la montre pas)."
     ),
 }
 
@@ -515,8 +516,15 @@ Règles :
    une autre situation (autre contexte de la vie courante, autres noms, autres
    valeurs). Ne recopie jamais l'exercice de référence.
 2. Il se résout UNIQUEMENT avec ce que contient le contexte fourni (types,
-   opérateurs, structures du chapitre). N'exige aucune notion absente du
-   contexte (pas de boucle ni de condition si le contexte n'en montre pas).
+   opérateurs, structures du chapitre). Avant d'écrire, vérifie dans le
+   contexte :
+   - s'il n'y a pas de syntaxe « Si … Alors », l'énoncé ne contient AUCUNE
+     condition : pas de « si … sinon », pas de « Admis / Refusé », pas de
+     « le plus grand », pas de message qui dépend d'une valeur ;
+   - s'il n'y a pas de « Pour », « Tant que » ou « Répéter », AUCUNE
+     répétition : un nombre fixe de données, lues une par une ;
+   - aucun arrondi, aucune fonction ni aucun format d'affichage qui ne
+     figure pas dans le contexte.
 3. Ne donne NI la solution, NI l'algorithme, NI le programme, NI d'indice.
 4. Pas de LaTeX : les formules éventuelles en arithmétique simple.
 5. Écris en français simple, au tutoiement."""
