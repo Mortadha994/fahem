@@ -51,19 +51,62 @@ curriculum text it was built on.
   call queues for Groq; a student who has to wait sees their place in line.
 - **A light / dark theme toggle**, defaulting to the OS setting.
 
+Learning features on top of the tutor:
+
+- **Session memory.** Each discussion remembers its last three exchanges, so
+  « et si N a 4 chiffres ? » or « explique la ligne 3 » continue the exercise
+  instead of starting over.
+- **Mode guidé.** A switch in the message box: instead of the full solution,
+  Fahem leads the exercise in four steps — 🔍 Comprendre, 💡 Indice,
+  🧩 Squelette (declaration table + algorithm with blanks), 🏁 Solution — with
+  « Indice suivant », « Je propose ma solution » and « Voir la solution ».
+- **Vérifier ma réponse.** The student pastes (or photographs) their own
+  solution and gets a verdict (Correct / Presque / À revoir), a line-by-line
+  correction table, a test on an example, and the full correction folded away.
+  Notation mistakes (`//`, `%`, `=` instead of `←`, a type inside `Lire`, no
+  declaration table) are detected by code before the model answers.
+- **Exercice similaire.** A new exercise on the same notions — plus facile,
+  même niveau or plus difficile — never with its solution, never with a notion
+  the chapter does not teach.
+- **▶ Exécuter le Python.** Every solution table can run its Python column in
+  the browser (Pyodide in a Web Worker): one field per `input()`, the output in
+  a terminal, errors explained in French.
+- **Ma progression.** Each chapter exercise is *commencé*, *solution vue* or
+  *réussi* (solved alone: « Vérifier ma réponse » said Correct), with the next
+  exercise to do, the solutions checked and the recurring notation mistakes.
+- **👍 / 👎 on every answer**, « Modifier » on the last question and
+  « Régénérer » on the last answer.
+- **Motion that rewards.** The step rail fills up, a Correct verdict bursts
+  into confetti, a generated exercise arrives as a « Nouveau défi » card — only
+  for the answer that just finished, and never under « reduce motion ».
+
 Content today: 2ème informatique, chapter 1 (*structures de données et
 structures simples*) and chapter 2 (*structures conditionnelles*, with a
 12-exercise série: Si, ET/OU, Si imbriqués, Selon).
 
 Admins get a separate console: users, uploaded chapters, and **Surveillance IA**
-(Groq load, token usage against the daily limit, chat activity) — see *History*.
+with four tabs — *En direct* (Groq load, token usage against the daily limit),
+*Contrôles* (pause the AI, budget guard, one switch per student feature, limits,
+queues), *Journal* (every admin action, with revert) and *24 heures* (usage,
+answers per prompt, students' 👍 / 👎, guided steps and verdicts).
 
 ---
 
 ## How it works
 
-```
-chapter PDF  →  extract  →  patch  →  embed  →  retrieve  →  assemble  →  generate  →  check  →  API  →  UI
+```mermaid
+flowchart LR
+    subgraph offline["Offline, once per chapter"]
+        PDF["Chapter PDF / Markdown"] --> EX["extract_chapter.py"] --> PA["patch_chunks.py"] --> EMB["rag_store.py<br/>embed into Qdrant"]
+    end
+    subgraph online["Each student message"]
+        MSG["Message<br/>(+ photo / PDF)"] --> GK["gatekeeper.py<br/>route"]
+        GK --> CTX["context.py<br/>pinned syntax + retrieval"]
+        CTX --> GEN["prompts.py + llm_stream.py<br/>Groq, streamed"]
+        GEN --> CHK["algo_notation.py + checker.py"]
+        CHK --> UI["React chat"]
+    end
+    EMB -. scoped search .-> CTX
 ```
 
 The core idea is that **retrieval alone is not enough**. Early rounds showed
@@ -86,6 +129,99 @@ the student's own code, a course question, small talk, or off-topic (see
 the chapter has not taught. An attached photo or PDF is transcribed first and
 then goes through the same gatekeeper.
 
+### One message, end to end
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor S as Student
+    participant UI as Chat (React)
+    participant API as /solve/stream
+    participant GK as Gatekeeper
+    participant Q as Groq queue (Redis)
+    participant G as Groq
+    participant DB as Postgres
+
+    S->>UI: types, pastes or photographs
+    UI->>API: problem + mode + last exchanges + ids
+    alt button or check (route already known)
+        API->>API: skip the classifier
+    else free message
+        API->>Q: wait for a slot
+        Q->>G: classify
+        G-->>API: PROBLEM / CODE / QUESTION / META / OFF_TOPIC
+    end
+    API->>API: learning_route → prompt (PROBLEM, GUIDED, CHECK, PRACTICE, FOLLOW_UP…)
+    API-->>UI: meta (grounding, route, step)
+    API->>Q: wait for a slot
+    Q->>G: generate
+    G-->>UI: delta, delta, delta…
+    API->>API: notation fix + syntax check + verdict
+    API->>DB: save the exchange (even if the tab closed)
+    API-->>UI: done (warnings, route, step, verdict, version)
+```
+
+### Which prompt answers
+
+The classifier says what a message is; the student's mode and buttons decide
+how it is answered (`api.py` `learning_route`):
+
+```mermaid
+flowchart TD
+    M["Message"] --> TL{"over 2000 characters?"}
+    TL -- yes --> TOO["Clear « trop long » message"]
+    TL -- no --> K{"mode = check,<br/>or « voici ma solution » + code?"}
+    K -- yes --> CHECK["CHECK<br/>verdict + correction"]
+    K -- no --> P{"mode = practice?"}
+    P -- yes --> PR["PRACTICE<br/>new statement, no solution"]
+    P -- no --> G{"mode = guided?"}
+    G -- "button" --> STEP["GUIDED<br/>next step / step 4"]
+    G -- "new statement" --> G1["GUIDED step 1"]
+    G -- "reply mid-exercise" --> GS["GUIDED<br/>same step"]
+    G -- no --> C{"classifier"}
+    C -- "OFF_TOPIC" --> OFF["Fixed sentence, no model"]
+    C -- "META" --> META["Isolated responder, no curriculum"]
+    C -- "short follow-up" --> FU["FOLLOW_UP<br/>uses the memory"]
+    C -- "PROBLEM / CODE / QUESTION" --> GR["Grounded prompt of that route"]
+```
+
+### Mode guidé
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Comprendre: new exercise
+    Comprendre --> Indice: « Indice suivant »
+    Indice --> Squelette: « Indice suivant »
+    Squelette --> Solution: « Dernière étape »
+    Comprendre --> Solution: « Voir la solution »
+    Indice --> Solution: « Voir la solution »
+    Squelette --> Solution: « Voir la solution »
+    Comprendre --> Comprendre: student replies
+    Indice --> Indice: student replies
+    Squelette --> Squelette: student replies
+    Indice --> Verification: « Je propose ma solution »
+    Squelette --> Verification: « Je propose ma solution »
+    Verification --> Indice: buttons stay
+    Solution --> [*]
+```
+
+Steps 1–3 never contain the full solution; one that does is flagged as a
+*leak* and counted in the console.
+
+### Progress, derived from the discussions
+
+```mermaid
+flowchart LR
+    E["Exercise of the série"] -->|"its statement appears in a discussion"| ST["Commencé"]
+    ST -->|"a checked full solution is shown"| SV["Solution vue"]
+    ST -->|"« Vérifier ma réponse » → Correct"| OK["Réussi ✓"]
+    SV -->|"« Vérifier ma réponse » → Correct"| OK
+```
+
+`progress.py` computes this on each `GET /progress` from the chat tables, so
+past work counts and it can never drift from the history.
+
 ### The pipeline
 
 | Stage | What it does |
@@ -95,9 +231,11 @@ then goes through the same gatekeeper.
 | **Embedding + retrieval** | `rag_store.py` embeds with a multilingual model into Qdrant; `retrieval.py` filters by scope, then searches semantically inside it. |
 | **Context assembly** | `context.py` builds the pinned core + retrieved extras, with a build check that fails loudly if a pinned table is missing or its arrows were lost. |
 | **Gatekeeper** | `gatekeeper.py` routes each message: `PROBLEM`, `CODE`, `QUESTION`, `META` or `OFF_TOPIC`. The three grounded routes each get their own prompt. |
+| **Session memory** | `session_memory.py` compacts the last three exchanges (answer tables kept, sizes capped) into quoted data for the prompt, an excerpt for the gatekeeper and the retrieval query; a short follow-up gets the `FOLLOW_UP` prompt. |
+| **Learning modes** | `api.py` `learning_route` picks `GUIDED` (step 1–4), `CHECK` or `PRACTICE`; `answer_check.py` proves notation mistakes in the student's work before the model sees it, and reads the verdict line back. |
 | **Attachments** | `attachments.py` turns a photo or PDF into the exercise text — `pdfplumber` for a PDF with a text layer, a Groq vision model (`GROQ_VISION_MODEL`) for photos and scans, asked only to transcribe — then it re-enters the pipeline as if typed. |
 | **Generation** | `prompts.py` holds the teaching constraints (a prompt per grounded route, plus a per-student "profil de l'élève" note that steers tone only); `generate.py` / `llm_stream.py` call the model (Groq, `openai/gpt-oss-120b`) and stream the answer. |
-| **Checking** | `checker.py` runs a mechanical constraint check over the finished answer. |
+| **Checking** | `algo_notation.py` rewrites any Python operator left in the Algorithme column (`//` → `div`); `checker.py` then runs a mechanical constraint check over the finished answer. |
 | **API** | `api.py` (FastAPI) — solving and attachment reading, plus the auth, chapter and admin routers. |
 | **UI** | `ui/` — React 19 + Vite, served by nginx in Docker. |
 
@@ -112,8 +250,63 @@ then goes through the same gatekeeper.
 | **Groq queue** | `llm_queue.py`: a Redis priority queue per model in front of every Groq call. Classifications rank ahead of solves, a solve waiting 20 s can no longer be jumped, a 429 is retried in the slot with `Retry-After`, and one request never waits more than 120 s in total. The UI gets `waiting` SSE events with the position. |
 | **AI monitoring** | `llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. |
 | **Landing page** | Updates itself: `public_overview.py` serves `GET /public/overview` (no sign-in, cached 60 s) — every chapter with its topics, exercise count and course-extract count, the totals, and feature switches — and `Landing.jsx` builds its numbers, programme cards, scope badge, chapter FAQ, syntax strip and photo claims from it. Publishing a chapter or adding exercises in the console shows up there within a minute; only a new *kind* of feature needs a card in `FEATURES`. |
-| **Chat history** | `chat_history.py` stores each account's discussions in the chat tables; every route is scoped to the caller's own rows. |
+| **Chat history** | `chat_history.py` stores each account's discussions; every route is scoped to the caller's own rows. The list arrives light and a discussion loads in full when opened; saves upsert messages by id and carry a version (a stale save is a 409, merged and retried); the server saves each finished exchange itself. |
+| **Live controls** | `runtime_settings.py` (cached, validated) + `ai_control.py` + `admin_controls.py`: pause, daily budget guard, per-student limit, queue timeout, retries, and a switch per student feature — applied within seconds, each change written to `admin_audit` with who made it, revertible. |
+| **Progress** | `progress.py` derives each exercise's status, the next exercise, the latest checks and the recurring mistakes from the chat tables. |
 | **Chapters** | `chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `admin_chapters.py` + `chapter_store.py` back the admin upload/publish workflow; `course_markdown.py` reads a Markdown-authored chapter. |
+
+### Data model
+
+```mermaid
+erDiagram
+    USERS ||--o{ CHAT_SESSIONS : owns
+    CHAT_SESSIONS ||--o{ CHAT_MESSAGES : contains
+    CHAT_SESSIONS ||--o{ ANSWER_FEEDBACK : receives
+    USERS ||--o{ ANSWER_FEEDBACK : gives
+    USERS ||--o{ AUTH_TOKENS : "verify / reset"
+    USERS ||--o{ LLM_CALLS : spends
+    UPLOADED_CHAPTERS }o--|| USERS : "published by"
+
+    USERS {
+        uuid id
+        string role "student | admin"
+        string niveau
+        string section
+        string plan
+        string solve_rate_limit "personal override"
+    }
+    CHAT_SESSIONS {
+        uuid id
+        string title
+        string chapitre
+        int version "stale saves refused"
+    }
+    CHAT_MESSAGES {
+        string client_id "the chat's own id"
+        string role
+        text content
+        string checker_status
+        jsonb extra "route, guided, check, practice, mode"
+    }
+    ANSWER_FEEDBACK {
+        string message_client_id
+        int rating "-1 | 1"
+    }
+    LLM_CALLS {
+        string kind
+        string route
+        int tokens
+        int memory_chars
+    }
+    APP_SETTINGS {
+        string key
+        jsonb value
+    }
+    ADMIN_AUDIT {
+        string action
+        jsonb detail "before / after"
+    }
+```
 
 ### API at a glance
 
@@ -131,9 +324,14 @@ then goes through the same gatekeeper.
 | `GET /chapters/{id}/exercises` · `/pdf` | cookie | A chapter's exercise series / lesson PDF |
 | `POST /solve` · `/solve/stream` | cookie (user-limited) | One-shot / streamed (SSE) solution — the UI uses the stream |
 | `POST /solve/extract` | cookie (user-limited) | Read the exercise text out of an attached photo or PDF |
-| `GET /chat/sessions` · `PUT` / `DELETE /chat/sessions/{id}` | cookie | The signed-in student's own discussions |
+| `GET /chat/sessions` · `GET` / `PUT` / `DELETE /chat/sessions/{id}` | cookie | The signed-in student's own discussions (light list, full on open, versioned saves) |
+| `POST /chat/feedback` | cookie | 👍 / 👎 on an answer (0 takes it back) |
+| `GET /chat/features` | cookie | Which learning features the admin turned on, and the default mode |
+| `GET /progress` | cookie | Per chapter: each exercise's status, the next one, recent checks, recurring mistakes |
 | `/admin/*` · `/admin/chapters/*` | cookie + admin | The console: users, stats, and the chapter upload/publish workflow |
-| `GET /admin/monitoring` | cookie + admin | Groq load and usage, chat activity (Surveillance IA) |
+| `GET /admin/monitoring` | cookie + admin | Groq load and usage, chat activity, routes, feedback, learning stats (Surveillance IA) |
+| `GET` / `PUT /admin/controls` · `POST /admin/controls/queues/reset` | cookie + admin | Live AI controls |
+| `GET /admin/audit` · `POST /admin/audit/{id}/revert` | cookie + admin | The action log, and putting a settings change back |
 
 Request/response shapes, the SSE event contract and the pre-launch checklist
 are in [`README_API.md`](README_API.md).
@@ -351,6 +549,12 @@ docker compose exec backend python test_course_markdown.py  # Markdown chapter p
 docker compose exec backend python test_llm_queue.py  # Groq queue: priority, aging, deadline, 429 retry
 docker compose exec backend python test_llm_usage.py  # per-call recording and /admin/monitoring
 docker compose exec backend python test_public_overview.py  # what the landing page is told
+docker compose exec backend python test_admin_controls.py   # live controls, audit log, revert
+docker compose exec backend python test_algo_notation.py    # div / mod in the Algorithme column
+docker compose exec backend python test_session_memory.py   # compaction, prompts, follow-ups (--live calls the model)
+docker compose exec backend python test_chat_flow.py        # light list, versioned saves, server save, feedback
+docker compose exec backend python test_guided_check.py     # Mode guidé steps, Vérifier ma réponse, notation pre-check
+docker compose exec backend python test_practice_progress.py  # Exercice similaire, daily limit, progress
 docker compose exec backend python test_gatekeeper_meta.py  # meta answers never leak reasoning (--live calls the model)
 docker compose exec backend python test_retrieval.py  # retrieval inspection (no assertions)
 docker compose exec backend python test_gatekeeper_adversarial.py   # adversarial transcripts; calls the model
@@ -464,6 +668,10 @@ than from a redesign. It was built out step by step against
   Screen-specific rules only *place* a primitive — width, margin, show/hide —
   and never restyle it.
 
+Motion (`motion/react`) animates the app through `LazyMotion`: the student
+app loads `domAnimation` (no layout animations), the admin console `domMax`.
+Everything that moves respects `prefers-reduced-motion`.
+
 Light and dark are driven off `<html data-theme>`: a toggle sets it, and it
 defaults to the OS setting. The palette is the "Violet Dusk" token set, and
 every colour keeps AA contrast in both themes.
@@ -482,7 +690,14 @@ password_auth.py     /auth: email+password signup/login, verification, reset
 admin.py             /admin: role gate, stats, user management
 admin_chapters.py    /admin/chapters: upload → extract → review → publish
 admin_monitoring.py  /admin/monitoring: Groq load, usage, chat activity
-chat_history.py      /chat/sessions: each account's discussions
+chat_history.py      /chat: discussions, feedback, features
+session_memory.py    what a discussion remembers, compacted for the prompt
+answer_check.py      notation mistakes in a student's own solution; verdict parsing
+progress.py          /progress: exercise statuses derived from the discussions
+algo_notation.py     course operators in the Algorithme column (div, mod, ≠…)
+runtime_settings.py  settings an admin changes live (cached, validated, audited)
+ai_control.py        pause, budget guard, live limits applied to requests
+admin_controls.py    /admin/controls, /admin/audit
 llm_queue.py         Redis priority queue in front of every Groq call
 llm_usage.py         records every Groq call for the monitoring
 public_overview.py   /public/overview: live facts for the landing page
@@ -516,16 +731,19 @@ docker-compose.ngrok.yml / share-ngrok.ps1  fixed test link with Google sign-in 
 config.js            NIVEAU / CHAPITRE / SCOPE_LABEL / API_URL / GOOGLE_CLIENT_ID
 App.jsx              auth gate (checking / signed out / signed in / needs-profile) + routes
 App.css              tokens, primitives, then per-screen placement
-routes/              Home, ChapterPage, Chat, ResetPassword, admin/*
+routes/              Home, ChapterPage, Chat, ProgressPage, ResetPassword, admin/*
 components/          AppLayout, AppSidebar, Message, Composer, Markdown,
                      AlgoCode, GroundingStrip, HistoryPanel, ThemeToggle,
                      SignInScreen, PasswordAuthForm, GoogleSignIn,
-                     AuthShell, ProfileSetup, admin/*
+                     AuthShell, ProfileSetup, PythonRunner, admin/*
+components/learning/ Learning.jsx: step rail, verdict card, confetti, challenge card
 components/ui/       Button, Badge, Alert, Skeleton, EmptyState
 lib/                 api.js (SSE client + attachment upload), auth.js,
                      authContext.js, profile.js, theme.js, chapters.js,
                      sessions.js (server-side history), admin.js, algoHighlighter.js,
-                     alignAlgoTable.js, remarkAlgoTable.js, hasRealSolution.js
+                     alignAlgoTable.js, remarkAlgoTable.js, hasRealSolution.js,
+                     learning.js (guided state, verdicts), pythonRunner.js (Pyodide worker),
+                     progressApi.js, algoNotation.js
 grammar/             algoPseudocode.json (TextMate grammar), algoThemes.js
 ```
 
@@ -570,6 +788,9 @@ older imports elsewhere keep working.
 | **PR #12** | The Groq priority queue (phases A and B): `users.plan`, a Redis queue per model, 429 retry inside the slot. |
 | **Next PR** | Queue follow-ups (one wait deadline, gatekeeper `waiting` events, classifications ahead of solves, aging); the gatekeeper fix (no raw reasoning, identity and own-level questions answered); Surveillance IA; the free share modes (Cloudflare, ngrok with Google sign-in). Chapter 2's 12 exercises were added through the console (database, not code). |
 
+| **PR #13** | Surveillance IA KPIs; live AI controls with an action log and revert; the self-updating landing page; bottom toasts; `div` / `mod` guaranteed in the Algorithme column. |
+| **PR #14** | Session memory and the `FOLLOW_UP` route; the chat audit (per-discussion stop, light history, versioned and server-side saves, feedback, edit / regenerate); Mode guidé; Vérifier ma réponse; Exercice similaire; ▶ Exécuter le Python; Ma progression; the redesigned Contrôles page with a separate Journal tab; Motion throughout. Audit: [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md). |
+
 ## Status and what's next
 
 The product works end to end: sign in, answer the one-time class question,
@@ -577,7 +798,16 @@ pick a chapter for your year, read the lesson, click an exercise or paste one
 (or send a photo of it), get a grounded, checked answer. Friends can test it
 from a share link (see *Sharing a test link*).
 
-Next, roughly in order:
+Next, roughly in order (details and more ideas in
+[`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md)):
+
+- **Close the audit's first findings** — pass the `exercise` field of the
+  learning modes through the gatekeeper's checks; count « Réussi » only when
+  the check comes before the solution was shown; turn the daily budget guard on.
+- **Ready-made answers for catalogue exercises** — generate hints, skeletons
+  and solutions once, serve them instantly, and spare the daily Groq budget.
+- **Make practice a game** — an animated execution trace, Parsons puzzles, a bug
+  hunt, XP and badges.
 
 - **Before a real deployment** — set a real `SESSION_SECRET_KEY`,
   `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS`; enable Qdrant's API key;
