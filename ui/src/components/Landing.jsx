@@ -58,22 +58,16 @@ const GLYPHS = [
  *  the overview only the one that needs no counting is shown. */
 function factsFrom(overview) {
   const facts = [
-    { n: "2", unit: "langages", label: "Algorithme et Python, côte à côte" },
+    { n: "4", unit: "étapes", label: "pour comprendre, avant la solution" },
   ];
   if (!overview) return facts;
-  const { exercises, excerpts, chapters_available: ready } = overview.totals;
+  const { exercises, chapters_available: ready } = overview.totals;
   facts.push({
     n: String(exercises),
-    unit: exercises === 1 ? "exercice" : "exercices",
-    label: `dans ${plural(ready, "chapitre")}, corrigés à la demande`,
+    unit: exercises === 1 ? "exercice corrigé" : "exercices corrigés",
+    label: `de ${plural(ready, "chapitre")}, prêts à essayer`,
   });
-  if (excerpts != null) {
-    facts.push({
-      n: String(excerpts),
-      unit: "extraits",
-      label: "de ton cours, cités à l'appui",
-    });
-  }
+  facts.push({ n: "0", unit: "dinar", label: "gratuit pour les élèves" });
   return facts;
 }
 
@@ -142,90 +136,82 @@ const SYNTAX = [
 /* The phone menu lists every section, including the interactive one the
    desktop bar leaves out for width. */
 const MENU = [
+  { href: "#essayer", label: "Essayer sans compte" },
   { href: "#fonctionnalites", label: "Ce que ça fait" },
   { href: "#ligne-a-ligne", label: "Ligne à ligne" },
   { href: "#etapes", label: "Comment ça marche" },
   { href: "#programme", label: "Programme" },
   { href: "#questions", label: "Questions" },
+  { href: "#parents", label: "Parents et profs" },
 ];
 
 const FEATURES = [
   {
-    glyph: "←",
-    title: "La syntaxe de ton cours",
-    body: "Affectation avec ←, mod et div, Lire et Ecrire. Une réponse que tu peux recopier sur ta copie sans rien retraduire.",
-  },
-  {
-    glyph: "⇄",
-    title: "Algorithme, puis Python",
-    body: "Les deux versions dans la même réponse, ligne pour ligne. Tu vois ce que devient chaque instruction.",
-  },
-  {
-    glyph: "❝",
-    title: "Chaque réponse est sourcée",
-    body: "Fahem montre les passages du cours sur lesquels il s'appuie. Tu peux vérifier au lieu de croire.",
+    glyph: "🧭",
+    title: "Il t'aide avant de te donner la réponse",
+    body: "Mode guidé : d'abord comprendre l'énoncé, puis un indice, puis un squelette à compléter. La solution, seulement quand tu la demandes.",
   },
   {
     glyph: "✓",
-    title: "Une relecture avant la tienne",
-    body: "Un vérificateur repasse sur la réponse et signale une syntaxe douteuse, plutôt que de te la laisser apprendre.",
+    title: "Tu écris, il corrige",
+    body: "Colle ta propre solution : il te dit ce qui est juste, ce qui est faux et pourquoi — ligne par ligne, comme un prof qui relit ta copie.",
   },
   {
-    glyph: "☰",
-    title: "Les exercices de la série",
-    body: "Ouvre un exercice du chapitre : l'énoncé part tout seul, tu n'as rien à recopier.",
+    glyph: "←",
+    title: "La syntaxe de ton cours",
+    body: "← pour affecter, div et mod, Lire et Ecrire. Tu recopies sur ta copie sans rien retraduire.",
   },
   {
-    glyph: "⊘",
-    title: "Il reste dans le programme",
-    body: "Une question hors chapitre ? Il le dit. Un tuteur qui refuse d'inventer vaut mieux qu'un qui invente bien.",
+    glyph: "▶",
+    title: "Tu peux lancer le programme",
+    body: "Le Python de la solution tourne dans ton navigateur : donne tes valeurs, vois le résultat, comprends ce que fait chaque ligne.",
   },
   {
-    glyph: "▣",
+    glyph: "🎲",
+    title: "Un exercice de plus, à ta demande",
+    body: "Tu as compris celui-là ? Il t'en écrit un autre, plus facile ou plus dur, sur la même leçon.",
+  },
+  {
+    glyph: "📸",
     title: "Une photo suffit",
-    body: "Photo, capture d'écran ou PDF de l'énoncé : Fahem le lit et le résout comme si tu l'avais tapé.",
+    body: "Photo de ton cahier, capture d'écran ou PDF : il lit l'énoncé et le résout comme si tu l'avais tapé.",
     // Shown only while the backend has a vision model (public_overview.py).
     requires: "photo_attachments",
   },
   {
-    glyph: "◎",
-    title: "Adapté à ta classe",
-    body: "Ton niveau et ta section, choisis une fois : tu ne vois que les chapitres de ton année.",
-  },
-  {
-    glyph: "↺",
-    title: "Tes discussions te suivent",
-    body: "Ton historique est lié à ton compte : retrouve tes exercices sur ton téléphone comme sur l'ordinateur.",
+    glyph: "📈",
+    title: "Tu vois où tu en es",
+    body: "Chaque exercice réussi tout seul est compté. Tu sais ce qu'il te reste à faire avant le devoir.",
   },
 ];
 
 const STEPS = [
   {
-    title: "Choisis, ou colle",
-    body: "Prends un exercice du chapitre, ou colle l'énoncé que ton prof a donné aujourd'hui.",
+    title: "Envoie ton exercice",
+    body: "Colle l'énoncé, prends-le en photo, ou choisis-en un dans la série de ton chapitre.",
   },
   {
-    title: "Lis la réponse",
-    body: "Algorithme, Python, et les parties du cours utilisées — rien qui sorte de ton chapitre.",
+    title: "Choisis : guidé ou direct",
+    body: "Un indice pour chercher toi-même, ou la solution complète tout de suite. C'est toi qui décides.",
   },
   {
-    title: "Refais-le seul",
-    body: "C'est le but : la réponse est détaillée pour que tu puisses la refermer et recommencer sans elle.",
+    title: "Vérifie ta réponse",
+    body: "Écris ta solution, Fahem la corrige. Réussi tout seul = un exercice de plus dans ta progression.",
   },
 ];
 
 const VERSUS = {
   them: [
     "Écrit x = x + 1 là où ton cours écrit x ← x + 1",
-    "Mélange les niveaux et sort du programme",
-    "Invente une syntaxe qui ressemble à la bonne",
-    "Aucune source : à toi de deviner si c'est juste",
+    "Utilise des boucles et des fonctions pas encore vues en classe",
+    "Te donne la réponse, jamais l'envie de chercher",
+    "Tu ne sais pas si c'est juste pour ton programme",
   ],
   us: [
     "Écrit la syntaxe de ton chapitre, à la lettre",
-    "Ne répond que sur ce que ton cours couvre",
-    "Relit sa propre réponse et signale ce qui cloche",
-    "Montre les extraits du cours qu'il a utilisés",
+    "Ne sort jamais de ce que tu as vu en cours",
+    "Te guide d'abord, et corrige ce que tu écris",
+    "Te montre le passage du cours qu'il a utilisé",
   ],
 };
 
@@ -388,7 +374,6 @@ export default function Landing() {
   const facts = factsFrom(overview);
   const scope = scopeLabel(overview);
   const faq = faqFrom(overview);
-  const photos = Boolean(overview?.features.photo_attachments);
   const features = FEATURES.filter(
     (f) => !f.requires || overview?.features[f.requires]
   );
@@ -547,18 +532,17 @@ export default function Landing() {
                 fades in as one inline run - split into boxes it could not wrap
                 on a phone, and each box would restart the gradient. */}
             <h1 className="lp-title">
-              <Words text="L'algorithmique, corrigée" />{" "}
+              <Words text="Bloqué sur un exercice" />{" "}
               <span className="auth-gradient-text lp-title-accent">
-                dans la syntaxe de ton cours.
+                d'algorithmique ?
               </span>
               <span className="type-caret lp-title-caret" aria-hidden="true" />
             </h1>
 
             <p className="lp-lead">
-              Colle l'énoncé d'un exercice{photos ? ", ou envoie-en une photo" : ""}.
-              Fahem le résout en Algorithme et en Python — avec <code>←</code>,{" "}
-              <code>Lire</code>, <code>Ecrire</code> et <code>mod</code> comme ton
-              manuel — et te montre les parties du cours sur lesquelles il s'appuie.
+              Fahem t'explique, te guide et corrige ce que <strong>tu</strong> écris —
+              avec <code>←</code>, <code>div</code>, <code>Lire</code> et{" "}
+              <code>Ecrire</code>, exactement comme ton prof les attend sur ta copie.
             </p>
 
             <div className="lp-cta-row">
@@ -575,7 +559,11 @@ export default function Landing() {
             </div>
 
             <p className="lp-fineprint">
-              Pas de carte bancaire, rien à installer. Une adresse e-mail suffit.
+              Gratuit, rien à installer. Et tu peux{" "}
+              <a className="lp-textlink" href="#essayer">
+                essayer sans compte
+              </a>{" "}
+              juste en dessous.
             </p>
           </div>
 
@@ -879,8 +867,9 @@ export default function Landing() {
         </p>
         <p className="lp-foot-scope">{scope}</p>
         <nav className="lp-foot-nav" aria-label="Pied de page">
+          <a href="#essayer">Essayer</a>
           <a href="#fonctionnalites">Ce que ça fait</a>
-          <a href="#programme">Programme</a>
+          <a href="#parents">Parents et profs</a>
           <a href="#questions">Questions</a>
           <Link to="/connexion">Se connecter</Link>
         </nav>
