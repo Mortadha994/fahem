@@ -25,7 +25,6 @@ from typing import Iterator
 
 import llm_queue
 import llm_usage
-from config import GROQ_QUEUE_TIMEOUT_SECONDS
 from generate import GROQ_MODEL, GROQ_URL
 
 
@@ -35,6 +34,8 @@ def stream_groq(
     timeout: int = 300,
     priority: int = llm_queue.PRIORITY_FREE,
     budget: llm_queue.WaitBudget | None = None,
+    route: str | None = None,
+    memory_chars: int = 0,
 ) -> Iterator[str | llm_queue.Waiting]:
     """Yield answer-content fragments as they arrive, preceded by
     llm_queue.Waiting markers while the request waits. Reasoning is discarded.
@@ -72,7 +73,9 @@ def stream_groq(
     # the line.
     age_after_seconds, aging_drop = llm_queue.aging_for(llm_queue.KIND_SOLVE)
     # What this solve cost, for the admin console (llm_usage).
-    record = llm_usage.CallRecord(model=GROQ_MODEL, kind=llm_queue.KIND_SOLVE)
+    record = llm_usage.CallRecord(
+        model=GROQ_MODEL, kind=llm_queue.KIND_SOLVE, route=route, memory_chars=memory_chars
+    )
     try:
         with llm_queue.SyncWaiter(
             llm_queue.groq_queue_key(GROQ_MODEL),
@@ -82,7 +85,8 @@ def stream_groq(
             # (llm_queue.aging_for).
             llm_queue.queue_priority(llm_queue.KIND_SOLVE, priority),
             llm_queue.groq_max_concurrent(GROQ_MODEL),
-            GROQ_QUEUE_TIMEOUT_SECONDS,
+            # The request's own budget (the admin's live queue timeout).
+            budget.total,
             kind=llm_queue.KIND_SOLVE,
             budget=budget,
             age_after_seconds=age_after_seconds,

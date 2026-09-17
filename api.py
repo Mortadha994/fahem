@@ -24,7 +24,9 @@ import logging
 import re
 import time
 import urllib.error
+import uuid
 from contextlib import asynccontextmanager
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -35,7 +37,11 @@ from slowapi.errors import RateLimitExceeded
 
 import admin
 import admin_chapters
+import admin_controls
 import admin_monitoring
+import ai_control
+import algo_notation
+import answer_check
 import attachments
 import auth
 import chapter_store
@@ -45,16 +51,23 @@ import gatekeeper
 import llm_queue
 import models
 import password_auth
+import progress
+import public_overview
 import ratelimit
+import runtime_settings
+import session_memory
 from checker import check_constraints
-from config import CORS_ORIGINS, RATE_LIMIT_SOLVE
+from config import CORS_ORIGINS
 from context import build_context
 from generate import GROQ_MODEL, generate, pick_backend
 from llm_stream import stream_groq
-from prompts import build_messages
+from prompts import CHECK_CORRECTION_HEADING, build_messages
 from rag_store import get_model
 
 log = logging.getLogger("fahem.api")
+
+# The 429 retry count follows the admin console's live setting (ai_control).
+llm_queue.RETRY_MAX_SOURCE = ai_control.retry_max
 
 
 @asynccontextmanager
@@ -153,9 +166,20 @@ app.include_router(admin_chapters.router)
 # AI monitoring: Groq load and usage, chat activity. Same router-level gate.
 app.include_router(admin_monitoring.router)
 
+# AI controls: pause, daily budget guard, live limits, queue reset. Same gate.
+app.include_router(admin_controls.router)
+
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.
 app.include_router(chat_history.router)
+
+# The student's progress through the chapter exercises, derived from their
+# discussions - see progress.py.
+app.include_router(progress.router)
+
+# What the public landing page shows (chapters, counts, features), no sign-in -
+# see public_overview.py. Cached, and reaches no model.
+app.include_router(public_overview.router)
 
 
 def _meta_scope(payload) -> tuple[str, str]:
@@ -226,6 +250,32 @@ class SolveRequest(BaseModel):
         "separate from the exercise text",
     )
     k: int = Field(default=5, ge=1, le=20, description="Retrieved extras budget")
+    # Where the exchange belongs, so the server saves it when the answer ends
+    # (chat_history.record_exchange) - even if the tab is closed first. All
+    # optional: without them nothing is saved server-side.
+    session_id: uuid.UUID | None = None
+    user_message_id: str | None = Field(default=None, max_length=80)
+    assistant_message_id: str | None = Field(default=None, max_length=80)
+    title: str | None = Field(default=None, max_length=200)
+    attachment: dict[str, Any] | None = None
+    # "guided": Mode guidé - the exercise led step by step (prompts.GUIDED).
+    # "check": Vérifier ma réponse - the student's own solution corrected.
+    # "practice": Exercice similaire - a new statement, no solution.
+    mode: Literal["full", "guided", "check", "practice"] = "full"
+    difficulty: Literal["easier", "same", "harder"] | None = None
+    # Guided: the step the discussion is at (1-4); `action` is a button -
+    # "next_step" / "show_solution" - which moves it on without asking the
+    # classifier what "Indice suivant" means; `exercise` is the statement the
+    # guided exercise started from, which the memory may no longer hold.
+    step: int | None = Field(default=None, ge=1, le=4)
+    action: Literal["next_step", "show_solution"] | None = None
+    exercise: str | None = Field(default=None, max_length=2000)
+    exercise_id: str | None = Field(default=None, max_length=80)
+    history: list[session_memory.HistoryTurn] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The discussion's earlier messages, oldest first - the tutor's session memory. Compacted and capped server-side (session_memory.compact), so it cannot inflate a request.",
+    )
 
 
 def gate_text(payload: SolveRequest) -> str:
@@ -277,12 +327,13 @@ def health() -> dict:
 
 
 @app.post("/solve", response_model=SolveResponse)
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 def solve(
     request: Request,
     response: Response,
     payload: SolveRequest,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
 ) -> SolveResponse:
     """Solve one problem. Requires a signed-in user (Phase 1), rate-limited
     per user (Phase 2).
@@ -320,7 +371,7 @@ def solve(
     # docstring for why this is a separate layer, not a pipeline change.
     if gatekeeper.is_input_too_long(gate_text(payload)):
         return SolveResponse(
-            solution=gatekeeper.DECLINE_MESSAGE,
+            solution=gatekeeper.TOO_LONG_MESSAGE,
             niveau=payload.niveau,
             chapitre=payload.chapitre,
             model="gatekeeper",
@@ -335,9 +386,16 @@ def solve(
     # Groq call this request makes waits its turn at this priority.
     priority = llm_queue.priority_for(user.plan)
     # One deadline for all of this request's waiting (llm_queue.WaitBudget).
-    budget = llm_queue.WaitBudget()
+    budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
+    # What the tutor remembers of this discussion (session_memory.py).
+    memory = session_memory.compact(payload.history)
     try:
-        route = gatekeeper.classify(gate_text(payload), priority=priority, budget=budget)
+        route = gatekeeper.classify(
+            gate_text(payload),
+            priority=priority,
+            budget=budget,
+            previous=session_memory.router_excerpt(memory),
+        )
     except gatekeeper.Busy as exc:
         raise HTTPException(status_code=429, detail="model backend busy") from exc
 
@@ -380,7 +438,7 @@ def solve(
     # grounded pipeline for all three, each with its own prompt (prompts.py).
     try:
         context = build_context(
-            payload.problem,
+            session_memory.retrieval_query(payload.problem, memory),
             niveau=payload.niveau,
             chapitre=payload.chapitre,
             k=payload.k,
@@ -404,9 +462,15 @@ def solve(
         # on. Keeping the two separate is deliberate.
         niveau=niveau_label(payload.niveau),
         chapitre=payload.chapitre,
-        kind=route,
+        # A short follow-up gets the FOLLOW_UP prompt (see /solve/stream).
+        kind=(
+            "FOLLOW_UP"
+            if session_memory.is_follow_up(payload.problem, memory, payload.note)
+            else route
+        ),
         profile=student_profile(user),
         note=(payload.note or "").strip() or None,
+        memory=session_memory.memory_block(memory),
     )
 
     try:
@@ -425,6 +489,13 @@ def solve(
     except KeyError as exc:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY is not set") from exc
 
+    # Course notation in the Algorithme column (div, mod, ≠...), even if the
+    # model slipped - the student reads and copies this answer as returned.
+    answer, fixed = algo_notation.normalize_answer(answer)
+    if fixed:
+        log.warning(
+            "rewrote %d Python operator(s) in the Algorithme column (route %s)", fixed, route
+        )
     violations, _ = check_constraints(answer, rendered)
 
     return SolveResponse(
@@ -440,6 +511,110 @@ def solve(
         warnings=violations,
         elapsed_ms=int((time.monotonic() - started) * 1000),
     )
+
+
+def skips_classifier(payload: SolveRequest, memory: list, note: str | None) -> bool:
+    """Requests whose route is already known, so the gatekeeper's Groq call
+    would be spent for nothing - or worse, would misread them:
+      - "Vérifier ma réponse" (the button says what the student wants);
+      - a guided exercise's buttons ("Indice suivant" is not an exercise);
+      - a short reply in the middle of a guided exercise ("deux entiers ?"),
+        which the classifier could decline as off topic.
+    """
+    if payload.mode == "check" and runtime_settings.get("check_answer_enabled"):
+        return True
+    if payload.mode == "practice" and runtime_settings.get("practice_enabled"):
+        return bool(payload.exercise)
+    if payload.mode != "guided" or not runtime_settings.get("guided_mode_enabled"):
+        return False
+    if not payload.exercise:
+        return False
+    return bool(payload.action) or bool(
+        payload.step
+        and session_memory.is_follow_up(payload.problem, memory, note)
+        and not session_memory.looks_like_statement(payload.problem)
+    )
+
+
+def learning_route(
+    payload: SolveRequest, route: str, memory: list, note: str | None
+) -> tuple[str, int | None, bool]:
+    """(prompt route, guided step, whether a guided exercise starts here).
+
+    The admin switches decide first: with a mode turned off, a request in that
+    mode is answered the normal way. Then:
+      - CHECK: the button, or a message asking to check pasted work;
+      - GUIDED: a new statement starts at step 1; a button moves the step on;
+        anything else in an exercise under way stays at its step (a pasted
+        solution there is checked);
+      - otherwise FOLLOW_UP or the classifier's route, as before.
+    """
+    check_on = bool(runtime_settings.get("check_answer_enabled"))
+    guided_on = bool(runtime_settings.get("guided_mode_enabled"))
+    if payload.mode == "practice" and payload.exercise and runtime_settings.get("practice_enabled"):
+        return "PRACTICE", None, False
+    # A new statement is never a follow-up, however short.
+    follow = session_memory.is_follow_up(
+        payload.problem, memory, note
+    ) and not session_memory.looks_like_statement(payload.problem)
+    if check_on and (
+        payload.mode == "check"
+        or (route in ("CODE", "PROBLEM") and answer_check.looks_like_check(payload.problem))
+    ):
+        return "CHECK", None, False
+    if guided_on and payload.mode == "guided":
+        in_exercise = bool(payload.step and payload.exercise)
+        if in_exercise and payload.action == "show_solution":
+            return "GUIDED", 4, False
+        if in_exercise and payload.action == "next_step":
+            return "GUIDED", min(4, payload.step + 1), False
+        if route == "PROBLEM" and not follow:
+            return "GUIDED", 1, True
+        if in_exercise:
+            if route == "CODE" and check_on:
+                return "CHECK", None, False
+            return "GUIDED", payload.step, False
+    return ("FOLLOW_UP" if follow else route), None, False
+
+
+PRACTICE_LIMIT_MESSAGE = (
+    "Tu as déjà demandé {limit} exercices similaires aujourd'hui. Reviens demain pour "
+    "en avoir d'autres - en attendant, essaie de résoudre ceux que tu as déjà !"
+)
+
+
+def take_practice_slot(user_id) -> bool:
+    """Count one generated exercise against today's per-student limit (Redis,
+    reset at midnight UTC). False when the limit is reached. A Redis outage
+    lets the request through: the global rate limits still apply."""
+    limit = int(runtime_settings.get("practice_daily_limit"))
+    key = f"fahem:practice:{user_id}:{time.strftime('%Y-%m-%d', time.gmtime())}"
+    try:
+        client = llm_queue._sync_client()
+        used = client.incr(key)
+        if used == 1:
+            client.expire(key, 2 * 86400)
+        if used > limit:
+            client.decr(key)
+            return False
+        return True
+    except Exception:
+        log.exception("practice limit unavailable")
+        return True
+
+
+def _correction_part(answer: str) -> str:
+    """What the syntax checker reads in a CHECK answer: the corrected solution,
+    not the table quoting the student's own mistakes."""
+    _, _, after = answer.partition(CHECK_CORRECTION_HEADING)
+    return after
+
+
+def _has_solution_table(answer: str) -> bool:
+    """An Algorithme | Python table with at least one ← in it - what makes an
+    answer checkable (ui/src/lib/hasRealSolution.js follows the same idea)."""
+    lowered = answer.lower()
+    return "| algorithme" in lowered and "python" in lowered and "←" in answer
 
 
 def _sse(event: str, payload: dict) -> str:
@@ -485,7 +660,13 @@ def _busy_stream():
     yield _sse("error", {"message": "busy", "status": 429})
 
 
-def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, started: float):
+def _gatekeeper_stream(
+    text: str,
+    model_label: str,
+    payload: SolveRequest,
+    started: float,
+    extra: dict | None = None,
+):
     """The meta/done/delta shape for a gatekeeper-produced reply (DoS cap,
     OFF_TOPIC, or META), reusing the exact SSE contract /solve/stream already
     emits for a real answer - empty pinned/retrieved, one delta, a clean
@@ -511,17 +692,19 @@ def _gatekeeper_stream(text: str, model_label: str, payload: SolveRequest, start
             "notes": [],
             "chars": len(text),
             "elapsed_ms": int((time.monotonic() - started) * 1000),
+            **(extra or {}),
         },
     )
 
 
 @app.post("/solve/stream")
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 def solve_stream(
     request: Request,
     response: Response,
     payload: SolveRequest,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
 ):
     """Streaming counterpart of /solve. Requires a signed-in user (Phase 1),
     sharing /solve's per-user rate limit (Phase 2).
@@ -571,17 +754,86 @@ def solve_stream(
     # neither waits for Groq. See gatekeeper.py's module docstring.
     if gatekeeper.is_input_too_long(gate_text(payload)):
         return StreamingResponse(
-            _gatekeeper_stream(gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started),
+            _gatekeeper_stream(
+                gatekeeper.TOO_LONG_MESSAGE, "gatekeeper", payload, started, {"route": "TOO_LONG"}
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
     priority = llm_queue.priority_for(user.plan)
-    # One deadline for everything this request waits on - the classifier's
+    practice_on = payload.mode == "practice" and runtime_settings.get("practice_enabled")
+    if practice_on and payload.exercise and not take_practice_slot(user.id):
+        message = PRACTICE_LIMIT_MESSAGE.format(limit=runtime_settings.get("practice_daily_limit"))
+        return StreamingResponse(
+            _gatekeeper_stream(
+                message, "gatekeeper", payload, started, {"route": "PRACTICE_LIMIT"}
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )  # One deadline for everything this request waits on - the classifier's
     # place in Groq's queue, the solve's, and every 429 sleep - so a student
     # hears "busy" within GROQ_QUEUE_TIMEOUT_SECONDS, not a multiple of it.
-    budget = llm_queue.WaitBudget()
+    budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
+    # What the tutor remembers of this discussion (session_memory.py).
+    memory = session_memory.compact(payload.history)
+    memory_text = session_memory.memory_block(memory)
+    memory_turns = sum(1 for m in memory if m["role"] == "user")
+    note = (payload.note or "").strip() or None
+    saved = {"done": False}
+
+    def persist(
+        content,
+        status_value,
+        route_label,
+        warnings=None,
+        pinned=None,
+        retrieved=None,
+        learning=None,
+    ):
+        """Save the exchange server-side (once), when the chat said where it
+        belongs. Returns the discussion's new version, or None. `learning`:
+        the answer's guided / check fields."""
+        if saved["done"] or not content:
+            return None
+        if not (payload.session_id and payload.user_message_id and payload.assistant_message_id):
+            return None
+        saved["done"] = True
+        return chat_history.record_exchange(
+            user.id,
+            payload.session_id,
+            niveau=payload.niveau,
+            chapitre=payload.chapitre,
+            title=payload.title,
+            user_message={
+                "id": payload.user_message_id,
+                "role": "user",
+                "content": payload.problem,
+                "note": note,
+                "attachment": payload.attachment,
+                "mode": payload.mode if payload.mode != "full" else None,
+            },
+            assistant_message={
+                "id": payload.assistant_message_id,
+                "role": "assistant",
+                "content": content,
+                "status": status_value,
+                "warnings": warnings or [],
+                "pinned": pinned or [],
+                "retrieved": retrieved or [],
+                "route": route_label,
+                **(learning or {}),
+            },
+        )
+
+    def done_extra(route_label, version, learning=None):
+        return {
+            "route": route_label,
+            "memory_turns": memory_turns,
+            "session_version": version,
+            **(learning or {}),
+        }
 
     def events():
         # The gatekeeper runs inside the stream rather than before it: under
@@ -590,12 +842,25 @@ def solve_stream(
         # unchanged - classification first, META and OFF_TOPIC never reach
         # build_context.
         try:
-            route = yield from _relay(
-                gatekeeper.classify_steps(gate_text(payload), priority, budget)
-            )
+            if skips_classifier(payload, memory, note):
+                route = "CODE" if payload.mode == "check" else "PROBLEM"
+            else:
+                route = yield from _relay(
+                    gatekeeper.classify_steps(
+                        gate_text(payload),
+                        priority,
+                        budget,
+                        previous=session_memory.router_excerpt(memory),
+                    )
+                )
             if route == "OFF_TOPIC":
+                version = persist(gatekeeper.DECLINE_MESSAGE, "none", route)
                 yield from _gatekeeper_stream(
-                    gatekeeper.DECLINE_MESSAGE, "gatekeeper", payload, started
+                    gatekeeper.DECLINE_MESSAGE,
+                    "gatekeeper",
+                    payload,
+                    started,
+                    done_extra(route, version),
                 )
                 return
             if route == "META":
@@ -609,7 +874,10 @@ def solve_stream(
                         niveau=meta_niveau(user, payload),
                     )
                 )
-                yield from _gatekeeper_stream(answer, GROQ_MODEL, payload, started)
+                version = persist(answer, "none", route)
+                yield from _gatekeeper_stream(
+                    answer, GROQ_MODEL, payload, started, done_extra(route, version)
+                )
                 return
         except gatekeeper.Busy:
             yield from _busy_stream()
@@ -621,9 +889,28 @@ def solve_stream(
         # store failure is an error frame instead of a 422 (the student sees the
         # same generic error either way), while an unavailable chapter is still
         # refused before the stream opens, by _meta_scope above.
+        # Mode guide / Verifier ma reponse / a follow-up (learning_route): a
+        # short message continuing a discussion gets the FOLLOW_UP prompt,
+        # whichever of PROBLEM / QUESTION / CODE the classifier picked - it
+        # hesitates between them on follow-ups, and one of them forbids
+        # solving (session_memory.is_follow_up).
+        prompt_route, step, starts_exercise = learning_route(payload, route, memory, note)
+        exercise = payload.problem if starts_exercise else (payload.exercise or payload.problem)
+        exercise_id = (
+            payload.user_message_id
+            if starts_exercise
+            else (payload.exercise_id or payload.user_message_id)
+        )
+        findings = answer_check.precheck(payload.problem) if prompt_route == "CHECK" else []
+        guided = {"step": step, "exerciseId": exercise_id} if prompt_route == "GUIDED" else None
+
         try:
             context = build_context(
-                payload.problem,
+                # A button's text ("Indice suivant") retrieves nothing useful;
+                # the exercise does.
+                session_memory.retrieval_query(
+                    exercise if prompt_route == "GUIDED" else payload.problem, memory
+                ),
                 niveau=payload.niveau,
                 chapitre=payload.chapitre,
                 k=payload.k,
@@ -649,37 +936,55 @@ def solve_stream(
             query=payload.problem,
             niveau=niveau_label(payload.niveau),
             chapitre=payload.chapitre,
-            kind=route,
+            kind=prompt_route,
             profile=student_profile(user),
-            note=(payload.note or "").strip() or None,
+            note=note,
+            memory=memory_text,
+            step=step,
+            exercise=exercise,
+            # Neither a new exercise nor a button: the student answering the
+            # tutor's question at this step.
+            reply=prompt_route == "GUIDED" and not starts_exercise and not payload.action,
+            difficulty=payload.difficulty,
+            precheck=answer_check.findings_block(findings) if prompt_route == "CHECK" else None,
         )
 
+        pinned = [
+            {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
+            for p in context.pinned
+        ]
+        retrieved = [
+            {
+                "id": h.chunk_id,
+                "section": h.section,
+                "type": h.type,
+                "score": round(h.score, 4),
+                "content": h.content,
+            }
+            for h in context.retrieved
+        ]
         yield _sse(
             "meta",
             {
                 "model": GROQ_MODEL,
                 "niveau": payload.niveau,
                 "chapitre": payload.chapitre,
-                "pinned": [
-                    {"id": p.chunk_id, "label": p.label, "section": p.section, "content": p.content}
-                    for p in context.pinned
-                ],
-                "retrieved": [
-                    {
-                        "id": h.chunk_id,
-                        "section": h.section,
-                        "type": h.type,
-                        "score": round(h.score, 4),
-                        "content": h.content,
-                    }
-                    for h in context.retrieved
-                ],
+                "route": prompt_route,
+                **({"guided": guided} if guided else {}),
+                "pinned": pinned,
+                "retrieved": retrieved,
             },
         )
 
         parts: list[str] = []
         try:
-            for fragment in stream_groq(messages, priority=priority, budget=budget):
+            for fragment in stream_groq(
+                messages,
+                priority=priority,
+                budget=budget,
+                route=prompt_route,
+                memory_chars=len(memory_text or ""),
+            ):
                 # Still waiting - for a slot, or on Groq's Retry-After inside
                 # it. Sent before any delta, so the student sees why nothing
                 # is arriving yet.
@@ -702,16 +1007,70 @@ def solve_stream(
         except (urllib.error.URLError, KeyError):
             yield _sse("error", {"message": "backend", "status": 502})
             return
+        except GeneratorExit:
+            # The student left mid-answer (tab closed, page changed): keep what
+            # was written, marked as stopped - those tokens were paid for.
+            persist(
+                "".join(parts),
+                "stopped",
+                prompt_route,
+                [],
+                pinned,
+                retrieved,
+                {"guided": guided} if guided else None,
+            )
+            raise
 
         answer = "".join(parts)
-        violations, notes = check_constraints(answer, rendered)
+        # The chat shows the Algorithme column in course notation whatever the
+        # model wrote (ui/src/lib/algoNotation.js); check that version, so a
+        # slip the student never sees is not reported as a violation - and
+        # log it, so the model's slips stay visible.
+        checked, fixed = algo_notation.normalize_answer(answer)
+        if fixed:
+            log.warning(
+                "rewrote %d Python operator(s) in the Algorithme column (route %s)",
+                fixed,
+                route,
+            )
+        learning: dict[str, Any] = {}
+        if prompt_route == "CHECK":
+            # The table quoting the student's mistakes is not checked - only
+            # the corrected solution under its heading, if there is one.
+            checked = _correction_part(checked)
+            learning["check"] = {
+                "verdict": answer_check.parse_verdict(answer),
+                "findings": sorted({f.kind for f in findings}),
+            }
+        if guided:
+            learning["guided"] = guided
+        if prompt_route == "PRACTICE":
+            learning["practice"] = {"difficulty": payload.difficulty or "same"}
+        violations, notes = check_constraints(checked, rendered)
+        has_solution = _has_solution_table(checked)
+        if guided and guided["step"] < 4:
+            if has_solution:
+                # The step rules forbid it; kept visible in the logs and the console.
+                log.warning("guided step %d answered with a full solution table", guided["step"])
+                learning["guided"] = {**guided, "leak": True}
+            has_solution = False  # a hint is not a solution to vouch for
+        version = persist(
+            answer,
+            "warned" if violations and has_solution else ("clean" if has_solution else "none"),
+            prompt_route,
+            violations if has_solution else [],
+            pinned,
+            retrieved,
+            learning,
+        )
         yield _sse(
             "done",
             {
-                "warnings": violations,
+                "warnings": violations if has_solution else [],
                 "notes": notes,
                 "chars": len(answer),
                 "elapsed_ms": int((time.monotonic() - started) * 1000),
+                **done_extra(prompt_route, version, learning),
             },
         )
 
@@ -729,11 +1088,13 @@ class ExtractResponse(BaseModel):
 
 
 @app.post("/solve/extract", response_model=ExtractResponse)
-@ratelimit.limiter.shared_limit(RATE_LIMIT_SOLVE, scope=ratelimit.SOLVE_SCOPE)
+@ratelimit.limiter.shared_limit(ai_control.solve_rate_limit, scope=ratelimit.SOLVE_SCOPE)
 async def solve_extract(
     request: Request,
     response: Response,
     user: models.User = Depends(auth.bind_user),
+    _available: None = Depends(ai_control.require_ai_available),
+    _attachments: None = Depends(ai_control.require_attachments),
 ) -> ExtractResponse:
     """Read an exercise from a photo or a PDF attached in the chat.
 

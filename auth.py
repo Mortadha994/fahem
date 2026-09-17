@@ -273,7 +273,25 @@ def get_current_user(session_cookie: str | None = Cookie(None, alias=SESSION_COO
     cutoff = user.sessions_valid_after
     if cutoff is not None and issued_at < int(cutoff.timestamp()):
         raise unauthorized
+    # Suspended by an admin: the session stops working at once. The same 401
+    # as any dead session - the student learns why when signing in again
+    # (refuse_if_suspended), not from every API call.
+    if user.suspended_at is not None:
+        raise unauthorized
     return user
+
+
+ACCOUNT_SUSPENDED = (
+    "Ce compte est suspendu. Contacte l'équipe Fahem si tu penses que c'est une erreur."
+)
+
+
+def refuse_if_suspended(user: User) -> None:
+    """Refuse to open a session for a suspended account (403, with a sentence
+    the sign-in screen shows as is). Called once the credentials have been
+    proven, so it reveals nothing to someone guessing."""
+    if user.suspended_at is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ACCOUNT_SUSPENDED)
 
 
 def get_current_admin(user: User = Depends(get_current_user)) -> User:
@@ -360,6 +378,7 @@ def google_sign_in(request: Request, payload: GoogleSignInRequest, response: Res
         raise HTTPException(status_code=401, detail=f"invalid Google ID token: {exc}")
 
     user = upsert_user(claims)
+    refuse_if_suspended(user)
     set_session_cookie(response, create_session_token(user.id))
     return UserOut.of(user)
 

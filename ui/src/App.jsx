@@ -5,6 +5,7 @@ import Landing from "./components/Landing.jsx";
 import SignInScreen from "./components/SignInScreen.jsx";
 import Home from "./routes/Home.jsx";
 import ChapterPage from "./routes/ChapterPage.jsx";
+import ProgressPage from "./routes/ProgressPage.jsx";
 import AdminLayout from "./components/admin/AdminLayout.jsx";
 import AdminDashboard from "./routes/admin/AdminDashboard.jsx";
 import AdminUserCreate from "./routes/admin/AdminUserCreate.jsx";
@@ -309,6 +310,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/chapitre/:id" element={<ChapterPage />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/progression" element={<ProgressPage />} />
           {/* An unknown path is a mistyped URL or a stale bookmark, not an
               error worth a screen of its own at this size. */}
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -20,6 +20,7 @@ export default function AdminUsers() {
   const q = params.get("q") ?? "";
   const role = params.get("role") ?? "";
   const method = params.get("method") ?? "";
+  const state = params.get("state") ?? "";
   const page = Math.max(1, Number(params.get("page")) || 1);
 
   const [draft, setDraft] = useState(q);
@@ -45,7 +46,14 @@ export default function AdminUsers() {
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
-    fetchUsers({ q, role, method, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
+    fetchUsers({
+      q,
+      role,
+      method,
+      state,
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+    })
       .then((d) => !cancelled && setData(d))
       .catch((err) => {
         if (cancelled) return;
@@ -55,7 +63,7 @@ export default function AdminUsers() {
     return () => {
       cancelled = true;
     };
-  }, [q, role, method, page, onUnauthorized]);
+  }, [q, role, method, state, page, onUnauthorized]);
 
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
@@ -102,6 +110,16 @@ export default function AdminUsers() {
           <option value="password">E-mail</option>
           <option value="google">Google</option>
         </select>
+        <select
+          className="adm-input"
+          aria-label="État du compte"
+          value={state}
+          onChange={(e) => setFilter("state", e.target.value)}
+        >
+          <option value="">Tous les états</option>
+          <option value="active">Actifs</option>
+          <option value="suspended">Suspendus</option>
+        </select>
       </div>
 
       {failed && <p className="adm-alert">Impossible de charger les comptes.</p>}
@@ -120,7 +138,7 @@ export default function AdminUsers() {
           </thead>
           {/* Keyed by the page's query so each new result set staggers in. */}
           <m.tbody
-            key={`${q}|${role}|${method}|${page}|${data ? "ok" : "loading"}`}
+            key={`${q}|${role}|${method}|${state}|${page}|${data ? "ok" : "loading"}`}
             variants={stagger(0.03)}
             initial="hidden"
             animate="show"
@@ -159,6 +177,12 @@ export default function AdminUsers() {
                   <span className={`adm-tag adm-tag-${u.role}`}>
                     {u.role === "admin" ? "Admin" : "Élève"}
                   </span>
+                  {u.suspended_at && (
+                    <span className="adm-tag adm-tag-danger">Suspendu</span>
+                  )}
+                  {u.plan === "paid" && (
+                    <span className="adm-tag adm-tag-ok">Payant</span>
+                  )}
                 </td>
                 <td data-label="Connexion">
                   {u.auth_method === "google" ? "Google" : "E-mail"}

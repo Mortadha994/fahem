@@ -21,6 +21,7 @@ import {
   uploadChapterSource,
 } from "../../lib/admin.js";
 import { useAuth } from "../../lib/authContext.js";
+import { useToast } from "../../lib/toast.js";
 
 const POLL_MS = 2000;
 const FILTERS = [
@@ -47,8 +48,7 @@ export default function AdminChapterDetail() {
 
   const [ch, setCh] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const toast = useToast();
   const [filter, setFilter] = useState("flagged");
   const [meta, setMeta] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -59,9 +59,9 @@ export default function AdminChapterDetail() {
   const fail = useCallback(
     (err) => {
       if (err instanceof UnauthorizedError) onUnauthorized();
-      else setError(errorMessage(err));
+      else toast.error(errorMessage(err));
     },
-    [onUnauthorized]
+    [onUnauthorized, toast]
   );
 
   const load = useCallback(
@@ -152,11 +152,9 @@ export default function AdminChapterDetail() {
 
   async function run(label, fn, success) {
     setBusy(label);
-    setError(null);
-    setNotice(null);
     try {
       await fn();
-      if (success) setNotice(success);
+      if (success) toast.success(success);
     } catch (err) {
       fail(err);
     } finally {
@@ -293,16 +291,6 @@ export default function AdminChapterDetail() {
         </p>
       )}
       {ch.error && <p className="adm-alert">{ch.error}</p>}
-      {error && (
-        <p className="adm-alert" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="adm-notice" role="status">
-          {notice}
-        </p>
-      )}
 
       {ch.status !== "processing" && ch.status !== "failed" && (
         <>

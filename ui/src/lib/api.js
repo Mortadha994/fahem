@@ -16,7 +16,27 @@ export const BUSY_ERROR =
  * `signal` comes from an AbortController - that is what the stop button uses.
  */
 export async function streamSolve(
-  { problem, niveau, chapitre, note, k = 5 },
+  {
+    problem,
+    niveau,
+    chapitre,
+    note,
+    history,
+    k = 5,
+    // Where the exchange belongs (the server saves it when the answer ends).
+    session_id,
+    user_message_id,
+    assistant_message_id,
+    title,
+    attachment,
+    // Mode guidé / Vérifier ma réponse (see api.py learning_route).
+    mode,
+    step,
+    action,
+    exercise,
+    exercise_id,
+    difficulty,
+  },
   {
     onMeta,
     onWaiting,
@@ -39,7 +59,27 @@ export async function streamSolve(
       credentials: "include",
       // `note`: the student's own words sent with an attached exercise, kept
       // apart from the exercise text so the question in it gets answered.
-      body: JSON.stringify({ problem, niveau, chapitre, note: note || undefined, k }),
+      // `history`: the discussion's earlier messages - the tutor's session
+      // memory (session_memory.py compacts and caps it on the server).
+      body: JSON.stringify({
+        problem,
+        niveau,
+        chapitre,
+        note: note || undefined,
+        history: history?.length ? history : undefined,
+        k,
+        session_id,
+        user_message_id,
+        assistant_message_id,
+        title,
+        attachment: attachment || undefined,
+        mode: mode && mode !== "full" ? mode : undefined,
+        step: step || undefined,
+        action: action || undefined,
+        exercise: exercise ? exercise.slice(0, 2000) : undefined,
+        exercise_id: exercise_id || undefined,
+        difficulty: difficulty || undefined,
+      }),
       signal,
     });
   } catch (err) {
@@ -71,6 +111,13 @@ export async function streamSolve(
   if (response.status === 429) {
     const header = Number(response.headers.get("Retry-After"));
     onRateLimited?.(Number.isFinite(header) && header > 0 ? header : null);
+    return;
+  }
+
+  // 503 with a sentence: an admin control (the AI paused, the daily budget
+  // guard) refused the request before any model call. Shown as it is.
+  if (response.status === 503) {
+    onError?.(await controlMessage(response));
     return;
   }
 
@@ -128,6 +175,20 @@ export async function streamSolve(
   }
 }
 
+/**
+ * The sentence an admin control sent with its 503 ({detail: {code, message}},
+ * ai_control.py), or the busy message if there is none.
+ */
+async function controlMessage(response) {
+  try {
+    const body = await response.json();
+    const message = body?.detail?.message;
+    return typeof message === "string" && message ? message : BUSY_ERROR;
+  } catch {
+    return BUSY_ERROR;
+  }
+}
+
 /** The file types /solve/extract reads, and its size cap (config.py). */
 export const ATTACHMENT_TYPES = [
   "image/jpeg",
@@ -176,6 +237,10 @@ export async function extractAttachment(file, { signal } = {}) {
       rateLimited: true,
       retryAfter: Number.isFinite(header) && header > 0 ? header : null,
     };
+  }
+
+  if (response.status === 503) {
+    return { ok: false, error: await controlMessage(response) };
   }
 
   let body = null;

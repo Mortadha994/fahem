@@ -51,6 +51,11 @@ export default function AppSidebar({ onNavigate }) {
               Poser une question
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/progression" className={linkClass} onClick={onNavigate}>
+              Ma progression
+            </NavLink>
+          </li>
           {/* Phase 7. Not rendered at all for a student - absent from the DOM,
               not disabled - so there is nothing to find, inspect or re-enable.
               It is still only a convenience: the route and the server both

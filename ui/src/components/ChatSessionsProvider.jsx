@@ -4,7 +4,9 @@ import { useAuth } from "../lib/authContext.js";
 import {
   clearLegacySessions,
   deleteSessionRemote,
+  fetchSession,
   fetchSessions,
+  HistoryStale,
   HistoryUnauthorized,
   isBusy,
   isFailedReadOnly,
@@ -21,19 +23,43 @@ const SAVE_DELAY_MS = 700;
 const RETRY_DELAY_MS = 5000;
 
 /**
+ * Merge a discussion the server holds with the copy on screen, after a save
+ * was refused as stale (another tab or device saved in between).
+ *
+ * The server's messages come first, in its order; a message the screen has
+ * too keeps the screen's version when it is finished there (its status, its
+ * feedback); messages only on screen (just written here) follow at the end.
+ */
+function mergeStale(server, local) {
+  const localById = new Map(local.messages.map((m) => [m.id, m]));
+  const serverIds = new Set(server.messages.map((m) => m.id));
+  const merged = server.messages.map((m) => {
+    const mine = localById.get(m.id);
+    return mine && mine.content ? { ...m, ...mine } : m;
+  });
+  for (const m of local.messages) if (!serverIds.has(m.id)) merged.push(m);
+  return { ...local, ...server, title: local.title || server.title, messages: merged };
+}
+
+/**
  * Owns the signed-in student's discussions for the whole app.
  *
  * The list comes from the server (/chat/sessions), so it belongs to the
- * account rather than to the browser: two students on one computer each see
- * only their own history, and a student sees theirs on any device. It is
- * mounted inside the signed-in app, so signing out unmounts it and the next
- * account starts from its own list, never from the previous one's memory.
+ * account rather than to the browser. It arrives light - each discussion with
+ * `loaded: false` and only a skeleton of its messages (enough for the history
+ * panel, the home screen, the progress cards) - and a discussion is loaded in
+ * full when the chat opens it (ensureLoaded). A discussion that is not loaded
+ * is never saved: its skeleton would stand for answers it does not hold.
  *
- * The chat still edits the list in memory - an answer streams in token by
- * token - and this saves each discussion once it settles: debounced, skipped
- * while a message is still being written, and only when it actually changed
- * since the last save. A discussion with no message is never saved, so an
- * opened-then-abandoned "Nouvelle discussion" leaves nothing behind.
+ * The chat edits the list in memory - an answer streams in token by token -
+ * and this saves each discussion once it settles: debounced, skipped while a
+ * message is still being written, and only when it actually changed since the
+ * last save. Every save carries the version it was based on; the server
+ * refuses a stale one (409), and the discussion is then reloaded, merged with
+ * what is on screen, and saved again - so two tabs never erase each other's
+ * messages. The server also saves each finished exchange itself (see
+ * /solve/stream); the chat takes that version from the answer's done frame
+ * (setVersion).
  */
 export default function ChatSessionsProvider({ children }) {
   const { onUnauthorized } = useAuth();
@@ -46,6 +72,7 @@ export default function ChatSessionsProvider({ children }) {
   const saved = useRef(new Map());
   const latest = useRef(sessions);
   const loaded = useRef(false);
+  const loading = useRef(new Map()); // id -> promise of the full discussion
 
   // Declared before the save effects so they always read the current list.
   useEffect(() => {
@@ -59,8 +86,6 @@ export default function ChatSessionsProvider({ children }) {
     fetchSessions()
       .then((list) => {
         if (cancelled) return;
-        for (const s of list)
-          saved.current.set(s.id, JSON.stringify(sessionPayload(s)));
         // Keep anything started while the list was loading (an exercise sent
         // from a chapter page the moment the app opened).
         setSessions((prev) => [
@@ -81,25 +106,88 @@ export default function ChatSessionsProvider({ children }) {
     };
   }, [onUnauthorized]);
 
+  /** Load one discussion in full (once), keeping anything written meanwhile. */
+  const ensureLoaded = useCallback(
+    (id) => {
+      // `latest` is synced in this provider's effect, which runs after the
+      // chat's own effects: a discussion that just arrived may not be in it
+      // yet. Only a discussion known to be complete is skipped.
+      const current = latest.current.find((s) => s.id === id);
+      if (!id || (current && current.loaded !== false)) return Promise.resolve(current);
+      if (loading.current.has(id)) return loading.current.get(id);
+      const promise = fetchSession(id)
+        .then((full) => {
+          saved.current.set(id, JSON.stringify(sessionPayload(full)));
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id !== id
+                ? s
+                : s.loaded === false && s.messages.length <= full.messages.length
+                  ? full
+                  : mergeStale(full, s)
+            )
+          );
+          return full;
+        })
+        .catch((err) => {
+          if (err instanceof HistoryUnauthorized) onUnauthorized();
+          throw err;
+        })
+        .finally(() => loading.current.delete(id));
+      loading.current.set(id, promise);
+      return promise;
+    },
+    [onUnauthorized]
+  );
+
+  /** The version the server gave a discussion (after its own save of an answer). */
+  const setVersion = useCallback((id, version) => {
+    if (!Number.isFinite(version)) return;
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id && (s.version ?? 0) < version ? { ...s, version } : s
+      )
+    );
+  }, []);
+
   const flush = useCallback(
     ({ keepalive = false } = {}) => {
       if (!loaded.current) return;
       for (const session of latest.current) {
-        if (!session.messages.length || isBusy(session) || isFailedReadOnly(session))
+        if (
+          session.loaded === false ||
+          !session.messages.length ||
+          isBusy(session) ||
+          isFailedReadOnly(session)
+        )
           continue;
         const snapshot = JSON.stringify(sessionPayload(session));
         if (saved.current.get(session.id) === snapshot) continue;
         saved.current.set(session.id, snapshot);
-        saveSession(session, { keepalive }).catch((err) => {
-          if (err instanceof HistoryUnauthorized) return onUnauthorized();
-          // Forget the snapshot so the next attempt sends it again.
-          if (saved.current.get(session.id) === snapshot)
-            saved.current.delete(session.id);
-          if (!keepalive) setTimeout(() => setRetryTick((t) => t + 1), RETRY_DELAY_MS);
-        });
+        saveSession(session, { keepalive })
+          .then((result) => result && setVersion(session.id, result.version))
+          .catch((err) => {
+            if (err instanceof HistoryUnauthorized) return onUnauthorized();
+            if (saved.current.get(session.id) === snapshot)
+              saved.current.delete(session.id);
+            if (err instanceof HistoryStale) {
+              // Someone saved this discussion since: take theirs, keep ours on
+              // top of it, and let the next save go out on the new version.
+              fetchSession(session.id)
+                .then((server) =>
+                  setSessions((prev) =>
+                    prev.map((s) => (s.id === session.id ? mergeStale(server, s) : s))
+                  )
+                )
+                .catch(() => {});
+              return;
+            }
+            if (!keepalive)
+              setTimeout(() => setRetryTick((t) => t + 1), RETRY_DELAY_MS);
+          });
       }
     },
-    [onUnauthorized]
+    [onUnauthorized, setVersion]
   );
 
   // Save shortly after the list stops changing.
@@ -133,17 +221,20 @@ export default function ChatSessionsProvider({ children }) {
   /** Deleting the active session selects the next one, not nothing. */
   const deleteSession = useCallback(
     (id) => {
-      const remaining = sessions.filter((s) => s.id !== id);
+      const target = latest.current.find((s) => s.id === id);
+      const remaining = latest.current.filter((s) => s.id !== id);
       setSessions(remaining);
       setActiveId((current) => (current === id ? (remaining[0]?.id ?? null) : current));
-      const wasSaved = saved.current.delete(id);
-      if (wasSaved) {
+      saved.current.delete(id);
+      // Anything the server may hold: a listed discussion, or one whose answer
+      // the server saved itself (version > 0).
+      if (target && (target.loaded === false || (target.version ?? 0) > 0)) {
         deleteSessionRemote(id).catch((err) => {
           if (err instanceof HistoryUnauthorized) onUnauthorized();
         });
       }
     },
-    [sessions, onUnauthorized]
+    [onUnauthorized]
   );
 
   /** Patch the last assistant message of a session. */
@@ -161,6 +252,26 @@ export default function ChatSessionsProvider({ children }) {
     );
   }, []);
 
+  /** Patch one message, by id, anywhere in a session. */
+  const patchMessage = useCallback((sessionId, messageId, patch) => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id !== sessionId
+          ? s
+          : {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.id === messageId
+                  ? typeof patch === "function"
+                    ? patch(m)
+                    : { ...m, ...patch }
+                  : m
+              ),
+            }
+      )
+    );
+  }, []);
+
   const value = useMemo(
     () => ({
       sessions,
@@ -170,9 +281,24 @@ export default function ChatSessionsProvider({ children }) {
       createSession,
       deleteSession,
       patchLast,
+      patchMessage,
+      ensureLoaded,
+      setVersion,
+      flush,
       historyStatus,
     }),
-    [sessions, activeId, createSession, deleteSession, patchLast, historyStatus]
+    [
+      sessions,
+      activeId,
+      createSession,
+      deleteSession,
+      patchLast,
+      patchMessage,
+      ensureLoaded,
+      setVersion,
+      flush,
+      historyStatus,
+    ]
   );
 
   return (

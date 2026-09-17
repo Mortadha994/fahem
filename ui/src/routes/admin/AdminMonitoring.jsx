@@ -4,6 +4,15 @@ import { fetchMonitoring, relativeTime, UnauthorizedError } from "../../lib/admi
 import { useAuth } from "../../lib/authContext.js";
 import { SPRING_ENTER, rise, stagger } from "../../lib/motion.js";
 import CountUp from "../../components/CountUp.jsx";
+import AiControls from "../../components/admin/AiControls.jsx";
+import AuditLog from "../../components/admin/AuditLog.jsx";
+import AdminTabs from "../../components/admin/AdminTabs.jsx";
+import {
+  IconActivity,
+  IconClock,
+  IconShield,
+  IconSliders,
+} from "../../components/admin/icons.jsx";
 
 /**
  * Surveillance IA: how hard Fahem is leaning on Groq, right now and over 24h.
@@ -22,6 +31,17 @@ import CountUp from "../../components/CountUp.jsx";
  */
 
 const REFRESH_MS = 10_000;
+
+/* Four tabs instead of one long page: what is happening now, what can be
+   changed, who changed what (the action log, apart from the controls so each
+   stays readable), and what happened over the day. The tab is in the URL
+   (?onglet=), so the sidebar's AI status card opens the controls directly. */
+const TABS = [
+  { id: "direct", label: "En direct", Icon: IconActivity },
+  { id: "controles", label: "Contrôles", Icon: IconSliders },
+  { id: "journal", label: "Journal", Icon: IconShield },
+  { id: "historique", label: "24 heures", Icon: IconClock },
+];
 
 const STATES = {
   cool: { label: "Froid", hint: "Large marge" },
@@ -106,7 +126,7 @@ export default function AdminMonitoring() {
         <div>
           <h1 className="adm-h1">Surveillance IA</h1>
           <p className="adm-sub">
-            Charge de Groq, consommation et activité du chat, en direct et sur 24 h.
+            Charge de Groq, consommation, activité du chat — et les commandes pour agir.
           </p>
         </div>
         <div className="mon-live">
@@ -116,13 +136,15 @@ export default function AdminMonitoring() {
           />
           <span className="adm-muted adm-small" aria-live="polite">
             {paused
-              ? "En pause"
+              ? "Actualisation figée"
               : data
                 ? `Mis à jour ${relativeTime(data.generated_at)}`
                 : "Chargement…"}
           </span>
+          {/* Freezes this page's figures only - the AI itself is paused
+              from the Contrôles tab. */}
           <button className="adm-btn" onClick={() => setPaused((p) => !p)}>
-            {paused ? "Reprendre" : "Pause"}
+            {paused ? "Reprendre l'actualisation" : "Figer les chiffres"}
           </button>
         </div>
       </m.header>
@@ -148,95 +170,136 @@ export default function AdminMonitoring() {
         </m.p>
       ))}
 
-      {!data ? (
-        <div className="mon-skeleton">
-          <div className="adm-skel adm-skel-block" aria-hidden="true" />
-          <div className="adm-skel adm-skel-block" aria-hidden="true" />
-        </div>
-      ) : (
-        <>
-          <m.section
-            className="mon-models"
-            aria-label="Charge des modèles"
-            variants={stagger(0.08)}
-          >
-            {data.models.map((mdl) => (
-              <ModelCard key={mdl.model} model={mdl} />
-            ))}
-          </m.section>
+      <AdminTabs label="Sections de la surveillance" tabs={TABS}>
+        {(tab) =>
+          tab === "controles" ? (
+            // See and act in the same place: every control refreshes the
+            // figures as soon as it is applied.
+            <AiControls onChanged={load} />
+          ) : tab === "journal" ? (
+            // Every admin action, filterable, with revert for settings.
+            <AuditLog
+              queueLabels={Object.fromEntries(
+                (data?.models ?? []).map((mdl) => [mdl.model, mdl.label])
+              )}
+              onReverted={load}
+            />
+          ) : !data ? (
+            <div className="mon-skeleton">
+              <div className="adm-skel adm-skel-block" aria-hidden="true" />
+              <div className="adm-skel adm-skel-block" aria-hidden="true" />
+            </div>
+          ) : tab === "direct" ? (
+            <div className="adm-stack">
+              <m.section
+                className="mon-models"
+                aria-label="Charge des modèles"
+                variants={stagger(0.08)}
+              >
+                {data.models.map((mdl) => (
+                  <ModelCard key={mdl.model} model={mdl} />
+                ))}
+              </m.section>
 
-          <KpiRow kpis={data.kpis} />
+              <div className="adm-grid-2">
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Tokens par minute — dernière heure</h2>
+                    <span className="adm-muted adm-small">
+                      limite {nf.format(data.models[0]?.tpm_limit ?? 0)} / min
+                    </span>
+                  </header>
+                  <MinuteChart
+                    minutes={data.minutes}
+                    limit={data.models[0]?.tpm_limit ?? 0}
+                  />
+                </m.section>
 
-          <div className="adm-grid-2">
-            <m.section className="adm-panel" variants={rise}>
-              <header className="adm-panel-head">
-                <h2 className="adm-h2">Tokens par minute — dernière heure</h2>
-                <span className="adm-muted adm-small">
-                  limite {nf.format(data.models[0]?.tpm_limit ?? 0)} / min
-                </span>
-              </header>
-              <MinuteChart
-                minutes={data.minutes}
-                limit={data.models[0]?.tpm_limit ?? 0}
-              />
-            </m.section>
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Activité du chat (24 h)</h2>
+                  </header>
+                  <dl className="adm-kpis mon-kpis-2">
+                    <div className="adm-kpi is-busy">
+                      <dt>Élèves actifs</dt>
+                      <dd>{data.chat.active_students_24h}</dd>
+                    </div>
+                    <div className="adm-kpi">
+                      <dt>Discussions actives</dt>
+                      <dd>{data.chat.active_discussions_24h}</dd>
+                    </div>
+                    <div className="adm-kpi">
+                      <dt>Nouvelles discussions</dt>
+                      <dd>{data.chat.new_discussions_24h}</dd>
+                    </div>
+                    <div className="adm-kpi">
+                      <dt>Questions posées</dt>
+                      <dd>{data.chat.questions_in_active}</dd>
+                    </div>
+                  </dl>
+                  <p className="adm-muted adm-small">
+                    Questions comptées dans les discussions actives ces 24 h.
+                  </p>
+                </m.section>
+              </div>
+            </div>
+          ) : (
+            <div className="adm-stack">
+              <KpiRow kpis={data.kpis} />
 
-            <m.section className="adm-panel" variants={rise}>
-              <header className="adm-panel-head">
-                <h2 className="adm-h2">Activité du chat (24 h)</h2>
-              </header>
-              <dl className="adm-kpis mon-kpis-2">
-                <div className="adm-kpi is-busy">
-                  <dt>Élèves actifs</dt>
-                  <dd>{data.chat.active_students_24h}</dd>
-                </div>
-                <div className="adm-kpi">
-                  <dt>Discussions actives</dt>
-                  <dd>{data.chat.active_discussions_24h}</dd>
-                </div>
-                <div className="adm-kpi">
-                  <dt>Nouvelles discussions</dt>
-                  <dd>{data.chat.new_discussions_24h}</dd>
-                </div>
-                <div className="adm-kpi">
-                  <dt>Questions posées</dt>
-                  <dd>{data.chat.questions_in_active}</dd>
-                </div>
-              </dl>
-              <p className="adm-muted adm-small">
-                Questions comptées dans les discussions actives ces 24 h.
-              </p>
-            </m.section>
-          </div>
+              <m.section className="adm-panel" variants={rise}>
+                <header className="adm-panel-head">
+                  <h2 className="adm-h2">Appels Groq — dernières 24 h</h2>
+                  <span className="mon-legend adm-small">
+                    <i className="mon-dot" /> réussis <i className="mon-dot is-fail" />{" "}
+                    échecs
+                  </span>
+                </header>
+                <HourChart hours={data.timeline} />
+              </m.section>
 
-          <m.section className="adm-panel" variants={rise}>
-            <header className="adm-panel-head">
-              <h2 className="adm-h2">Appels Groq — dernières 24 h</h2>
-              <span className="mon-legend adm-small">
-                <i className="mon-dot" /> réussis <i className="mon-dot is-fail" />{" "}
-                échecs
-              </span>
-            </header>
-            <HourChart hours={data.timeline} />
-          </m.section>
+              <div className="adm-grid-2">
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Par type de requête</h2>
+                  </header>
+                  <KindTable kinds={data.by_kind} />
+                </m.section>
 
-          <div className="adm-grid-2">
-            <m.section className="adm-panel" variants={rise}>
-              <header className="adm-panel-head">
-                <h2 className="adm-h2">Par type de requête (24 h)</h2>
-              </header>
-              <KindTable kinds={data.by_kind} />
-            </m.section>
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Échecs récents</h2>
+                  </header>
+                  <Failures failures={data.failures} />
+                </m.section>
+              </div>
 
-            <m.section className="adm-panel" variants={rise}>
-              <header className="adm-panel-head">
-                <h2 className="adm-h2">Échecs récents</h2>
-              </header>
-              <Failures failures={data.failures} />
-            </m.section>
-          </div>
-        </>
-      )}
+              <div className="adm-grid-2">
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Réponses par consigne</h2>
+                  </header>
+                  <RouteTable routes={data.routes ?? []} />
+                </m.section>
+
+                <m.section className="adm-panel" variants={rise}>
+                  <header className="adm-panel-head">
+                    <h2 className="adm-h2">Avis des élèves — 7 jours</h2>
+                  </header>
+                  <FeedbackPanel feedback={data.feedback} />
+                </m.section>
+              </div>
+
+              <m.section className="adm-panel" variants={rise}>
+                <header className="adm-panel-head">
+                  <h2 className="adm-h2">Apprentissage — 7 jours</h2>
+                </header>
+                <LearningPanel learning={data.learning} />
+              </m.section>
+            </div>
+          )
+        }
+      </AdminTabs>
     </m.div>
   );
 }
@@ -531,6 +594,172 @@ function KindTable({ kinds }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const ROUTES = {
+  PROBLEM: "Énoncé complet",
+  QUESTION: "Question de cours",
+  CODE: "Code à corriger",
+  FOLLOW_UP: "Suite d'échange",
+  GUIDED: "Mode guidé",
+  CHECK: "Vérifier ma réponse",
+  PRACTICE: "Exercice similaire",
+};
+
+const FINDINGS = {
+  operator: "Opérateur Python en algorithme (//, %, !=…)",
+  assignment: "Affectation écrite avec =",
+  lire: "Type dans Lire",
+  declaration: "Tableau de déclaration absent",
+};
+
+/** Mode guidé and Vérifier ma réponse over 7 days. */
+function LearningPanel({ learning }) {
+  if (!learning || learning.guided_answers + learning.checks === 0)
+    return (
+      <p className="adm-empty">Ni mode guidé ni vérification ces 7 derniers jours.</p>
+    );
+  const verdictTotal =
+    learning.verdicts.correct + learning.verdicts.presque + learning.verdicts.a_revoir;
+  return (
+    <div className="adm-stack">
+      <div className="mon-learning-row">
+        <div>
+          <p className="adm-strong">
+            Mode guidé : {nf.format(learning.guided_answers)} réponses
+          </p>
+          <p className="adm-muted adm-small">
+            Compréhension {learning.guided_by_step["1"]} · Indice{" "}
+            {learning.guided_by_step["2"]} · Squelette {learning.guided_by_step["3"]} ·
+            Solution {learning.guided_by_step["4"]}
+          </p>
+        </div>
+        {learning.guided_leaks > 0 ? (
+          <span className="adm-tag adm-tag-warn">
+            {learning.guided_leaks} solution{learning.guided_leaks > 1 ? "s" : ""}{" "}
+            donnée
+            {learning.guided_leaks > 1 ? "s" : ""} trop tôt
+          </span>
+        ) : (
+          <span className="adm-tag">aucune fuite</span>
+        )}
+      </div>
+      <div className="mon-learning-row">
+        <div>
+          <p className="adm-strong">Vérifications : {nf.format(learning.checks)}</p>
+          <p className="adm-muted adm-small">
+            ✓ Correct {learning.verdicts.correct} · ≈ Presque{" "}
+            {learning.verdicts.presque} · ✗ À revoir {learning.verdicts.a_revoir}
+            {learning.verdicts.unknown
+              ? ` · sans verdict ${learning.verdicts.unknown}`
+              : ""}
+          </p>
+        </div>
+      </div>
+      {verdictTotal > 0 && (
+        <Meter
+          label="Solutions à revoir"
+          ratio={learning.verdicts.a_revoir / verdictTotal}
+          value={`${Math.round((learning.verdicts.a_revoir / verdictTotal) * 100)} %`}
+        />
+      )}
+      {learning.top_findings.length > 0 && (
+        <div>
+          <p className="adm-strong adm-small">
+            Erreurs de notation les plus fréquentes
+          </p>
+          <ul className="adm-list">
+            {learning.top_findings.map((f) => (
+              <li key={f.kind} className="mon-failure">
+                <span className="mon-failure-main">{FINDINGS[f.kind] ?? f.kind}</span>
+                <span className="adm-tag">{f.count}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Which prompt answered, and how much of it was the discussion's memory. */
+function RouteTable({ routes }) {
+  if (!routes.length)
+    return <p className="adm-empty">Aucune réponse ces dernières 24 h.</p>;
+  return (
+    <div className="adm-table-wrap">
+      <table className="adm-table mon-table">
+        <thead>
+          <tr>
+            <th>Consigne</th>
+            <th>Réponses</th>
+            <th>Avec mémoire</th>
+            <th>Tokens envoyés moy.</th>
+            <th>Mémoire moy.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {routes.map((r) => (
+            <tr key={r.route}>
+              <td className="adm-strong">{ROUTES[r.route] ?? r.route}</td>
+              <td>{nf.format(r.calls)}</td>
+              <td>
+                {nf.format(r.with_memory)}
+                {r.calls ? (
+                  <span className="adm-muted adm-small">
+                    {" "}
+                    ({Math.round((r.with_memory / r.calls) * 100)} %)
+                  </span>
+                ) : null}
+              </td>
+              <td>{nf.format(r.avg_prompt_tokens)}</td>
+              <td>
+                {r.avg_memory_chars ? `${nf.format(r.avg_memory_chars)} car.` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 👍 / 👎 over 7 days, and the answers students marked as wrong or unclear. */
+function FeedbackPanel({ feedback }) {
+  if (!feedback || feedback.up + feedback.down === 0)
+    return <p className="adm-empty">Aucun avis ces 7 derniers jours.</p>;
+  const total = feedback.up + feedback.down;
+  // The bar warms up as 👎 grow, like the other loads on this page.
+  const share = Math.round((feedback.down / total) * 100);
+  return (
+    <div className="adm-stack">
+      <Meter
+        label="Réponses jugées fausses ou pas claires"
+        ratio={feedback.down / total}
+        value={`${share} %`}
+        note={`${nf.format(feedback.up)} 👍 · ${nf.format(feedback.down)} 👎`}
+      />
+      {feedback.recent_down.length > 0 ? (
+        <m.ul className="adm-list mon-failures" variants={stagger(0.04)}>
+          {feedback.recent_down.map((d, i) => (
+            <m.li key={`${d.at}-${i}`} className="mon-failure" variants={rise}>
+              <span className="adm-tag adm-tag-warn">👎</span>
+              <span className="mon-failure-main">
+                <span className="adm-strong">{d.title || "Discussion sans titre"}</span>
+                <span className="adm-muted adm-small">
+                  {d.chapitre ? `Chapitre ${d.chapitre}` : ""}
+                  {d.comment ? ` · « ${d.comment} »` : ""}
+                </span>
+              </span>
+              <span className="adm-muted adm-list-when">{relativeTime(d.at)}</span>
+            </m.li>
+          ))}
+        </m.ul>
+      ) : (
+        <p className="adm-callout is-ok">Aucune réponse jugée fausse.</p>
+      )}
     </div>
   );
 }

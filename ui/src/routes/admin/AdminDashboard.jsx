@@ -12,6 +12,84 @@ import { useAuth } from "../../lib/authContext.js";
 import { SPRING_ENTER, rise, stagger } from "../../lib/motion.js";
 import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
 import CountUp from "../../components/CountUp.jsx";
+import { STATUS_LABELS, useAdminStatus } from "../../lib/adminStatus.js";
+import {
+  IconPause,
+  IconPlay,
+  IconShield,
+  IconSliders,
+} from "../../components/admin/icons.jsx";
+
+const nf = new Intl.NumberFormat("fr-FR");
+
+/**
+ * "État du service": the first thing on the console's home - is the AI
+ * answering students, and how much of today's Groq budget is used - with the
+ * two ways to act on it. Reads the status the layout already polls
+ * (AdminStatusContext), so it costs no extra request.
+ */
+function ServiceCard() {
+  const { status, controls } = useAdminStatus();
+  if (!controls) {
+    return (
+      <div
+        className="adm-service adm-skel"
+        aria-hidden="true"
+        style={{ minHeight: 92 }}
+      />
+    );
+  }
+  const { budget, settings } = controls;
+  const ratio = budget.limit ? Math.min(1, budget.used / budget.limit) : 0;
+  const Icon =
+    status === "paused" ? IconPause : status === "blocked" ? IconShield : IconPlay;
+  const guard = settings.daily_budget_guard_pct.value;
+  const sub =
+    status === "paused"
+      ? "Les élèves voient le message de maintenance. Aucune requête n'atteint l'IA."
+      : status === "blocked"
+        ? `Le garde-fou (${guard} %) arrête les nouvelles requêtes jusqu'à ce que le budget se libère.`
+        : "Les élèves peuvent poser leurs questions normalement.";
+
+  return (
+    <m.section
+      className={`adm-service is-${status}`}
+      variants={rise}
+      aria-label="État du service"
+    >
+      <span className="adm-service-icon" aria-hidden="true">
+        <Icon size={22} />
+      </span>
+      <div>
+        <p className="adm-service-title">{STATUS_LABELS[status]}</p>
+        <p className="adm-service-sub">{sub}</p>
+        <span
+          className="adm-service-meter"
+          role="img"
+          aria-label={`${Math.round(ratio * 100)} % du budget de tokens du jour utilisé`}
+        >
+          <m.span
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: ratio }}
+            transition={{ ...SPRING_ENTER, visualDuration: 0.8 }}
+          />
+        </span>
+        <p className="adm-muted adm-small" style={{ margin: "6px 0 0" }}>
+          {nf.format(budget.used)} / {nf.format(budget.limit)} tokens sur 24 h
+          {guard ? ` · garde-fou à ${guard} %` : ""}
+        </p>
+      </div>
+      <div className="adm-service-actions">
+        <Link to="/admin/ia?onglet=controles" className="adm-btn adm-btn-primary">
+          <IconSliders size={16} /> Contrôles
+        </Link>
+        <Link to="/admin/ia" className="adm-btn">
+          Voir en direct
+        </Link>
+      </div>
+    </m.section>
+  );
+}
 
 /**
  * Console home: the numbers, the newest accounts, the chapters, and the way to
@@ -120,6 +198,8 @@ export default function AdminDashboard() {
           + Nouvel utilisateur
         </Link>
       </m.header>
+
+      <ServiceCard />
 
       {failed && <p className="adm-alert">Impossible de charger les statistiques.</p>}
 

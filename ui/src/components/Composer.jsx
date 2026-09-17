@@ -16,6 +16,11 @@ import { SPRING_HOVER } from "../lib/motion.js";
  * is held by Chat.jsx (`attachment`), which also validates it (`onAttach`),
  * so this component only collects it and shows it.
  *
+ * Modes: `onModeChange` shows the Solution complète / Mode guidé switch
+ * (`mode` is the discussion's), and `onCheck` the "Vérifier ma réponse"
+ * button, which sends the box's content to be corrected instead of answered.
+ * Either is hidden when the admin turned it off.
+ *
  * `followUp` switches the placeholder once the thread has messages.
  * `chapterLabel` is shown as a chip, because the chapter decides which syntax
  * the answer will use. `inputRef` lets the chat put the caret in the box.
@@ -24,8 +29,13 @@ export default function Composer({
   value,
   onChange,
   onSend,
+  onCheck,
+  mode = "full",
+  onModeChange,
   onStop,
   streaming,
+  disabled = false,
+  maxLength = 2000,
   inputRef,
   followUp = false,
   chapterLabel,
@@ -50,7 +60,16 @@ export default function Composer({
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
-  const canSend = !streaming && (value.trim().length > 0 || Boolean(attachment));
+  // The server declines anything past its cap; say so here, before sending,
+  // instead of letting a long statement come back as a refusal.
+  const length = value.length;
+  const tooLong = length > maxLength;
+  const showCount = length > maxLength * 0.8;
+  const canSend =
+    !streaming &&
+    !disabled &&
+    !tooLong &&
+    (value.trim().length > 0 || Boolean(attachment));
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -145,16 +164,112 @@ export default function Composer({
           placeholder={
             attachment
               ? "Ajoute une précision si tu veux (facultatif)…"
-              : followUp
-                ? "Pose une question de suivi, ou colle un autre énoncé…"
-                : "Un exercice, une question, ton programme… ou une photo 📎"
+              : mode === "guided"
+                ? followUp
+                  ? "Réponds à la question de Fahem, ou colle un autre énoncé…"
+                  : "Colle ton énoncé : Fahem te guide étape par étape…"
+                : followUp
+                  ? "Pose une question de suivi, ou colle un autre énoncé…"
+                  : "Un exercice, une question, ton programme… ou une photo 📎"
           }
           aria-label="Ton message"
+          aria-describedby={showCount ? "composer-count" : undefined}
+          disabled={disabled}
         />
+        {showCount && (
+          <p
+            id="composer-count"
+            className={`composer-count${tooLong ? " is-over" : ""}`}
+            role={tooLong ? "alert" : undefined}
+          >
+            {tooLong
+              ? attachment
+                ? `Ta précision est trop longue : ${length} / ${maxLength} caractères.`
+                : `Message trop long : ${length} / ${maxLength} caractères. Envoie seulement l'énoncé, ou découpe ta question.`
+              : `${length} / ${maxLength} caractères`}
+          </p>
+        )}
         {attachError && (
           <p className="composer-error" role="alert">
             {attachError}
           </p>
+        )}
+        {(onModeChange || onCheck) && (
+          <div className="composer-modes">
+            {onModeChange && (
+              <div
+                className={`mode-switch is-${mode}`}
+                role="radiogroup"
+                aria-label="Façon de répondre"
+              >
+                {/* One pill sliding under the two choices (a transform: the
+                    student app has no layout animations). */}
+                <m.span
+                  className="mode-pill"
+                  aria-hidden="true"
+                  initial={false}
+                  animate={{ x: mode === "guided" ? "100%" : "0%" }}
+                  transition={SPRING_HOVER}
+                />
+                {[
+                  [
+                    "full",
+                    "📖",
+                    "Solution complète",
+                    "La solution entière, avec le tableau et la trace",
+                  ],
+                  [
+                    "guided",
+                    "🧭",
+                    "Mode guidé",
+                    "Des indices étape par étape avant la solution",
+                  ],
+                ].map(([value, icon, label, title]) => (
+                  <m.button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === value}
+                    className={`mode-option${mode === value ? " is-on" : ""}`}
+                    onClick={() => onModeChange(value)}
+                    disabled={streaming}
+                    title={title}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <m.span
+                      className="mode-icon"
+                      aria-hidden="true"
+                      animate={
+                        mode === value
+                          ? { scale: [1, 1.35, 1], rotate: [0, -12, 0] }
+                          : { scale: 1 }
+                      }
+                      transition={{ duration: 0.45 }}
+                    >
+                      {icon}
+                    </m.span>
+                    <span className="mode-label">{label}</span>
+                  </m.button>
+                ))}
+              </div>
+            )}
+            {onCheck && (
+              <m.button
+                type="button"
+                className="composer-check"
+                onClick={onCheck}
+                disabled={!canSend}
+                title="Colle ton algorithme ou ton programme : Fahem le corrige ligne par ligne"
+                whileHover={canSend ? { y: -2 } : undefined}
+                whileTap={canSend ? { scale: 0.95 } : undefined}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 11.5 11.5 14 16 9.5M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
+                </svg>
+                Vérifier ma réponse
+              </m.button>
+            )}
+          </div>
         )}
         <div className="composer-bar">
           <div className="composer-context">

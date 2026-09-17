@@ -30,8 +30,8 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Integer,
     Index,
+    Integer,
     String,
     Text,
     false,
@@ -161,6 +161,16 @@ class User(Base):
     # the client knows to ask it. Set together or not at all (CHECK below).
     niveau: Mapped[str | None] = mapped_column(Text, nullable=True)
     section: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Set by an admin to suspend the account (admin console): every session
+    # is refused and signing in again is refused too, until an admin
+    # reactivates it. Null means active. The reason is shown to the admin only.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # A personal solve rate limit ("5/minute;50/hour"), replacing the global
+    # one for this account only. Null means the global limit applies.
+    solve_rate_limit: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -293,6 +303,11 @@ class ChatSession(Base):
         nullable=False,
     )
 
+    # Bumped by every save (chat_history.py). A save sent from a stale copy -
+    # another tab, another device - is refused rather than allowed to
+    # overwrite messages it never saw.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
     user: Mapped[User] = relationship(back_populates="sessions")
     messages: Mapped[list[ChatMessage]] = relationship(
         back_populates="session",
@@ -346,6 +361,10 @@ class ChatMessage(Base):
     # sentence, the attached file's name and kind, the client's message id.
     # Kept loose on purpose - display state, not something to query.
     extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The chat's own id for the message ("u_1726...", "a_1726..."), unique
+    # within its discussion: what lets a save update the messages that
+    # changed instead of deleting and re-inserting the whole discussion.
+    client_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -358,6 +377,13 @@ class ChatMessage(Base):
         # from the tutor, and a third value would be a bug worth failing on.
         CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role"),
         Index("ix_chat_messages_session_id_created_at", "session_id", "created_at"),
+        Index(
+            "uq_chat_messages_session_client_id",
+            "session_id",
+            "client_id",
+            unique=True,
+            postgresql_where=text("client_id IS NOT NULL"),
+        ),
     )
 
     def __repr__(self) -> str:
@@ -406,6 +432,10 @@ class LlmCall(Base):
     rate_limit_hits: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     # A short, non-sensitive reason for a failure ("HTTP 503", "tokens per day").
     detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # For a solve: which prompt answered (PROBLEM, QUESTION, CODE, FOLLOW_UP)
+    # and how much session memory went with it.
+    route: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    memory_chars: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     __table_args__ = (
         CheckConstraint(
@@ -555,3 +585,78 @@ class ChapterExercise(Base):
     chapter: Mapped[UploadedChapter] = relationship(back_populates="exercises")
 
     __table_args__ = (Index("ix_chapter_exercises_chapter_position", "chapter_id", "position"),)
+
+
+# --- admin controls -------------------------------------------------------------
+#
+# Settings an admin changes from the console while the app runs (the AI pause,
+# the daily budget guard, the solve rate limit, ...). runtime_settings.py owns
+# the keys, their defaults and their validation; a row exists only for a key
+# that has been changed, so a missing row means "the default from config.py".
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict | list | str | int | float | bool | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AdminAuditEntry(Base):
+    """One thing an admin did from the console: who, when, what, to what."""
+
+    __tablename__ = "admin_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    admin_email: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The target's id when it has one (a user's uuid), so the log can link to it.
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (Index("ix_admin_audit_created_at", "created_at"),)
+
+
+class AnswerFeedback(Base):
+    """A student's 👍 / 👎 on one tutor answer - how the answers' quality is
+    measured, and where the bad ones are found."""
+
+    __tablename__ = "answer_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    message_client_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("rating IN (-1, 1)", name="ck_answer_feedback_rating"),
+        Index(
+            "uq_answer_feedback_message",
+            "session_id",
+            "message_client_id",
+            unique=True,
+        ),
+        Index("ix_answer_feedback_created_at", "created_at"),
+    )

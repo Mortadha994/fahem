@@ -39,10 +39,12 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
+import ai_control
 import auth
 import password_auth
+import runtime_settings
 from db import session_scope
-from models import ROLE_ADMIN, ROLES, User
+from models import NIVEAUX, PLANS, ROLE_ADMIN, ROLES, SECTIONS_BY_NIVEAU, User
 
 router = APIRouter(
     prefix="/admin",
@@ -76,6 +78,10 @@ class AdminUser(BaseModel):
     sessions_valid_after: datetime | None
     niveau: str | None = None
     section: str | None = None
+    plan: str = "free"
+    suspended_at: datetime | None = None
+    suspended_reason: str | None = None
+    solve_rate_limit: str | None = None
 
     @classmethod
     def of(cls, user: User) -> "AdminUser":
@@ -91,6 +97,10 @@ class AdminUser(BaseModel):
             sessions_valid_after=user.sessions_valid_after,
             niveau=user.niveau,
             section=user.section,
+            plan=user.plan,
+            suspended_at=user.suspended_at,
+            suspended_reason=user.suspended_reason,
+            solve_rate_limit=user.solve_rate_limit,
         )
 
 
@@ -110,6 +120,11 @@ class AdminStats(BaseModel):
     verified: int
     new_last_7_days: int
     active_last_7_days: int
+    suspended: int = 0
+
+
+class Suspend(BaseModel):
+    reason: str = Field(default="", max_length=300)
 
 
 class CreateUser(BaseModel):
@@ -141,6 +156,14 @@ class UpdateUser(BaseModel):
 
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
     email_verified: bool | None = None
+    # niveau and section are set together, validated as a pair like the
+    # student's own profile. solve_rate_limit: a limit string sets a personal
+    # limit; an explicit null or "" goes back to the global one; absent
+    # leaves it unchanged.
+    niveau: str | None = None
+    section: str | None = None
+    plan: str | None = None
+    solve_rate_limit: str | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -187,9 +210,10 @@ def stats() -> AdminStats:
                 func.count().filter(User.email_verified.is_(True)),
                 func.count().filter(User.created_at >= week_ago),
                 func.count().filter(User.last_login_at >= week_ago),
+                func.count().filter(User.suspended_at.is_not(None)),
             ).select_from(User)
         ).one()
-    total, admins, password, verified, new, active = row
+    total, admins, password, verified, new, active, suspended = row
     return AdminStats(
         users=total,
         admins=admins,
@@ -199,6 +223,7 @@ def stats() -> AdminStats:
         verified=verified,
         new_last_7_days=new,
         active_last_7_days=active,
+        suspended=suspended,
     )
 
 
@@ -207,6 +232,7 @@ def list_users(
     q: str = Query("", max_length=200, description="matches email or display name"),
     role: str | None = Query(None),
     method: Literal["google", "password"] | None = Query(None),
+    state: Literal["active", "suspended"] | None = Query(None),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> UserPage:
@@ -227,6 +253,10 @@ def list_users(
         stmt = stmt.where(User.password_hash.is_not(None))
     elif method == "google":
         stmt = stmt.where(User.password_hash.is_(None))
+    if state == "suspended":
+        stmt = stmt.where(User.suspended_at.is_not(None))
+    elif state == "active":
+        stmt = stmt.where(User.suspended_at.is_(None))
 
     with session_scope() as s:
         total = s.scalar(select(func.count()).select_from(stmt.subquery()))
@@ -267,15 +297,105 @@ def create_user(payload: CreateUser) -> AdminUser:
 
 
 @router.patch("/users/{user_id}", response_model=AdminUser)
-def update_user(user_id: uuid.UUID, payload: UpdateUser) -> AdminUser:
+def update_user(
+    user_id: uuid.UUID, payload: UpdateUser, me: User = Depends(auth.get_current_admin)
+) -> AdminUser:
+    sent = payload.model_fields_set
+    if ("niveau" in sent) != ("section" in sent):
+        raise HTTPException(
+            status_code=422, detail="Le niveau et la section se modifient ensemble."
+        )
+    if "niveau" in sent and (payload.niveau is not None or payload.section is not None):
+        if payload.niveau not in NIVEAUX:
+            raise HTTPException(status_code=422, detail="Niveau inconnu.")
+        if payload.section not in SECTIONS_BY_NIVEAU[payload.niveau]:
+            raise HTTPException(
+                status_code=422, detail="Cette section n'existe pas pour ce niveau."
+            )
+    if "plan" in sent and payload.plan not in PLANS:
+        raise HTTPException(status_code=422, detail=f"Offre inconnue ({', '.join(PLANS)}).")
+    personal_limit = None
+    if "solve_rate_limit" in sent and (payload.solve_rate_limit or "").strip():
+        try:
+            personal_limit = runtime_settings.rate_limit(payload.solve_rate_limit)
+        except runtime_settings.InvalidSetting as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     with session_scope() as s:
         user = _get_or_404(s, user_id)
+        before = AdminUser.of(user).model_dump(mode="json")
         if payload.display_name is not None:
             user.display_name = payload.display_name
         if payload.email_verified is not None:
             user.email_verified = payload.email_verified
+        if "niveau" in sent:
+            user.niveau = payload.niveau
+            user.section = payload.section
+        if "plan" in sent:
+            user.plan = payload.plan
+        if "solve_rate_limit" in sent:
+            user.solve_rate_limit = personal_limit
         s.flush()
-        return AdminUser.of(user)
+        after = AdminUser.of(user)
+        email = user.email
+
+    changes = {
+        k: {"old": before[k], "new": v}
+        for k, v in after.model_dump(mode="json").items()
+        if before.get(k) != v
+    }
+    if changes:
+        runtime_settings.audit(me.email, "user.update", email, changes, target_id=str(user_id))
+    if "solve_rate_limit" in changes:
+        ai_control.forget_user_limit(user_id)
+    return after
+
+
+@router.post("/users/{user_id}/suspend", response_model=AdminUser)
+def suspend_user(
+    user_id: uuid.UUID, payload: Suspend, me: User = Depends(auth.get_current_admin)
+) -> AdminUser:
+    """Suspend an account: every session ends now, and signing in again is
+    refused (auth.refuse_if_suspended) until it is reactivated. Nothing is
+    deleted. Refused for admins, yourself included, for the same reason they
+    cannot be deleted here."""
+    if user_id == me.id:
+        raise HTTPException(status_code=400, detail="Tu ne peux pas suspendre ton propre compte.")
+    now = datetime.now(timezone.utc)
+    with session_scope() as s:
+        user = _get_or_404(s, user_id)
+        if user.role == ROLE_ADMIN:
+            raise HTTPException(
+                status_code=409, detail="Un compte admin ne peut pas être suspendu ici."
+            )
+        user.suspended_at = user.suspended_at or now
+        user.suspended_reason = payload.reason.strip() or None
+        user.sessions_valid_after = now
+        s.flush()
+        out, email = AdminUser.of(user), user.email
+    runtime_settings.audit(
+        me.email,
+        "user.suspend",
+        email,
+        {"reason": out.suspended_reason},
+        target_id=str(user_id),
+    )
+    return out
+
+
+@router.post("/users/{user_id}/reactivate", response_model=AdminUser)
+def reactivate_user(user_id: uuid.UUID, me: User = Depends(auth.get_current_admin)) -> AdminUser:
+    """Lift a suspension. The student signs in again normally."""
+    with session_scope() as s:
+        user = _get_or_404(s, user_id)
+        was_suspended = user.suspended_at is not None
+        user.suspended_at = None
+        user.suspended_reason = None
+        s.flush()
+        out, email = AdminUser.of(user), user.email
+    if was_suspended:
+        runtime_settings.audit(me.email, "user.reactivate", email, target_id=str(user_id))
+    return out
 
 
 @router.post("/users/{user_id}/revoke-sessions", response_model=AdminUser)

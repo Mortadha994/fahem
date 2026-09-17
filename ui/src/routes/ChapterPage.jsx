@@ -16,6 +16,8 @@ import {
   startedExerciseTexts,
 } from "../lib/exercises.js";
 import Skeleton from "../components/ui/Skeleton.jsx";
+import Badge from "../components/ui/Badge.jsx";
+import { EXERCISE_STATUS, fetchProgress } from "../lib/progressApi.js";
 
 const DOC = "doc";
 const EXOS = "exos";
@@ -64,6 +66,26 @@ function ChapterView({ id }) {
   // mount: the history only changes from the chat screen, and coming back
   // here remounts this component (see the key in ChapterRoute).
   const [startedTexts] = useState(startedExerciseTexts);
+
+  // Each exercise's status from the server (progress.py): réussi, solution vue,
+  // commencé - and the next one to do. Until it arrives (or if it fails), the
+  // browser's own "à finir" marker stands in.
+  const [progress, setProgress] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchProgress()
+      .then(
+        (p) => !cancelled && setProgress(p.chapters.find((c) => c.id === id) ?? null)
+      )
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  const statusById = Object.fromEntries(
+    (progress?.exercises ?? []).map((e) => [e.id, e.status])
+  );
+  const nextId = progress?.next_exercise?.id;
 
   // Title for the header.
   //
@@ -289,12 +311,16 @@ function ChapterView({ id }) {
               </li>
             ))}
           {(exercises ?? []).map((e, index) => {
-            const started = isStarted(e.question, startedTexts);
+            const status = progress ? statusById[e.id] : null;
+            const started = !progress && isStarted(e.question, startedTexts);
+            const shown = EXERCISE_STATUS[status];
             return (
               <li key={e.id}>
                 <button
                   type="button"
-                  className="exo surface surface-interactive"
+                  className={`exo surface surface-interactive${
+                    e.id === nextId ? " is-next" : ""
+                  }${status === "done" ? " is-done" : ""}`}
                   onClick={() => solve(e.question)}
                 >
                   {/* The number is what a student and a teacher say out loud
@@ -308,6 +334,12 @@ function ChapterView({ id }) {
                       <span className="exo-meta">
                         <span className="exo-len">{exerciseLength(e.question)}</span>
                         {started && <span className="exo-started">à finir</span>}
+                        {shown && <Badge tone={shown.tone}>{shown.short}</Badge>}
+                        {e.id === nextId && !shown && (
+                          <Badge tone="neutral" className="exo-next">
+                            À faire ensuite
+                          </Badge>
+                        )}
                       </span>
                     </span>
                     {/* The full énoncé stays on the page - clamped to two

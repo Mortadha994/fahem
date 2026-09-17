@@ -56,6 +56,9 @@ class CallRecord:
     total_tokens: int = 0
     status: str = STATUS_OK
     detail: str | None = None
+    # Solves only: the prompt that answered, and the session memory it carried.
+    route: str | None = None
+    memory_chars: int = 0
     _done: bool = False
 
     def mark_admitted(self) -> None:
@@ -89,6 +92,8 @@ class CallRecord:
             "latency_ms": int(max(0.0, now - admitted) * 1000) if self.admitted else 0,
             "rate_limit_hits": self.rate_limit_hits,
             "detail": self.detail,
+            "route": self.route,
+            "memory_chars": self.memory_chars,
         }
 
     def finish(self) -> None:

@@ -13,7 +13,13 @@ import {
   ATTACHMENT_TYPES,
   ATTACHMENT_MAX_BYTES,
 } from "../lib/api.js";
-import { titleFrom } from "../lib/sessions.js";
+import { fetchChatFeatures, sendFeedback, titleFrom } from "../lib/sessions.js";
+import {
+  ACTION_LABELS,
+  PRACTICE_LEVELS,
+  currentExercise,
+  guidedState,
+} from "../lib/learning.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
 import { hasQuestion } from "../lib/sessionGroups.js";
@@ -44,13 +50,44 @@ const IS_MAC =
  */
 export default function Chat() {
   const { onUnauthorized } = useAuth();
-  const { sessions, setSessions, activeId, setActiveId, createSession, patchLast } =
-    useChatSessions();
+  const {
+    sessions,
+    setSessions,
+    activeId,
+    setActiveId,
+    createSession,
+    patchLast,
+    patchMessage,
+    ensureLoaded,
+    setVersion,
+    flush,
+  } = useChatSessions();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState("");
-  const [streaming, setStreaming] = useState(false);
+  // The answer that just finished in front of the student: its celebrations
+  // (confetti, the step rail filling) play once, not when a discussion is reopened.
+  const [freshId, setFreshId] = useState(null);
+  // Answers being written, per discussion. Each discussion has its own stream
+  // and its own stop button: switching to another discussion while one answer
+  // is written neither blocks it nor lets "Arrêter" hit the wrong one.
+  const [streamingIds, setStreamingIds] = useState(() => new Set());
+  const streamsRef = useRef(new Map()); // session id -> AbortController
+  const startStream = useCallback((sessionId, controller) => {
+    streamsRef.current.set(sessionId, controller);
+    setStreamingIds((prev) => new Set(prev).add(sessionId));
+  }, []);
+  const endStream = useCallback((sessionId, controller) => {
+    if (controller && streamsRef.current.get(sessionId) !== controller) return;
+    streamsRef.current.delete(sessionId);
+    setStreamingIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
 
   /* A photo or PDF of an exercise waiting in the composer:
      { file, url, name, size, kind: "image" | "pdf" }. `url` is an object URL
@@ -87,7 +124,6 @@ export default function Chat() {
      the markup for why this is not driven off the streaming text. */
   const [announcement, setAnnouncement] = useState("");
 
-  const abortRef = useRef(null);
   const listRef = useRef(null);
   const pinnedToBottom = useRef(true);
 
@@ -96,7 +132,7 @@ export default function Chat() {
   // Phase 3b made this necessary and then forgot it. Before routing, chat was
   // the whole app and the only way to leave a stream was logging out, which
   // App.jsx handled by aborting before it called /auth/logout. Splitting Chat
-  // into a route moved abortRef here and added a second exit that never
+  // into a route moved the stream's controller here and added a second exit that never
   // existed: clicking "Chapitres" or "Poser une question" mid-generation
   // unmounts this component. Without this cleanup the fetch keeps reading the
   // SSE and the backend keeps generating against Groq for a conversation
@@ -106,9 +142,10 @@ export default function Chat() {
   // Empty deps so it runs only on unmount; the ref is read at cleanup time,
   // so it always sees the current controller.
   useEffect(() => {
+    const streams = streamsRef.current;
     return () => {
-      abortRef.current?.abort();
-      abortRef.current = null;
+      for (const controller of streams.values()) controller.abort();
+      streams.clear();
     };
   }, []);
 
@@ -117,6 +154,57 @@ export default function Chat() {
     [sessions, activeId]
   );
   const messages = active?.messages ?? [];
+  const streaming = streamingIds.has(activeId);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // The history list arrives light (no answers); a discussion is loaded in
+  // full when it is opened. Nothing can be sent into it until then.
+  const activeLoading = Boolean(active && active.loaded === false);
+  // The id whose load failed (not a flag), so opening another discussion
+  // clears the error without an effect resetting it.
+  const [failedId, setFailedId] = useState(null);
+  const loadFailed = failedId === activeId;
+  useEffect(() => {
+    if (!activeLoading) return;
+    ensureLoaded(activeId).catch(() => setFailedId(activeId));
+  }, [activeId, activeLoading, ensureLoaded]);
+
+  // Mode guidé / Vérifier ma réponse, as the admin set them. Off until known:
+  // a failed fetch leaves the chat as it was before these modes existed.
+  const [features, setFeatures] = useState({
+    guided: false,
+    check: false,
+    defaultMode: "full",
+  });
+  useEffect(() => {
+    let cancelled = false;
+    fetchChatFeatures()
+      .then((f) => !cancelled && f && setFeatures(f))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // The mode the student picked per discussion; otherwise a discussion with a
+  // guided exercise under way stays guided, and a new one takes the default.
+  const [modeById, setModeById] = useState({});
+  const modeFor = useCallback(
+    (session) => {
+      if (!features.guided) return "full";
+      const picked = session ? modeById[session.id] : modeById.__new__;
+      if (picked) return picked;
+      if (session && guidedState(session.messages)) return "guided";
+      return features.defaultMode === "guided" ? "guided" : "full";
+    },
+    [features, modeById]
+  );
+  const modeRef = useRef(modeFor);
+  useEffect(() => {
+    modeRef.current = modeFor;
+  }, [modeFor]);
 
   // Phase 9: the chapters a new discussion can be about. Fetched once; a
   // failure just leaves the picker hidden and the default chapter in place.
@@ -236,13 +324,17 @@ export default function Chat() {
     }
   });
 
+  // Stops the answer of the discussion on screen - the one whose stop button
+  // was pressed - never another discussion's.
   const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setStreaming(false);
+    const sessionId = activeIdRef.current;
+    const controller = streamsRef.current.get(sessionId);
+    if (!controller) return;
+    controller.abort();
+    endStream(sessionId, controller);
     // Keep whatever arrived; mark it as interrupted rather than verified.
-    if (activeId) patchLast(activeId, { status: "stopped" });
-  }, [activeId, patchLast]);
+    patchLast(sessionId, { status: "stopped" });
+  }, [endStream, patchLast]);
 
   /**
    * Send one problem. Split out of handleSend so an exercise arriving by
@@ -251,13 +343,31 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session, { reuse, note, attachment } = {}) => {
+    (
+      problem,
+      session,
+      { reuse, note, attachment, mode: askedMode, action, exercise, difficulty } = {}
+    ) => {
       const sessionId = session.id;
+      // Mode guidé: the exercise under way (its step, the statement it came
+      // from) is read from the discussion as it is before this message.
+      const mode = askedMode ?? modeRef.current(session);
+      const skipIds = new Set(reuse ? [reuse.userId, reuse.assistantId] : []);
+      const guided =
+        mode === "guided"
+          ? guidedState(session.messages.filter((msg) => !skipIds.has(msg.id)))
+          : null;
       // Cleared per send so an identical verdict is announced again rather
       // than being swallowed as an unchanged live-region value.
       setAnnouncement("");
-      setStreaming(true);
       pinnedToBottom.current = true;
+      // Ids decided here, not inside the state update: the server saves the
+      // exchange under the same ids when the answer ends.
+      const stamp = Date.now();
+      const userId = reuse?.userId ?? `u_${stamp}`;
+      const assistantId = reuse?.assistantId ?? `a_${stamp}`;
+      const title =
+        session.messages.length <= (reuse ? 2 : 0) ? titleFrom(problem) : session.title;
 
       // `reuse`: the exchange is already on screen - an attachment was read
       // first (sendAttachment) - so its two messages are filled in rather
@@ -286,15 +396,16 @@ export default function Chat() {
             messages: [
               ...s.messages,
               {
-                id: `u_${Date.now()}`,
+                id: userId,
                 role: "user",
                 content: problem,
                 // A retried attachment keeps its note and its file chip.
                 ...(note ? { note } : {}),
                 ...(attachment ? { attachment } : {}),
+                ...(mode !== "full" ? { mode } : {}),
               },
               {
-                id: `a_${Date.now()}`,
+                id: assistantId,
                 role: "assistant",
                 content: "",
                 pinned: [],
@@ -308,7 +419,34 @@ export default function Chat() {
       );
 
       const controller = new AbortController();
-      abortRef.current = controller;
+      startStream(sessionId, controller);
+
+      // Session memory: what was said before this message, from the
+      // discussion as it is on screen (an answer that just finished is not
+      // saved yet, but it is here). Failed and interrupted answers, and the
+      // exchange being filled in (`reuse`), are left out - half an answer
+      // would be remembered as a whole one. A student message keeps the
+      // question they typed beside an attached file. The server keeps the
+      // last exchanges and caps their size.
+      const skip = new Set(reuse ? [reuse.userId, reuse.assistantId] : []);
+      const history = session.messages
+        .filter(
+          (msg) =>
+            !skip.has(msg.id) &&
+            msg.content?.trim() &&
+            !(
+              msg.role === "assistant" &&
+              (msg.error || msg.status === "error" || msg.status === "stopped")
+            )
+        )
+        .slice(-6)
+        .map((msg) => ({
+          role: msg.role,
+          content:
+            msg.role === "user" && msg.note
+              ? `${msg.content}\n(Question de l'élève : ${msg.note})`
+              : msg.content,
+        }));
 
       streamSolve(
         // The session's own chapter, not a global: an older discussion keeps
@@ -318,6 +456,20 @@ export default function Chat() {
           niveau: session.niveau ?? NIVEAU,
           chapitre: session.chapitre ?? CHAPITRE,
           note,
+          history,
+          // Where the exchange belongs: the server saves it when the answer
+          // ends, even if this tab is closed before the chat saves it.
+          session_id: sessionId,
+          user_message_id: userId,
+          assistant_message_id: assistantId,
+          title,
+          attachment,
+          mode,
+          step: guided?.step,
+          action,
+          exercise: exercise ?? guided?.exercise,
+          difficulty,
+          exercise_id: guided?.exerciseId,
         },
         {
           signal: controller.signal,
@@ -330,6 +482,8 @@ export default function Chat() {
                 ...msg,
                 pinned: meta.pinned ?? [],
                 retrieved: meta.retrieved ?? [],
+                ...(meta.route ? { route: meta.route } : {}),
+                ...(meta.guided ? { guided: meta.guided } : {}),
               };
               if (msg.status === "waiting") {
                 next.status = "streaming";
@@ -384,13 +538,23 @@ export default function Chat() {
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
               // pass on content the checker never meaningfully looked at.
-              status: !hasRealAlgorithmeSolution(msg.content)
-                ? "none"
-                : done.warnings?.length
-                  ? "warned"
-                  : "clean",
+              // A guided hint (steps 1-3) is not a solution to vouch for.
+              status:
+                !hasRealAlgorithmeSolution(msg.content) ||
+                (done.guided && done.guided.step < 4)
+                  ? "none"
+                  : done.warnings?.length
+                    ? "warned"
+                    : "clean",
               warnings: done.warnings ?? [],
+              ...(done.route ? { route: done.route } : {}),
+              ...(done.guided ? { guided: done.guided } : {}),
+              ...(done.check ? { check: done.check } : {}),
+              ...(done.practice ? { practice: done.practice } : {}),
             }));
+            setFreshId(assistantId);
+            // The server saved the exchange; the next save builds on its version.
+            setVersion(sessionId, done.session_version);
           },
           onError: (message) => {
             setAnnouncement("La réponse a échoué.");
@@ -418,8 +582,7 @@ export default function Chat() {
       )
         .catch(() => patchLast(sessionId, { error: GENERIC_ERROR, status: "error" }))
         .finally(() => {
-          abortRef.current = null;
-          setStreaming(false);
+          endStream(sessionId, controller);
           // A stream that ended without a done frame still needs to leave the
           // pending badge behind - same real-content gate as onDone, since an
           // aborted stream's partial content has no real solution either.
@@ -428,12 +591,16 @@ export default function Chat() {
             const { waiting: _waiting, ...rest } = msg;
             return {
               ...rest,
-              status: hasRealAlgorithmeSolution(msg.content) ? "clean" : "none",
+              status:
+                hasRealAlgorithmeSolution(msg.content) &&
+                !(msg.guided && msg.guided.step < 4)
+                  ? "clean"
+                  : "none",
             };
           });
         });
     },
-    [patchLast, setSessions, onUnauthorized]
+    [patchLast, setSessions, onUnauthorized, startStream, endStream, setVersion]
   );
 
   /**
@@ -446,13 +613,12 @@ export default function Chat() {
    * of treating them as more of the statement.
    */
   const sendAttachment = useCallback(
-    async (file, kind, name, note, session) => {
+    async (file, kind, name, note, session, { mode } = {}) => {
       const sessionId = session.id;
       const stamp = Date.now();
       const userId = `u_${stamp}`;
       const assistantId = `a_${stamp}`;
       setAnnouncement("");
-      setStreaming(true);
       pinnedToBottom.current = true;
       setSessions((prev) =>
         prev.map((s) =>
@@ -491,7 +657,7 @@ export default function Chat() {
       );
 
       const controller = new AbortController();
-      abortRef.current = controller;
+      startStream(sessionId, controller);
       const result = await extractAttachment(file, { signal: controller.signal });
       const markRead = () =>
         setSessions((prev) =>
@@ -508,15 +674,14 @@ export default function Chat() {
         );
 
       // Stopped while reading: handleStop already marked the answer.
-      if (result.aborted || abortRef.current !== controller) {
+      if (result.aborted || streamsRef.current.get(sessionId) !== controller) {
         markRead();
         return;
       }
-      abortRef.current = null;
+      endStream(sessionId, controller);
 
       if (!result.ok) {
         markRead();
-        setStreaming(false);
         let error = result.error ?? GENERIC_ERROR;
         if (result.unauthorized) {
           error = "Ta session a expiré. Reconnecte-toi pour continuer.";
@@ -530,42 +695,112 @@ export default function Chat() {
       }
 
       const problem = result.text.slice(0, 2000);
-      send(problem, session, { reuse: { userId, assistantId }, note });
+      send(problem, session, {
+        reuse: { userId, assistantId },
+        note,
+        attachment: { name, kind },
+        mode,
+      });
     },
-    [patchLast, setSessions, onUnauthorized, send]
+    [patchLast, setSessions, onUnauthorized, send, startStream, endStream]
   );
 
-  const handleSend = useCallback(() => {
-    const problem = draft.trim();
-    if (streaming) return;
-    if (attachment) {
+  // `mode`: "check" for Vérifier ma réponse; otherwise the discussion's mode.
+  const submit = useCallback(
+    (mode) => {
+      const problem = draft.trim();
+      if (streaming || activeLoading) return;
       const session = active ?? createSession(chapterChoice);
+      const chosen = mode ?? modeRef.current(active ? session : null);
+      if (!active && chosen !== "full" && mode !== "check") {
+        // The mode picked before the discussion existed now belongs to it.
+        setModeById((prev) => ({ ...prev, [session.id]: chosen, __new__: undefined }));
+      }
+      if (attachment) {
+        setDraft("");
+        setAttachment(null);
+        setAttachError("");
+        sendAttachment(
+          attachment.file,
+          attachment.kind,
+          attachment.name,
+          problem,
+          session,
+          {
+            mode: chosen,
+          }
+        );
+        return;
+      }
+      if (!problem) return;
       setDraft("");
-      setAttachment(null);
-      setAttachError("");
-      sendAttachment(
-        attachment.file,
-        attachment.kind,
-        attachment.name,
-        problem,
-        session
-      );
-      return;
-    }
-    if (!problem) return;
-    const session = active ?? createSession(chapterChoice);
-    setDraft("");
-    send(problem, session);
-  }, [
-    draft,
-    streaming,
-    active,
-    createSession,
-    send,
-    sendAttachment,
-    attachment,
-    chapterChoice,
-  ]);
+      send(problem, session, { mode: chosen });
+    },
+    [
+      draft,
+      streaming,
+      activeLoading,
+      active,
+      createSession,
+      send,
+      sendAttachment,
+      attachment,
+      chapterChoice,
+    ]
+  );
+  const handleSend = useCallback(() => submit(), [submit]);
+  const handleCheck = useCallback(() => submit("check"), [submit]);
+
+  const chooseMode = useCallback(
+    (mode) =>
+      setModeById((prev) => ({ ...prev, [activeIdRef.current ?? "__new__"]: mode })),
+    []
+  );
+
+  /** A guided answer's buttons: the next step, or the whole solution. */
+  const guidedAction = useCallback(
+    (action) => {
+      if (!active || streaming || activeLoading) return;
+      send(ACTION_LABELS[action], active, { mode: "guided", action });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
+  /** "Exercice similaire": a new statement on the discussion's exercise. */
+  const practiceAction = useCallback(
+    (difficulty) => {
+      if (!active || streaming || activeLoading) return;
+      const exercise = currentExercise(active.messages);
+      if (!exercise) return;
+      const label = PRACTICE_LEVELS.find((l) => l.value === difficulty)?.label ?? "";
+      send(`Exercice similaire (${label.toLowerCase()})`, active, {
+        mode: "practice",
+        difficulty,
+        exercise,
+      });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
+  /** A generated exercise, taken on: guided, or solved outright. */
+  const startPractice = useCallback(
+    (statement, mode) => {
+      if (!active || streaming || activeLoading || !statement) return;
+      send(statement, active, { mode });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
+  /** "Je propose ma solution": the composer, ready for the student's work. */
+  const proposeSolution = useCallback(() => {
+    setDraft((current) => current || "Voici ma solution :\n");
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
 
   /**
    * "Réessayer" on a failed answer: drop the failed exchange (the question
@@ -589,15 +824,79 @@ export default function Chat() {
     send(
       question,
       { ...active, messages: kept },
-      { attachment: lastUserMsg.attachment, note: lastUserMsg.note }
+      {
+        attachment: lastUserMsg.attachment,
+        note: lastUserMsg.note,
+        mode: lastUserMsg.mode ?? undefined,
+        // A guided button's message is sent again as that button.
+        action: Object.keys(ACTION_LABELS).find(
+          (key) => lastUserMsg.mode === "guided" && ACTION_LABELS[key] === question
+        ),
+        // A similar exercise is asked again about the same exercise and level.
+        ...(lastUserMsg.mode === "practice"
+          ? {
+              exercise: currentExercise(kept),
+              difficulty:
+                PRACTICE_LEVELS.find((l) => question.includes(l.label.toLowerCase()))
+                  ?.value ?? "same",
+            }
+          : {}),
+      }
     );
   }, [active, streaming, setSessions, send]);
+
+  /**
+   * "Modifier" on the student's last message: the exchange is taken back and
+   * its text returns to the composer, to be corrected and sent again.
+   */
+  const editLast = useCallback(() => {
+    if (!active || streaming) return;
+    const msgs = active.messages;
+    const lastUserIndex = msgs.findLastIndex((msg) => msg.role === "user");
+    if (lastUserIndex < 0 || !msgs[lastUserIndex].content) return;
+    setDraft(msgs[lastUserIndex].content);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === active.id ? { ...s, messages: msgs.slice(0, lastUserIndex) } : s
+      )
+    );
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [active, streaming, setSessions]);
+
+  /**
+   * 👍 / 👎 on an answer (clicking the same one again takes it back). Shown at
+   * once, then sent; an answer the server has not saved yet gets one more try
+   * after the chat's own save.
+   */
+  const giveFeedback = useCallback(
+    (messageId, rating) => {
+      const sessionId = activeIdRef.current;
+      let next = rating;
+      patchMessage(sessionId, messageId, (msg) => {
+        next = msg.feedback === rating ? 0 : rating;
+        return { ...msg, feedback: next || undefined };
+      });
+      const attempt = (retry) =>
+        sendFeedback(sessionId, messageId, next).catch(() => {
+          if (retry) {
+            flush();
+            setTimeout(() => attempt(false), 1500);
+          }
+        });
+      // After the state update, so `next` holds the toggled value.
+      setTimeout(() => attempt(true), 0);
+    },
+    [patchMessage, flush]
+  );
 
   // Retry is offered on the last answer only, and only once nothing is
   // streaming - an older failure further up has been superseded.
   const lastMessageId = messages[messages.length - 1]?.id;
+  const lastUserMessageId = messages.findLast((msg) => msg.role === "user")?.id;
   // A photo that could not be read left no text to resend; the student
   // attaches it again (or a better one) instead.
+  // The guided exercise under way, if any (its step decides the buttons).
+  const activeGuided = useMemo(() => guidedState(active?.messages ?? []), [active]);
   const lastUserHasText = Boolean(
     messages.findLast((msg) => msg.role === "user")?.content
   );
@@ -796,6 +1095,27 @@ export default function Chat() {
               )}
             </m.div>
           ) : null}
+          {activeLoading && (
+            <p className="chat-loading" role="status">
+              {loadFailed ? (
+                <>
+                  Impossible de charger cette discussion.{" "}
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setFailedId(null);
+                      ensureLoaded(activeId).catch(() => setFailedId(activeId));
+                    }}
+                  >
+                    Réessayer
+                  </button>
+                </>
+              ) : (
+                "Chargement de la discussion…"
+              )}
+            </p>
+          )}
           {messages.length === 0 ? null : (
             <>
               {/* Keyed by discussion with initial={false}: opening a thread shows
@@ -805,13 +1125,67 @@ export default function Chat() {
                   <Message
                     key={msg.id}
                     message={msg}
-                    streaming={streaming}
+                    // Only the last answer can be streaming: earlier messages
+                    // get a constant, so memo() skips them on every token.
+                    streaming={msg.id === lastMessageId && streaming}
                     onRetry={
                       msg.id === lastMessageId &&
-                      (msg.error || msg.status === "stopped") &&
+                      msg.role === "assistant" &&
+                      !["streaming", "waiting", "reading"].includes(msg.status) &&
                       lastUserHasText &&
                       !streaming
                         ? retryLast
+                        : undefined
+                    }
+                    onEdit={
+                      msg.id === lastUserMessageId && !streaming && msg.content
+                        ? editLast
+                        : undefined
+                    }
+                    onFeedback={msg.role === "assistant" ? giveFeedback : undefined}
+                    // The guided buttons, on the latest answer of an exercise
+                    // still under way.
+                    // (also under a solution checked mid-exercise).
+                    onGuided={
+                      msg.id === lastMessageId &&
+                      activeGuided &&
+                      activeGuided.step < 4 &&
+                      (msg.guided || msg.check) &&
+                      !msg.error &&
+                      !streaming &&
+                      features.guided
+                        ? guidedAction
+                        : undefined
+                    }
+                    guidedStep={
+                      msg.id === lastMessageId ? activeGuided?.step : undefined
+                    }
+                    // "Exercice similaire", under the latest answer about an exercise.
+                    onPractice={
+                      msg.id === lastMessageId &&
+                      features.practice &&
+                      !streaming &&
+                      !msg.error &&
+                      ["PROBLEM", "FOLLOW_UP", "GUIDED", "CHECK", "PRACTICE"].includes(
+                        msg.route
+                      )
+                        ? practiceAction
+                        : undefined
+                    }
+                    onPracticeStart={
+                      msg.practice && msg.id === lastMessageId && !streaming
+                        ? startPractice
+                        : undefined
+                    }
+                    guidedAvailable={features.guided}
+                    fresh={msg.id === freshId}
+                    live={msg.id === lastMessageId}
+                    onPropose={
+                      msg.id === lastMessageId &&
+                      ((msg.guided && msg.guided.step < 4) || msg.practice) &&
+                      features.check &&
+                      !streaming
+                        ? proposeSolution
                         : undefined
                     }
                   />
@@ -844,12 +1218,33 @@ export default function Chat() {
         </AnimatePresence>
       </div>
 
+      {/* Session memory, said out loud: what Fahem keeps of this discussion,
+          and how to start without it. */}
+      {!isEmpty && !activeLoading && (
+        <p className="chat-memory">
+          <span aria-hidden="true">◎</span>{" "}
+          {Math.min(3, messages.filter((msg) => msg.role === "user").length) === 1
+            ? "Fahem se souvient de l'échange précédent de cette discussion."
+            : `Fahem se souvient des ${Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers échanges de cette discussion.`}
+          <button type="button" className="chat-memory-new" onClick={newDiscussion}>
+            Repartir de zéro
+          </button>
+        </p>
+      )}
+
       <Composer
         value={draft}
         onChange={setDraft}
         onSend={handleSend}
+        onCheck={features.check ? handleCheck : undefined}
+        mode={modeFor(active)}
+        onModeChange={features.guided ? chooseMode : undefined}
         onStop={handleStop}
         streaming={streaming}
+        disabled={activeLoading}
+        // The gatekeeper's cap: 2000 characters in all, and a note beside a
+        // file shares it with the text read from the file (up to 1800).
+        maxLength={attachment ? 190 : 2000}
         inputRef={composerRef}
         followUp={!isEmpty}
         chapterLabel={`Chapitre ${currentChapter}`}
