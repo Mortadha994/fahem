@@ -263,13 +263,13 @@ export default function AiControls({ onChanged }) {
           </span>
           <div className="cx-hero-text">
             <p className="cx-eyebrow">État de l'IA</p>
-            <h3 className="cx-hero-title">
+            <h2 className="cx-hero-title">
               {status === "paused"
                 ? "En pause"
                 : status === "blocked"
                   ? "Garde-fou atteint"
                   : "Active"}
-            </h3>
+            </h2>
             {/* The heading is read when the panel opens; a change of state is
                 announced separately, which a heading alone would not do. */}
             <span className="sr-only" role="status">
