@@ -494,6 +494,29 @@ def give_feedback(payload: FeedbackIn, user: User = Depends(auth.get_current_use
 # --- the server-side save of an exchange (/solve/stream) ---------------------------------
 
 
+def exercise_texts(user_id: uuid.UUID, session_id: uuid.UUID) -> set[str]:
+    """What the student actually sent in this discussion of theirs.
+
+    The learning modes (Mode guidé, Exercice similaire) carry the exercise they
+    are about, so a step or a generated exercise still has its statement when
+    the memory no longer holds it. That field comes from the browser, so it is
+    only trusted when it is part of this discussion - what the student sent
+    (already gatekept) or what Fahem answered (an exercise it generated
+    itself). Anything else is gatekept like any other text
+    (see api.trusted_exercise)."""
+    try:
+        with session_scope() as db:
+            rows = db.execute(
+                select(ChatMessage.content)
+                .join(ChatSession, ChatSession.id == ChatMessage.session_id)
+                .where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+            ).all()
+        return {" ".join((c or "").split()) for (c,) in rows}
+    except Exception:
+        log.exception("could not read the discussion's own messages")
+        return set()
+
+
 def record_exchange(
     user_id: uuid.UUID,
     session_id: uuid.UUID,

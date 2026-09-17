@@ -11,8 +11,10 @@ covers everything already done - and cannot drift from what the history shows:
                  chapter page, or pasted);
   solution_seen  one of those discussions shows a full, checked solution
                  (Solution complète, or Mode guidé's last step);
-  done           "Vérifier ma réponse" said Correct in one of them - the
-                 student solved it themselves.
+  done           "Vérifier ma réponse" said Correct BEFORE any full solution
+                 was shown in that discussion - the student solved it
+                 themselves. Reading the solution and then having it checked
+                 back is "solution vue", not a win.
 
 Nothing here reaches a model.
 """
@@ -25,7 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import case, literal, select
 
 import auth
 import chapters
@@ -33,6 +35,9 @@ from db import session_scope
 from models import ChatMessage, ChatSession, User
 
 STATUS_RANK = {"started": 1, "solution_seen": 2, "done": 3}
+# How much of a statement has to appear in a message for the exercise to count
+# as started: a photographed statement is transcribed, never character-perfect.
+PREFIX_CHARS = 90
 RECENT_CHECKS = 8
 
 
@@ -87,7 +92,11 @@ def _discussions(db, user_id: uuid.UUID) -> list[dict[str, Any]]:
             ChatSession.chapitre,
             ChatSession.updated_at,
             ChatMessage.role,
-            ChatMessage.content,
+            # Only the student's own text is read here (an exercise is matched
+            # against it); an answer can be tens of kilobytes and is not needed.
+            case((ChatMessage.role == "user", ChatMessage.content), else_=literal("")).label(
+                "content"
+            ),
             ChatMessage.checker_status,
             ChatMessage.extra,
             ChatMessage.position,
@@ -97,7 +106,7 @@ def _discussions(db, user_id: uuid.UUID) -> list[dict[str, Any]]:
         .order_by(ChatSession.updated_at.desc(), ChatMessage.position)
     ).all()
     by_id: dict[uuid.UUID, dict[str, Any]] = {}
-    for sid, title, chapitre, updated_at, role, content, status, extra, _pos in rows:
+    for sid, title, chapitre, updated_at, role, content, status, extra, position in rows:
         d = by_id.setdefault(
             sid,
             {
@@ -109,6 +118,8 @@ def _discussions(db, user_id: uuid.UUID) -> list[dict[str, Any]]:
                 "solution_seen": False,
                 "correct": False,
                 "checks": [],
+                "solution_at": None,  # position of the first full solution
+                "correct_at": None,  # position of the first Correct check
             },
         )
         extra = extra if isinstance(extra, dict) else {}
@@ -121,15 +132,39 @@ def _discussions(db, user_id: uuid.UUID) -> list[dict[str, Any]]:
             d["checks"].append(check)
             if check.get("verdict") == "correct":
                 d["correct"] = True
+                if d["correct_at"] is None:
+                    d["correct_at"] = position
         elif status in ("clean", "warned") and (not guided or guided.get("step") == 4):
             d["solution_seen"] = True
+            if d["solution_at"] is None:
+                d["solution_at"] = position
     return list(by_id.values())
+
+
+def _about(discussion: dict[str, Any], key: str) -> bool:
+    """Whether this discussion is about that exercise: the statement as sent
+    from the chapter page, or a message that contains its opening (a photo of
+    the same exercise is transcribed, so it never matches character for
+    character)."""
+    if key in discussion["user_texts"]:
+        return True
+    start = key[:PREFIX_CHARS]
+    return len(start) >= 40 and any(start in text for text in discussion["user_texts"])
 
 
 def _status(discussions: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     status, session_id = None, None
     for d in discussions:  # newest first
-        current = "done" if d["correct"] else "solution_seen" if d["solution_seen"] else "started"
+        alone = d["correct_at"] is not None and (
+            d["solution_at"] is None or d["correct_at"] < d["solution_at"]
+        )
+        current = (
+            "done"
+            if alone
+            else "solution_seen"
+            if d["solution_seen"] or d["correct"]
+            else "started"
+        )
         if status is None or STATUS_RANK[current] > STATUS_RANK[status]:
             status = current
         session_id = session_id or d["id"]
@@ -147,7 +182,7 @@ def compute(user: User) -> ProgressOut:
         items: list[ExerciseProgress] = []
         for exercise in _exercises(chapter.id):
             key = _norm(exercise.question)
-            about = [d for d in discussions if key and key in d["user_texts"]]
+            about = [d for d in discussions if key and _about(d, key)]
             status, session_id = _status(about)
             items.append(
                 ExerciseProgress(

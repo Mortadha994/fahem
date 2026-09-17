@@ -552,7 +552,13 @@ export default function Chat() {
               ...(done.check ? { check: done.check } : {}),
               ...(done.practice ? { practice: done.practice } : {}),
             }));
+            // Cleared once the celebration has played, so coming back to
+            // this discussion later does not replay it.
             setFreshId(assistantId);
+            setTimeout(
+              () => setFreshId((id) => (id === assistantId ? null : id)),
+              3000
+            );
             // The server saved the exchange; the next save builds on its version.
             setVersion(sessionId, done.session_version);
           },
@@ -928,7 +934,7 @@ export default function Chat() {
   }, [location.state, navigate, send, createSession]);
 
   return (
-    <div className="chat">
+    <main className="chat">
       {/* The discussion's own bar: what this thread is, and the two ways out
           of it - the history and a new question. It replaces the discussions
           list that used to sit in the app sidebar; the sidebar is navigation
@@ -1048,9 +1054,9 @@ export default function Chat() {
 
               {suggestions.length > 0 && (
                 <section className="chat-suggest" aria-labelledby="chat-suggest-title">
-                  <h3 id="chat-suggest-title" className="chat-suggest-title">
+                  <h2 id="chat-suggest-title" className="chat-suggest-title">
                     Ou commence par un exercice de la série
-                  </h3>
+                  </h2>
                   {/* The suggestions arrive after the prompt (they are fetched),
                     so they run their own stagger when they land. */}
                   <m.ul
@@ -1257,6 +1263,6 @@ export default function Chat() {
           composerRef.current?.focus();
         }}
       />
-    </div>
+    </main>
   );
 }

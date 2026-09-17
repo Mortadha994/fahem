@@ -271,6 +271,9 @@ class SolveRequest(BaseModel):
     action: Literal["next_step", "show_solution"] | None = None
     exercise: str | None = Field(default=None, max_length=2000)
     exercise_id: str | None = Field(default=None, max_length=80)
+    # Set by the server (never by the client): the exercise above is one of
+    # this student's own messages in this discussion - see trusted_exercise.
+    exercise_trusted: bool = Field(default=False, exclude=True)
     history: list[session_memory.HistoryTurn] = Field(
         default_factory=list,
         max_length=20,
@@ -279,14 +282,18 @@ class SolveRequest(BaseModel):
 
 
 def gate_text(payload: SolveRequest) -> str:
-    """What the gatekeeper checks: the note and the exercise together.
+    """What the gatekeeper checks: the note, the message, and an exercise the
+    request carries that the discussion does not vouch for.
 
     The note travels apart from the exercise so retrieval and the prompt can
     treat it as a question, but it must not get past the length cap or the
     classifier by doing so - an injection in a note is exactly as harmless as
     one typed into the box, because the gatekeeper still reads it."""
     note = (payload.note or "").strip()
-    return f"{note}\n\n{payload.problem}" if note else payload.problem
+    parts = [p for p in (note, payload.problem) if p]
+    if payload.exercise and not payload.exercise_trusted:
+        parts.append(payload.exercise)
+    return "\n\n".join(parts)
 
 
 class RetrievedChunk(BaseModel):
@@ -513,6 +520,24 @@ def solve(
     )
 
 
+def trusted_exercise(payload: SolveRequest, user: models.User) -> bool:
+    """Whether the exercise the request carries really comes from this
+    discussion - the student's own message, or the statement Fahem generated
+    in it. Anything else is read by the gatekeeper first, so a hand-made
+    request cannot use these modes to get past it."""
+    if not payload.exercise:
+        return False
+    if not payload.session_id:
+        return False
+    wanted = " ".join(payload.exercise.split())
+    if len(wanted) < 12:
+        return False
+    texts = chat_history.exercise_texts(user.id, payload.session_id)
+    # `in`: a generated exercise reaches us without its heading, and a
+    # statement can be quoted inside a longer message.
+    return any(wanted == text or wanted in text for text in texts)
+
+
 def skips_classifier(payload: SolveRequest, memory: list, note: str | None) -> bool:
     """Requests whose route is already known, so the gatekeeper's Groq call
     would be spent for nothing - or worse, would misread them:
@@ -524,10 +549,10 @@ def skips_classifier(payload: SolveRequest, memory: list, note: str | None) -> b
     if payload.mode == "check" and runtime_settings.get("check_answer_enabled"):
         return True
     if payload.mode == "practice" and runtime_settings.get("practice_enabled"):
-        return bool(payload.exercise)
+        return payload.exercise_trusted
     if payload.mode != "guided" or not runtime_settings.get("guided_mode_enabled"):
         return False
-    if not payload.exercise:
+    if not payload.exercise_trusted:
         return False
     return bool(payload.action) or bool(
         payload.step
@@ -551,7 +576,11 @@ def learning_route(
     """
     check_on = bool(runtime_settings.get("check_answer_enabled"))
     guided_on = bool(runtime_settings.get("guided_mode_enabled"))
-    if payload.mode == "practice" and payload.exercise and runtime_settings.get("practice_enabled"):
+    if (
+        payload.mode == "practice"
+        and payload.exercise_trusted
+        and runtime_settings.get("practice_enabled")
+    ):
         return "PRACTICE", None, False
     # A new statement is never a follow-up, however short.
     follow = session_memory.is_follow_up(
@@ -564,6 +593,7 @@ def learning_route(
         return "CHECK", None, False
     if guided_on and payload.mode == "guided":
         in_exercise = bool(payload.step and payload.exercise)
+        in_exercise = in_exercise and payload.exercise_trusted
         if in_exercise and payload.action == "show_solution":
             return "GUIDED", 4, False
         if in_exercise and payload.action == "next_step":
@@ -583,12 +613,25 @@ PRACTICE_LIMIT_MESSAGE = (
 )
 
 
+def _practice_key(user_id) -> str:
+    return f"fahem:practice:{user_id}:{time.strftime('%Y-%m-%d', time.gmtime())}"
+
+
+def release_practice_slot(user_id) -> None:
+    """Give today's slot back when nothing was generated (Groq refused, the
+    student stopped): a failed request must not cost an exercise."""
+    try:
+        llm_queue._sync_client().decr(_practice_key(user_id))
+    except Exception:
+        log.exception("could not give the practice slot back")
+
+
 def take_practice_slot(user_id) -> bool:
     """Count one generated exercise against today's per-student limit (Redis,
     reset at midnight UTC). False when the limit is reached. A Redis outage
     lets the request through: the global rate limits still apply."""
     limit = int(runtime_settings.get("practice_daily_limit"))
-    key = f"fahem:practice:{user_id}:{time.strftime('%Y-%m-%d', time.gmtime())}"
+    key = _practice_key(user_id)
     try:
         client = llm_queue._sync_client()
         used = client.incr(key)
@@ -749,6 +792,10 @@ def solve_stream(
     /solve is unchanged and still serves the non-streaming path.
     """
     started = time.monotonic()
+    # Does the discussion vouch for the exercise this request carries? Decided
+    # here, before the cap below reads it (gate_text) and before any route is
+    # chosen from it.
+    payload.exercise_trusted = trusted_exercise(payload, user)
 
     # The DoS cap and the chapter check still answer before the stream opens:
     # neither waits for Groq. See gatekeeper.py's module docstring.
@@ -763,8 +810,12 @@ def solve_stream(
 
     meta_chapitre, meta_topics = _meta_scope(payload)
     priority = llm_queue.priority_for(user.plan)
-    practice_on = payload.mode == "practice" and runtime_settings.get("practice_enabled")
-    if practice_on and payload.exercise and not take_practice_slot(user.id):
+    practice_on = (
+        payload.mode == "practice"
+        and payload.exercise_trusted
+        and runtime_settings.get("practice_enabled")
+    )
+    if practice_on and not take_practice_slot(user.id):
         message = PRACTICE_LIMIT_MESSAGE.format(limit=runtime_settings.get("practice_daily_limit"))
         return StreamingResponse(
             _gatekeeper_stream(
@@ -826,6 +877,11 @@ def solve_stream(
                 **(learning or {}),
             },
         )
+
+    def give_slot_back(parts):
+        """A generated exercise that never arrived costs no daily slot."""
+        if practice_on and not "".join(parts).strip():
+            release_practice_slot(user.id)
 
     def done_extra(route_label, version, learning=None):
         return {
@@ -996,18 +1052,22 @@ def solve_stream(
         except llm_queue.QueueTimeout:
             # Waited as long as the request's budget allows: the same "busy"
             # the student already gets for Groq's own 429, with its retry.
+            give_slot_back(parts)
             yield _sse("error", {"message": "busy", "status": 429})
             return
         except urllib.error.HTTPError as exc:
+            give_slot_back(parts)
             yield _sse(
                 "error",
                 {"message": "busy" if exc.code == 429 else "backend", "status": exc.code},
             )
             return
         except (urllib.error.URLError, KeyError):
+            give_slot_back(parts)
             yield _sse("error", {"message": "backend", "status": 502})
             return
         except GeneratorExit:
+            give_slot_back(parts)
             # The student left mid-answer (tab closed, page changed): keep what
             # was written, marked as stopped - those tokens were paid for.
             persist(

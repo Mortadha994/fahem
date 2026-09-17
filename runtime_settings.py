@@ -7,7 +7,7 @@ console's "Contrôle de l'IA" panel:
   ai_paused                 bool   every model call refused with the pause
                                    message (maintenance)
   ai_pause_message          str    what students read while paused
-  daily_budget_guard_pct    int    0 = off; else refuse new model calls once
+  daily_budget_guard_pct    int    0 = off (default 90); else refuse new model calls once
                                    the text model has used this % of Groq's
                                    daily token limit (keeps a reserve)
   solve_rate_limit          str    the per-student limit, "10/minute;100/hour"
@@ -117,7 +117,10 @@ SPECS: dict[str, Spec] = {
     "ai_pause_message": Spec(
         "Fahem est en maintenance pour quelques minutes. Réessaie un peu plus tard.", _message
     ),
-    "daily_budget_guard_pct": Spec(0, _budget_pct),
+    # On by default: the free tier's daily tokens run out long before the
+    # per-minute ones, and an exhausted day answers every student "service
+    # très sollicité". 90 % keeps a reserve for the rest of the day.
+    "daily_budget_guard_pct": Spec(90, _budget_pct),
     "solve_rate_limit": Spec(RATE_LIMIT_SOLVE, rate_limit),
     "queue_timeout_seconds": Spec(int(GROQ_QUEUE_TIMEOUT_SECONDS), _int_between(15, 600)),
     "retry_max": Spec(GROQ_RETRY_MAX, _int_between(0, 5)),
