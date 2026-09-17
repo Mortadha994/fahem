@@ -846,6 +846,8 @@ export default function Chat() {
   const lastUserMessageId = messages.findLast((msg) => msg.role === "user")?.id;
   // A photo that could not be read left no text to resend; the student
   // attaches it again (or a better one) instead.
+  // The guided exercise under way, if any (its step decides the buttons).
+  const activeGuided = useMemo(() => guidedState(active?.messages ?? []), [active]);
   const lastUserHasText = Boolean(
     messages.findLast((msg) => msg.role === "user")?.content
   );
@@ -1094,15 +1096,20 @@ export default function Chat() {
                     onFeedback={msg.role === "assistant" ? giveFeedback : undefined}
                     // The guided buttons, on the latest answer of an exercise
                     // still under way.
+                    // (also under a solution checked mid-exercise).
                     onGuided={
                       msg.id === lastMessageId &&
-                      msg.guided &&
-                      msg.guided.step < 4 &&
+                      activeGuided &&
+                      activeGuided.step < 4 &&
+                      (msg.guided || msg.check) &&
                       !msg.error &&
                       !streaming &&
                       features.guided
                         ? guidedAction
                         : undefined
+                    }
+                    guidedStep={
+                      msg.id === lastMessageId ? activeGuided?.step : undefined
                     }
                     onPropose={
                       msg.id === lastMessageId &&

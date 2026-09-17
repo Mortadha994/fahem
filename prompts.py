@@ -374,10 +374,11 @@ N'écris aucune ligne d'algorithme ni de Python.""",
 Réponds avec :
 1. Si l'élève a proposé quelque chose, ce qui est juste et ce qui manque (une phrase).
 2. « Indice » : la méthode en 2 à 4 phrases - quelle idée, quel opérateur du
-   cours, dans quel ordre. Montre au plus UN calcul en exemple (une seule
-   instruction d'algorithme) : les autres calculs, c'est à l'élève de les
-   trouver. Ne donne JAMAIS toutes les formules, même en phrase ou entre
-   parenthèses.
+   cours, dans quel ordre. Tu peux montrer UN calcul en exemple (une seule
+   instruction d'algorithme), mais JAMAIS un calcul que l'exercice demande :
+   prends un exemple voisin (autres variables, autre opération). Si
+   l'exercice n'a qu'un seul calcul, décris-le seulement en mots. Ne donne
+   JAMAIS les formules de l'exercice, même en phrase ou entre parenthèses.
 3. Une question qui l'invite à écrire lui-même un calcul que tu n'as pas donné.
 Pas de tableau Algorithme | Python.""",
     3: """ÉTAPE 3 / 4 - SQUELETTE.

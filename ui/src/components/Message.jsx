@@ -48,6 +48,7 @@ function Message({
   onEdit,
   onFeedback,
   onGuided,
+  guidedStep,
   onPropose,
 }) {
   if (message.role === "user") {
@@ -225,7 +226,7 @@ function Message({
                   className="guided-btn is-primary"
                   onClick={() => onGuided("next_step")}
                 >
-                  {message.guided.step === 3 ? "Dernière étape" : "Indice suivant"}
+                  {guidedStep === 3 ? "Dernière étape" : "Indice suivant"}
                   <span aria-hidden="true"> →</span>
                 </button>
               )}
