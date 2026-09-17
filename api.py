@@ -51,6 +51,7 @@ import gatekeeper
 import llm_queue
 import models
 import password_auth
+import progress
 import public_overview
 import ratelimit
 import runtime_settings
@@ -172,6 +173,10 @@ app.include_router(admin_controls.router)
 # rows on every route - see chat_history.py.
 app.include_router(chat_history.router)
 
+# The student's progress through the chapter exercises, derived from their
+# discussions - see progress.py.
+app.include_router(progress.router)
+
 # What the public landing page shows (chapters, counts, features), no sign-in -
 # see public_overview.py. Cached, and reaches no model.
 app.include_router(public_overview.router)
@@ -255,7 +260,9 @@ class SolveRequest(BaseModel):
     attachment: dict[str, Any] | None = None
     # "guided": Mode guidé - the exercise led step by step (prompts.GUIDED).
     # "check": Vérifier ma réponse - the student's own solution corrected.
-    mode: Literal["full", "guided", "check"] = "full"
+    # "practice": Exercice similaire - a new statement, no solution.
+    mode: Literal["full", "guided", "check", "practice"] = "full"
+    difficulty: Literal["easier", "same", "harder"] | None = None
     # Guided: the step the discussion is at (1-4); `action` is a button -
     # "next_step" / "show_solution" - which moves it on without asking the
     # classifier what "Indice suivant" means; `exercise` is the statement the
@@ -516,6 +523,8 @@ def skips_classifier(payload: SolveRequest, memory: list, note: str | None) -> b
     """
     if payload.mode == "check" and runtime_settings.get("check_answer_enabled"):
         return True
+    if payload.mode == "practice" and runtime_settings.get("practice_enabled"):
+        return bool(payload.exercise)
     if payload.mode != "guided" or not runtime_settings.get("guided_mode_enabled"):
         return False
     if not payload.exercise:
@@ -542,6 +551,8 @@ def learning_route(
     """
     check_on = bool(runtime_settings.get("check_answer_enabled"))
     guided_on = bool(runtime_settings.get("guided_mode_enabled"))
+    if payload.mode == "practice" and payload.exercise and runtime_settings.get("practice_enabled"):
+        return "PRACTICE", None, False
     # A new statement is never a follow-up, however short.
     follow = session_memory.is_follow_up(
         payload.problem, memory, note
@@ -564,6 +575,32 @@ def learning_route(
                 return "CHECK", None, False
             return "GUIDED", payload.step, False
     return ("FOLLOW_UP" if follow else route), None, False
+
+
+PRACTICE_LIMIT_MESSAGE = (
+    "Tu as déjà demandé {limit} exercices similaires aujourd'hui. Reviens demain pour "
+    "en avoir d'autres - en attendant, essaie de résoudre ceux que tu as déjà !"
+)
+
+
+def take_practice_slot(user_id) -> bool:
+    """Count one generated exercise against today's per-student limit (Redis,
+    reset at midnight UTC). False when the limit is reached. A Redis outage
+    lets the request through: the global rate limits still apply."""
+    limit = int(runtime_settings.get("practice_daily_limit"))
+    key = f"fahem:practice:{user_id}:{time.strftime('%Y-%m-%d', time.gmtime())}"
+    try:
+        client = llm_queue._sync_client()
+        used = client.incr(key)
+        if used == 1:
+            client.expire(key, 2 * 86400)
+        if used > limit:
+            client.decr(key)
+            return False
+        return True
+    except Exception:
+        log.exception("practice limit unavailable")
+        return True
 
 
 def _correction_part(answer: str) -> str:
@@ -726,7 +763,16 @@ def solve_stream(
 
     meta_chapitre, meta_topics = _meta_scope(payload)
     priority = llm_queue.priority_for(user.plan)
-    # One deadline for everything this request waits on - the classifier's
+    practice_on = payload.mode == "practice" and runtime_settings.get("practice_enabled")
+    if practice_on and payload.exercise and not take_practice_slot(user.id):
+        message = PRACTICE_LIMIT_MESSAGE.format(limit=runtime_settings.get("practice_daily_limit"))
+        return StreamingResponse(
+            _gatekeeper_stream(
+                message, "gatekeeper", payload, started, {"route": "PRACTICE_LIMIT"}
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )  # One deadline for everything this request waits on - the classifier's
     # place in Groq's queue, the solve's, and every 429 sleep - so a student
     # hears "busy" within GROQ_QUEUE_TIMEOUT_SECONDS, not a multiple of it.
     budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
@@ -899,6 +945,7 @@ def solve_stream(
             # Neither a new exercise nor a button: the student answering the
             # tutor's question at this step.
             reply=prompt_route == "GUIDED" and not starts_exercise and not payload.action,
+            difficulty=payload.difficulty,
             precheck=answer_check.findings_block(findings) if prompt_route == "CHECK" else None,
         )
 
@@ -997,6 +1044,8 @@ def solve_stream(
             }
         if guided:
             learning["guided"] = guided
+        if prompt_route == "PRACTICE":
+            learning["practice"] = {"difficulty": payload.difficulty or "same"}
         violations, notes = check_constraints(checked, rendered)
         has_solution = _has_solution_table(checked)
         if guided and guided["step"] < 4:

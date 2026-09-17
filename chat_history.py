@@ -85,6 +85,15 @@ class MessageIn(BaseModel):
     check: dict[str, Any] | None = None
     # How the student sent it: "guided" or "check" (absent: a normal message).
     mode: str | None = Field(default=None, max_length=16)
+    # Exercice similaire: {"difficulty": easier|same|harder}.
+    practice: dict[str, Any] | None = None
+
+
+def _practice(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    level = value.get("difficulty")
+    return {"difficulty": level if level in ("easier", "same", "harder") else "same"}
 
 
 def _guided(value: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -152,7 +161,7 @@ def _message_out(m: ChatMessage, feedback: dict[str, int]) -> dict[str, Any]:
             pinned=grounding.get("pinned", []),
             retrieved=grounding.get("retrieved", []),
         )
-        for key in ("readingKind", "route", "guided", "check"):
+        for key in ("readingKind", "route", "guided", "check", "practice"):
             if extra.get(key):
                 msg[key] = extra[key]
         if cid in feedback:
@@ -213,7 +222,8 @@ def _apply_message(row: ChatMessage, m: MessageIn, position: int) -> bool:
             "route": m.route,
             "guided": _guided(m.guided),
             "check": _check(m.check),
-            "mode": m.mode if m.mode in ("guided", "check") else None,
+            "practice": _practice(m.practice),
+            "mode": m.mode if m.mode in ("guided", "check", "practice") else None,
         }.items()
         if v
     } or None
@@ -251,6 +261,7 @@ def chat_features(_user: User = Depends(auth.get_current_user)) -> dict[str, Any
         "guided": guided,
         "check": bool(runtime_settings.get("check_answer_enabled")),
         "attachments": bool(runtime_settings.get("attachments_enabled")),
+        "practice": bool(runtime_settings.get("practice_enabled")),
         "defaultMode": runtime_settings.get("default_chat_mode") if guided else "full",
     }
 

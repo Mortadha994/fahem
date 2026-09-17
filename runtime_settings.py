@@ -17,6 +17,8 @@ console's "Contrôle de l'IA" panel:
   guided_mode_enabled       bool   the chat's "Mode guidé" (hints before the solution)
   check_answer_enabled      bool   the chat's "Vérifier ma réponse"
   default_chat_mode         str    "full" or "guided": a new discussion's mode
+  practice_enabled          bool   the chat's "Exercice similaire"
+  practice_daily_limit      int    similar exercises one student may generate per day
 
 A row in app_settings exists only for a key that was changed; get() falls
 back to the default. Values are validated on the way in (set_many), so
@@ -123,6 +125,8 @@ SPECS: dict[str, Spec] = {
     "guided_mode_enabled": Spec(True, _bool),
     "check_answer_enabled": Spec(True, _bool),
     "default_chat_mode": Spec("full", _chat_mode),
+    "practice_enabled": Spec(True, _bool),
+    "practice_daily_limit": Spec(10, _int_between(1, 100)),
 }
 
 

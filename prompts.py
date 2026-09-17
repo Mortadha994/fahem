@@ -488,6 +488,62 @@ Réponds EXACTEMENT dans cet ordre :
 )
 
 
+# --- PRACTICE: "Exercice similaire" -----------------------------------------------------------
+#
+# A new exercise on the same notions as the one the student just worked on,
+# easier, as hard or harder - the statement only, never its solution. The
+# heading is fixed (PRACTICE_HEADING): the chat reads the statement under it
+# to offer "Me guider" / "Voir la solution" / "Je propose ma solution".
+
+PRACTICE_HEADING = "### Exercice similaire"
+
+PRACTICE_LEVELS = {
+    "easier": "PLUS FACILE : moins de données ou un calcul de moins, mêmes notions.",
+    "same": "MÊME NIVEAU : autant de données et de calculs, dans une autre situation.",
+    "harder": (
+        "PLUS DIFFICILE : une donnée ou un calcul de plus, en combinant les notions - "
+        "toujours sans aucune notion absente du contexte."
+    ),
+}
+
+PRACTICE_SYSTEM_PROMPT = """Tu es Fahem, un professeur d'algorithmique pour un élève tunisien de
+{niveau}, jusqu'au chapitre {chapitre}. Tu écris UN nouvel exercice d'entraînement
+pour l'élève, comme dans un manuel scolaire tunisien.
+
+Règles :
+1. L'exercice travaille les mêmes notions que l'exercice de référence, mais dans
+   une autre situation (autre contexte de la vie courante, autres noms, autres
+   valeurs). Ne recopie jamais l'exercice de référence.
+2. Il se résout UNIQUEMENT avec ce que contient le contexte fourni (types,
+   opérateurs, structures du chapitre). N'exige aucune notion absente du
+   contexte (pas de boucle ni de condition si le contexte n'en montre pas).
+3. Ne donne NI la solution, NI l'algorithme, NI le programme, NI d'indice.
+4. Pas de LaTeX : les formules éventuelles en arithmétique simple.
+5. Écris en français simple, au tutoiement."""
+
+PRACTICE_USER_PROMPT = (
+    """Contexte (syntaxe et exemples du cours) :
+{context}
+
+Exercice de référence :
+{exercise}
+
+Difficulté demandée : {level}
+
+Réponds EXACTEMENT sous cette forme, sans rien d'autre :
+"""
+    + PRACTICE_HEADING
+    + """ ({level_label})
+
+Écrire un algorithme qui … (l'énoncé en 2 à 4 phrases : ce que le programme lit,
+ce qu'il calcule, ce qu'il affiche)
+
+**Exemple :** pour … le programme affiche … (une seule ligne)"""
+)
+
+PRACTICE_LEVEL_LABELS = {"easier": "plus facile", "same": "même niveau", "harder": "plus difficile"}
+
+
 _PROMPTS = {
     "PROBLEM": (SYSTEM_PROMPT, USER_PROMPT),
     "QUESTION": (QUESTION_SYSTEM_PROMPT, QUESTION_USER_PROMPT),
@@ -495,6 +551,7 @@ _PROMPTS = {
     "FOLLOW_UP": (FOLLOW_UP_SYSTEM_PROMPT, FOLLOW_UP_USER_PROMPT),
     "GUIDED": (GUIDED_SYSTEM_PROMPT, GUIDED_USER_PROMPT),
     "CHECK": (CHECK_SYSTEM_PROMPT, CHECK_USER_PROMPT),
+    "PRACTICE": (PRACTICE_SYSTEM_PROMPT, PRACTICE_USER_PROMPT),
 }
 
 
@@ -518,6 +575,7 @@ def build_messages(
     exercise: str | None = None,
     precheck: str | None = None,
     reply: bool = False,
+    difficulty: str | None = None,
 ) -> list[dict]:
     """Assemble the chat messages for one grounded route. `context` goes in
     unmodified. `kind` is the gatekeeper route - PROBLEM (the default, so
@@ -553,6 +611,14 @@ def build_messages(
             exercise=exercise or query,
             reply_note=GUIDED_REPLY_NOTE if reply else "",
             step_instructions=GUIDED_STEPS[min(4, max(1, step or 1))],
+        )
+    elif kind == "PRACTICE":
+        level = difficulty if difficulty in PRACTICE_LEVELS else "same"
+        user_content = user.format(
+            context=context,
+            exercise=exercise or query,
+            level=PRACTICE_LEVELS[level],
+            level_label=PRACTICE_LEVEL_LABELS[level],
         )
     elif kind == "CHECK":
         user_content = user.format(context=context, query=query, precheck=precheck or "")
