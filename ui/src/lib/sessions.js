@@ -103,6 +103,7 @@ export function sessionPayload(session) {
       guided: m.guided ?? null,
       check: m.check ?? null,
       mode: m.mode ?? null,
+      practice: m.practice ?? null,
     })),
   };
 }

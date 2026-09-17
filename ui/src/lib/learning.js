@@ -50,6 +50,48 @@ export function guidedState(messages) {
   return null;
 }
 
+// Must match prompts.PRACTICE_HEADING.
+export const PRACTICE_HEADING = "### Exercice similaire";
+
+export const PRACTICE_LEVELS = [
+  { value: "easier", label: "Plus facile" },
+  { value: "same", label: "Même niveau" },
+  { value: "harder", label: "Plus difficile" },
+];
+
+const BUTTON_TEXTS = new Set(["Indice suivant", "Voir la solution"]);
+
+/**
+ * The exercise the discussion is about, for "Exercice similaire": the guided
+ * exercise under way, else the latest generated exercise, else the latest
+ * student message that was answered as a new statement.
+ */
+export function currentExercise(messages) {
+  const guided = guidedState(messages);
+  if (guided?.exercise) return guided.exercise;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg.role !== "assistant" || !msg.content) continue;
+    if (msg.practice) return practiceStatement(msg.content);
+    if (msg.route === "PROBLEM" || msg.route === "GUIDED") {
+      const asked = messages[i - 1];
+      if (asked?.role === "user" && asked.content && !BUTTON_TEXTS.has(asked.content))
+        return asked.content;
+    }
+  }
+  const first = messages.find(
+    (m) => m.role === "user" && m.content && m.mode !== "check"
+  );
+  return first?.content ?? "";
+}
+
+/** The statement of a generated exercise, without its heading line. */
+export function practiceStatement(content) {
+  const at = content.indexOf(PRACTICE_HEADING);
+  const body = at < 0 ? content : content.slice(at).split("\n").slice(1).join("\n");
+  return body.trim();
+}
+
 /** A CHECK answer as { review, correction } - the correction is folded away. */
 export function splitCorrection(content) {
   const at = content.indexOf(CORRECTION_HEADING);

@@ -35,6 +35,8 @@ export const FIELD_LABELS = {
   guided_mode_enabled: "Mode guidé",
   check_answer_enabled: "Vérifier ma réponse",
   default_chat_mode: "Mode par défaut",
+  practice_enabled: "Exercices similaires",
+  practice_daily_limit: "Exercices similaires / jour",
   // account fields
   display_name: "Nom",
   email_verified: "E-mail confirmé",
@@ -70,6 +72,7 @@ export function formatValue(key, value, action = "") {
       return value ? "activées" : "désactivées";
     case "guided_mode_enabled":
     case "check_answer_enabled":
+    case "practice_enabled":
       return value ? "activé" : "désactivé";
     case "default_chat_mode":
       return value === "guided" ? "guidé" : "solution complète";

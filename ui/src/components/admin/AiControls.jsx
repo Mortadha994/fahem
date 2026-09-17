@@ -83,6 +83,8 @@ function formFrom(settings) {
     guided: settings.guided_mode_enabled.value,
     check: settings.check_answer_enabled.value,
     defaultMode: settings.default_chat_mode.value,
+    practice: settings.practice_enabled.value,
+    practiceLimit: String(settings.practice_daily_limit.value),
   };
 }
 
@@ -97,6 +99,8 @@ function formValues(form) {
     guided_mode_enabled: form.guided,
     check_answer_enabled: form.check,
     default_chat_mode: form.guided ? form.defaultMode : "full",
+    practice_enabled: form.practice,
+    practice_daily_limit: Number(form.practiceLimit),
   };
 }
 
@@ -515,6 +519,29 @@ export default function AiControls({ onChanged }) {
                   <option value="guided">Mode guidé</option>
                 </select>
               </label>
+              <label className="adm-check ctl-field">
+                <input
+                  type="checkbox"
+                  checked={form.practice}
+                  onChange={(e) => update({ practice: e.target.checked })}
+                />
+                <span>Exercices similaires générés</span>
+              </label>
+              <label className="ctl-field">
+                <span>Exercices similaires par élève et par jour</span>
+                <span className="ctl-inline">
+                  <input
+                    className="adm-input ctl-num"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={form.practiceLimit}
+                    disabled={!form.practice}
+                    onChange={(e) => update({ practiceLimit: e.target.value })}
+                  />
+                  par jour
+                </span>
+              </label>
             </div>
             <SettingMeta
               settings={settings}
@@ -526,6 +553,8 @@ export default function AiControls({ onChanged }) {
                 "guided_mode_enabled",
                 "check_answer_enabled",
                 "default_chat_mode",
+                "practice_enabled",
+                "practice_daily_limit",
               ]}
             />
             <div className="adm-form-actions">
@@ -547,6 +576,8 @@ export default function AiControls({ onChanged }) {
                     guided: settings.guided_mode_enabled.default,
                     check: settings.check_answer_enabled.default,
                     defaultMode: settings.default_chat_mode.default,
+                    practice: settings.practice_enabled.default,
+                    practiceLimit: String(settings.practice_daily_limit.default),
                   });
                 }}
               >

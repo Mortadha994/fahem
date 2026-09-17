@@ -589,6 +589,7 @@ const ROUTES = {
   FOLLOW_UP: "Suite d'échange",
   GUIDED: "Mode guidé",
   CHECK: "Vérifier ma réponse",
+  PRACTICE: "Exercice similaire",
 };
 
 const FINDINGS = {

@@ -7,6 +7,8 @@ import Badge from "./ui/Badge.jsx";
 import { SPRING_ENTER, pop } from "../lib/motion.js";
 import {
   GUIDED_STEPS,
+  PRACTICE_LEVELS,
+  practiceStatement,
   VERDICTS,
   splitCorrection,
   withoutVerdictLine,
@@ -50,6 +52,9 @@ function Message({
   onGuided,
   guidedStep,
   onPropose,
+  onPractice,
+  onPracticeStart,
+  guidedAvailable,
 }) {
   if (message.role === "user") {
     return (
@@ -218,7 +223,36 @@ function Message({
 
           {/* The guided exercise's next move: another hint, the student's own
               attempt (checked), or the whole solution. */}
-          {finished && (onGuided || onPropose) && (
+          {/* A generated exercise: take it on, guided or not, or answer it. */}
+          {finished && message.practice && (onPracticeStart || onPropose) && (
+            <div className="guided-actions">
+              {onPracticeStart && guidedAvailable && (
+                <button
+                  type="button"
+                  className="guided-btn is-primary"
+                  onClick={() => onPracticeStart(practiceStatement(content), "guided")}
+                >
+                  Me guider pas à pas
+                </button>
+              )}
+              {onPropose && (
+                <button type="button" className="guided-btn" onClick={onPropose}>
+                  Je propose ma solution
+                </button>
+              )}
+              {onPracticeStart && (
+                <button
+                  type="button"
+                  className="guided-btn is-quiet"
+                  onClick={() => onPracticeStart(practiceStatement(content), "full")}
+                >
+                  Voir la solution
+                </button>
+              )}
+            </div>
+          )}
+
+          {finished && !message.practice && (onGuided || onPropose) && (
             <div className="guided-actions">
               {onGuided && (
                 <button
@@ -263,6 +297,7 @@ function Message({
                   Régénérer
                 </button>
               )}
+              {onPractice && <PracticeMenu onPick={onPractice} />}
               {onFeedback && status !== "stopped" && (
                 <Feedback
                   value={message.feedback}
@@ -296,6 +331,43 @@ function waitingText(waiting) {
     return `${base} ${ahead} demande${ahead > 1 ? "s" : ""} avant la tienne.`;
   }
   return `${base} c'est bientôt ton tour.`;
+}
+
+/** "Exercice similaire", then how hard: a small menu of three levels. */
+function PracticeMenu({ onPick }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="practice-menu">
+      <button
+        type="button"
+        className="msg-action"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Exercice similaire
+      </button>
+      {open && (
+        <span className="practice-levels" role="group" aria-label="Difficulté">
+          {PRACTICE_LEVELS.map((level) => (
+            <button
+              key={level.value}
+              type="button"
+              className="practice-level"
+              onClick={() => {
+                setOpen(false);
+                onPick(level.value);
+              }}
+            >
+              {level.label}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Where a guided exercise is: Comprendre → Indice → Squelette → Solution. */

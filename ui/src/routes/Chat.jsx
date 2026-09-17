@@ -14,7 +14,12 @@ import {
   ATTACHMENT_MAX_BYTES,
 } from "../lib/api.js";
 import { fetchChatFeatures, sendFeedback, titleFrom } from "../lib/sessions.js";
-import { ACTION_LABELS, guidedState } from "../lib/learning.js";
+import {
+  ACTION_LABELS,
+  PRACTICE_LEVELS,
+  currentExercise,
+  guidedState,
+} from "../lib/learning.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
 import { exerciseTitle } from "../lib/exercises.js";
 import { hasQuestion } from "../lib/sessionGroups.js";
@@ -335,7 +340,11 @@ export default function Chat() {
    * call the backend.
    */
   const send = useCallback(
-    (problem, session, { reuse, note, attachment, mode: askedMode, action } = {}) => {
+    (
+      problem,
+      session,
+      { reuse, note, attachment, mode: askedMode, action, exercise, difficulty } = {}
+    ) => {
       const sessionId = session.id;
       // Mode guidé: the exercise under way (its step, the statement it came
       // from) is read from the discussion as it is before this message.
@@ -455,7 +464,8 @@ export default function Chat() {
           mode,
           step: guided?.step,
           action,
-          exercise: guided?.exercise,
+          exercise: exercise ?? guided?.exercise,
+          difficulty,
           exercise_id: guided?.exerciseId,
         },
         {
@@ -537,6 +547,7 @@ export default function Chat() {
               ...(done.route ? { route: done.route } : {}),
               ...(done.guided ? { guided: done.guided } : {}),
               ...(done.check ? { check: done.check } : {}),
+              ...(done.practice ? { practice: done.practice } : {}),
             }));
             // The server saved the exchange; the next save builds on its version.
             setVersion(sessionId, done.session_version);
@@ -751,6 +762,31 @@ export default function Chat() {
     [active, streaming, activeLoading, send]
   );
 
+  /** "Exercice similaire": a new statement on the discussion's exercise. */
+  const practiceAction = useCallback(
+    (difficulty) => {
+      if (!active || streaming || activeLoading) return;
+      const exercise = currentExercise(active.messages);
+      if (!exercise) return;
+      const label = PRACTICE_LEVELS.find((l) => l.value === difficulty)?.label ?? "";
+      send(`Exercice similaire (${label.toLowerCase()})`, active, {
+        mode: "practice",
+        difficulty,
+        exercise,
+      });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
+  /** A generated exercise, taken on: guided, or solved outright. */
+  const startPractice = useCallback(
+    (statement, mode) => {
+      if (!active || streaming || activeLoading || !statement) return;
+      send(statement, active, { mode });
+    },
+    [active, streaming, activeLoading, send]
+  );
+
   /** "Je propose ma solution": the composer, ready for the student's work. */
   const proposeSolution = useCallback(() => {
     setDraft((current) => current || "Voici ma solution :\n");
@@ -792,6 +828,15 @@ export default function Chat() {
         action: Object.keys(ACTION_LABELS).find(
           (key) => lastUserMsg.mode === "guided" && ACTION_LABELS[key] === question
         ),
+        // A similar exercise is asked again about the same exercise and level.
+        ...(lastUserMsg.mode === "practice"
+          ? {
+              exercise: currentExercise(kept),
+              difficulty:
+                PRACTICE_LEVELS.find((l) => question.includes(l.label.toLowerCase()))
+                  ?.value ?? "same",
+            }
+          : {}),
       }
     );
   }, [active, streaming, setSessions, send]);
@@ -1111,10 +1156,27 @@ export default function Chat() {
                     guidedStep={
                       msg.id === lastMessageId ? activeGuided?.step : undefined
                     }
+                    // "Exercice similaire", under the latest answer about an exercise.
+                    onPractice={
+                      msg.id === lastMessageId &&
+                      features.practice &&
+                      !streaming &&
+                      !msg.error &&
+                      ["PROBLEM", "FOLLOW_UP", "GUIDED", "CHECK", "PRACTICE"].includes(
+                        msg.route
+                      )
+                        ? practiceAction
+                        : undefined
+                    }
+                    onPracticeStart={
+                      msg.practice && msg.id === lastMessageId && !streaming
+                        ? startPractice
+                        : undefined
+                    }
+                    guidedAvailable={features.guided}
                     onPropose={
                       msg.id === lastMessageId &&
-                      msg.guided &&
-                      msg.guided.step < 4 &&
+                      ((msg.guided && msg.guided.step < 4) || msg.practice) &&
                       features.check &&
                       !streaming
                         ? proposeSolution

@@ -35,6 +35,7 @@ export async function streamSolve(
     action,
     exercise,
     exercise_id,
+    difficulty,
   },
   {
     onMeta,
@@ -77,6 +78,7 @@ export async function streamSolve(
         action: action || undefined,
         exercise: exercise ? exercise.slice(0, 2000) : undefined,
         exercise_id: exercise_id || undefined,
+        difficulty: difficulty || undefined,
       }),
       signal,
     });

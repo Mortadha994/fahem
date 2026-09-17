@@ -3,6 +3,7 @@ import * as m from "motion/react-m";
 import { rise, stagger } from "../lib/motion.js";
 import { useNavigate } from "react-router-dom";
 import { fetchChapters, fetchExercises, UnauthorizedError } from "../lib/chapters.js";
+import { fetchProgress } from "../lib/progressApi.js";
 import { useAuth } from "../lib/authContext.js";
 import { profileLabel } from "../lib/profile.js";
 import EmptyState from "../components/ui/EmptyState.jsx";
@@ -40,6 +41,28 @@ export default function Home() {
   const [failed, setFailed] = useState(false);
   // chapter id -> exercise énoncés, for the available chapters only.
   const [exercises, setExercises] = useState({});
+  // chapter id -> { done, started, total } from the server (progress.py);
+  // the browser-side count below stands in until it arrives.
+  const [serverProgress, setServerProgress] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchProgress()
+      .then((p) => {
+        if (cancelled) return;
+        setServerProgress(
+          Object.fromEntries(
+            p.chapters.map((c) => [
+              c.id,
+              { done: c.done, started: c.started, total: c.total },
+            ])
+          )
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,7 +202,11 @@ export default function Home() {
                 animate="show"
               >
                 {chapters.map((c) => (
-                  <ChapterCard key={c.id} chapter={c} progress={started[c.id]} />
+                  <ChapterCard
+                    key={c.id}
+                    chapter={c}
+                    progress={serverProgress?.[c.id] ?? started[c.id]}
+                  />
                 ))}
               </m.ul>
             )}

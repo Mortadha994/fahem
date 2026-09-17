@@ -30,6 +30,10 @@ function niveauLabel(niveau) {
 export default function ChapterCard({ chapter, progress }) {
   const active = chapter.status === "active";
   const hasProgress = active && progress && progress.total > 0;
+  // With the server's counts, the bar is what the student solved alone and
+  // the line also says how many are started; the browser's own count only
+  // knows "started".
+  const solved = progress?.started !== undefined;
   const ratio = hasProgress ? progress.done / progress.total : 0;
 
   const body = (
@@ -56,7 +60,11 @@ export default function ChapterCard({ chapter, progress }) {
         {hasProgress && (
           <span className="chapter-progress">
             <span className="chapter-progress-row">
-              <span>Exercices commencés</span>
+              <span>
+                {solved
+                  ? `Exercices réussis${progress.started ? ` · ${progress.started} commencés` : ""}`
+                  : "Exercices commencés"}
+              </span>
               <span className="chapter-progress-count">
                 {progress.done} / {progress.total}
               </span>
