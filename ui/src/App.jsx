@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";
-import Landing from "./components/Landing.jsx";
 import SignInScreen from "./components/SignInScreen.jsx";
 import Home from "./routes/Home.jsx";
 import ChapterPage from "./routes/ChapterPage.jsx";
@@ -9,6 +8,7 @@ import ProgressPage from "./routes/ProgressPage.jsx";
 /* The console is a separate chunk, fetched when an admin opens /admin: a
    student never downloads it (it carries its own layout, charts and controls,
    and was a third of the bundle). */
+const Landing = lazy(() => import("./components/Landing.jsx"));
 const AdminLayout = lazy(() => import("./components/admin/AdminLayout.jsx"));
 const AdminDashboard = lazy(() => import("./routes/admin/AdminDashboard.jsx"));
 const AdminUserCreate = lazy(() => import("./routes/admin/AdminUserCreate.jsx"));
@@ -265,7 +265,12 @@ export default function App() {
     //     sentence saying what just happened.
     const wantsForm =
       location.pathname === SIGNIN_PATH || location.state?.authMode || formRequired;
-    if (!wantsForm) return <Landing />;
+    if (!wantsForm)
+      return (
+        <Suspense fallback={<div className="page" aria-busy="true" />}>
+          <Landing />
+        </Suspense>
+      );
 
     return (
       <SignInScreen
