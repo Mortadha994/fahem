@@ -1019,9 +1019,10 @@ export default function Chat() {
           and how to start without it. */}
       {!isEmpty && !activeLoading && (
         <p className="chat-memory">
-          <span aria-hidden="true">◎</span> Fahem se souvient des{" "}
-          {Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers
-          échanges de cette discussion.
+          <span aria-hidden="true">◎</span>{" "}
+          {Math.min(3, messages.filter((msg) => msg.role === "user").length) === 1
+            ? "Fahem se souvient de l'échange précédent de cette discussion."
+            : `Fahem se souvient des ${Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers échanges de cette discussion.`}
           <button type="button" className="chat-memory-new" onClick={newDiscussion}>
             Repartir de zéro
           </button>

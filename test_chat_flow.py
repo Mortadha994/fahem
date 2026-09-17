@@ -325,6 +325,30 @@ def main() -> None:
             ).status_code
             == 404,
         )
+        # A row written without client_id (older backend): its id lives in extra.
+        with session_scope() as s:
+            legacy = s.scalar(
+                select(ChatMessage).where(
+                    ChatMessage.session_id == uuid.UUID(sid), ChatMessage.client_id == "a_1"
+                )
+            )
+            legacy.client_id = None
+            legacy.extra = {**(legacy.extra or {}), "id": "a_1"}
+        r = client.post(
+            "/chat/feedback", json={"session_id": sid, "message_id": "a_1", "rating": 1}
+        )
+        full = client.get(f"/chat/sessions/{sid}").json()
+        with session_scope() as s:
+            fixed = s.scalar(
+                select(ChatMessage.client_id).where(
+                    ChatMessage.session_id == uuid.UUID(sid), ChatMessage.position == 1
+                )
+            )
+        check(
+            "feedback: an answer saved without client_id can still be rated (and gets one)",
+            r.status_code == 204 and full["messages"][1].get("feedback") == 1 and fixed == "a_1",
+            (r.status_code, r.text, fixed),
+        )
         as_user(other_id)
         check(
             "ownership: another account cannot read, rate or save this discussion",

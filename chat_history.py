@@ -388,15 +388,20 @@ def give_feedback(payload: FeedbackIn, user: User = Depends(auth.get_current_use
     """A 👍 / 👎 on one answer of the student's own discussion (0 removes it)."""
     with session_scope() as db:
         row = _owned_session(db, payload.session_id, user.id)
-        answer = db.scalar(
-            select(ChatMessage.id).where(
-                ChatMessage.session_id == row.id,
-                ChatMessage.client_id == payload.message_id,
-                ChatMessage.role == "assistant",
-            )
+        # Matched like a save matches (_client_id): a row written before the
+        # client_id column only carries its id in `extra`; it gets one now.
+        answer = next(
+            (
+                m
+                for m in row.messages
+                if m.role == "assistant" and _client_id(m) == payload.message_id
+            ),
+            None,
         )
         if answer is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+        if answer.client_id is None:
+            answer.client_id = payload.message_id
         if payload.rating == 0:
             db.execute(
                 delete(AnswerFeedback).where(
