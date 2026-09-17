@@ -2929,3 +2929,12 @@ a.log-target:hover {
 :root[data-theme="dark"] .adm-status-card-title {
   color: var(--tone);
 }
+
+/* The pill's label sits on a 12 % tint of its own tone: darkened in the light
+   theme to keep AA (axe: color-contrast). */
+.adm-pill {
+  color: color-mix(in srgb, var(--tone) 68%, #000);
+}
+:root[data-theme="dark"] .adm-pill {
+  color: var(--tone);
+}

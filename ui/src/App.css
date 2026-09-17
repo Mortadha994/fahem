@@ -7728,3 +7728,12 @@ h3 {
 .prog-legend .prog-dot {
   flex: none;
 }
+
+/* 12px at 600 weight over the tinted home panel: darkened to keep AA
+   (axe: color-contrast). */
+.section-meta {
+  color: color-mix(in srgb, var(--fg-dim) 78%, #000);
+}
+:root[data-theme="dark"] .section-meta {
+  color: var(--fg-dim);
+}
