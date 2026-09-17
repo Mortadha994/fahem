@@ -2920,3 +2920,12 @@ a.log-target:hover {
 .mon-learning-row p {
   margin: 0;
 }
+
+/* The status card's title sits on a tinted card: the raw tone is below AA in
+   the light theme (axe: color-contrast). */
+.adm-status-card-title {
+  color: color-mix(in srgb, var(--tone) 72%, #000);
+}
+:root[data-theme="dark"] .adm-status-card-title {
+  color: var(--tone);
+}
