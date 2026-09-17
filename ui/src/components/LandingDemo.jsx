@@ -73,6 +73,12 @@ export default function LandingDemo() {
           <p className="lpd-hint">{current.hint}</p>
 
           <div className="lpd-window">
+            <div className="fx-window-bar" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <span>Fahem — {exercise.tab.toLowerCase()}</span>
+            </div>
             <div className="lpd-bubble">
               {mode === "check" ? (
                 <>
