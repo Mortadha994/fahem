@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AuthDemo from "./AuthDemo.jsx";
 import LineByLine from "./LineByLine.jsx";
+import LandingDemo from "./LandingDemo.jsx";
 import Badge from "./ui/Badge.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { fetchOverview, listFr, plural } from "../lib/overview.js";
@@ -618,16 +619,35 @@ export default function Landing() {
           ))}
         </section>
 
+        {/* --- try it, no account ----------------------------------------- */}
+        <section className="lp-section lp-try" id="essayer">
+          <header className="lp-section-head" data-reveal="">
+            <p className="lp-kicker">Essaie tout de suite</p>
+            <h2 className="lp-h2">
+              Un exercice, <span className="auth-gradient-text">trois façons</span> de
+              s'en sortir.
+            </h2>
+            <p className="lp-section-lead">
+              Choisis un exercice et regarde : la solution complète, le mode guidé, ou
+              la correction de ta propre réponse. Sans compte, sans rien installer.
+            </p>
+          </header>
+          <div data-reveal="">
+            <LandingDemo />
+          </div>
+        </section>
+
         {/* --- features --------------------------------------------------- */}
         <section className="lp-section" id="fonctionnalites">
           <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Ce que ça fait</p>
+            <p className="lp-kicker">Ce que tu peux faire</p>
             <h2 className="lp-h2">
-              Un tuteur qui a lu <span className="auth-gradient-text">ton</span> cours.
+              Plus qu'une réponse :{" "}
+              <span className="auth-gradient-text">apprendre</span> à la trouver.
             </h2>
             <p className="lp-section-lead">
-              Pas le programme d'un autre pays, ni la syntaxe d'un forum : le chapitre
-              que tu as en classe cette semaine.
+              Fahem connaît le chapitre que tu as en classe cette semaine — pas le
+              programme d'un autre pays, ni la syntaxe d'un forum.
             </p>
           </header>
 
@@ -835,13 +855,37 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* --- parents and teachers --------------------------------------- */}
+        <section className="lp-section lp-section-narrow" id="parents">
+          <div className="lp-parents" data-reveal="">
+            <h2 className="lp-parents-title">Tu es parent ou professeur ?</h2>
+            <ul className="lp-parents-list">
+              <li>
+                <b>Gratuit</b>, sans publicité et sans carte bancaire.
+              </li>
+              <li>
+                <b>Le programme tunisien</b> : Fahem répond avec la notation du manuel
+                et refuse ce que le chapitre n'a pas encore couvert.
+              </li>
+              <li>
+                <b>Il fait chercher l'élève</b> : mode guidé par indices, et correction
+                de ce que l'élève a écrit lui-même.
+              </li>
+              <li>
+                <b>Chaque réponse est sourcée</b> : l'élève voit les passages du cours
+                utilisés et peut vérifier.
+              </li>
+            </ul>
+          </div>
+        </section>
+
         {/* --- closing CTA ------------------------------------------------ */}
         <section className="lp-final" data-reveal="">
           <h2 className="lp-final-title">
             Ton prochain exercice, <span className="auth-gradient-text">compris</span>.
           </h2>
           <p className="lp-final-lead">
-            Crée ton compte et pose la question que tu gardes depuis ce matin.
+            Deux minutes pour créer ton compte. Ton devoir n'attend pas.
           </p>
           <div className="lp-cta-row lp-cta-center">
             <Link
@@ -857,6 +901,18 @@ export default function Landing() {
           </div>
         </section>
       </main>
+
+      {/* On a phone the only call to action was at the very top; this one
+          follows the visitor down the page. */}
+      <div className="lp-sticky-cta" aria-hidden="false">
+        <Link
+          className="btn btn-primary btn-md lp-btn"
+          to="/connexion"
+          state={{ authMode: "signup" }}
+        >
+          Commencer — c'est gratuit
+        </Link>
+      </div>
 
       <footer className="lp-foot">
         <p className="lp-foot-brand">
