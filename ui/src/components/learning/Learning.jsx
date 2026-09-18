@@ -373,7 +373,9 @@ export function PracticeMenu({ onPick }) {
         >
           +
         </m.span>
-        Exercice similaire
+        {/* Wrapped so a narrow screen can drop to the icon alone without
+            changing the button's accessible name. */}
+        <span className="msg-action-label">Exercice similaire</span>
       </m.button>
       <AnimatePresence>
         {open && (

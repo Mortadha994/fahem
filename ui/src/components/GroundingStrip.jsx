@@ -15,6 +15,11 @@ import { SPRING_ENTER } from "../lib/motion.js";
  * Collapsed by default - it should not compete with the answer - but the
  * summary line states the counts so it reads as a claim worth opening rather
  * than a debug toggle.
+ *
+ * It renders as two siblings, not a box: a chip that sits in the answer's
+ * footer row beside the other actions, and the body, which the footer's
+ * wrapping flex row puts on its own line underneath. One strip under an answer
+ * instead of a stack of them.
  */
 export default function GroundingStrip({ pinned = [], retrieved = [] }) {
   const [open, setOpen] = useState(false);
@@ -45,24 +50,23 @@ export default function GroundingStrip({ pinned = [], retrieved = [] }) {
     );
   };
 
+  const total = pinned.length + retrieved.length;
+
   return (
-    <div className="grounding">
+    <>
       <button
         type="button"
-        className="grounding-toggle"
+        className={`msg-chip msg-chip-btn${open ? " is-open" : ""}`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="ground-caret" aria-hidden="true">
-          {open ? "▾" : "▸"}
+        <span className="msg-chip-caret" aria-hidden="true">
+          ▸
         </span>
-        Fondé sur {pinned.length} table{pinned.length > 1 ? "s" : ""} de syntaxe
-        {retrieved.length > 0 && (
-          <>
-            {" "}
-            et {retrieved.length} extrait{retrieved.length > 1 ? "s" : ""} du chapitre
-          </>
-        )}
+        {/* The claim in as few words as it can be made: which sources, and
+            whether they are the reference tables or search hits, is what the
+            panel itself is for. */}
+        Fondé sur {total} source{total > 1 ? "s" : ""}
       </button>
 
       {/* Opens to its height instead of appearing in one frame, so the
@@ -106,6 +110,6 @@ export default function GroundingStrip({ pinned = [], retrieved = [] }) {
           </m.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

@@ -3,7 +3,6 @@ import * as m from "motion/react-m";
 import Markdown from "./Markdown.jsx";
 import GroundingStrip from "./GroundingStrip.jsx";
 import Alert from "./ui/Alert.jsx";
-import Badge from "./ui/Badge.jsx";
 import { SPRING_ENTER, pop } from "../lib/motion.js";
 import { practiceStatement } from "../lib/learning.js";
 import {
@@ -188,50 +187,6 @@ function Message({
             )
           )}
 
-          {/* The badge only resolves once the whole answer exists and the
-              checker has run. It reports what the checker found - it is not a
-              correctness guarantee, and the label says "syntaxe" for that
-              reason rather than something like "vérifié" alone. It pops in
-              when it resolves, which is the moment worth noticing. */}
-          {status === "checking" && (
-            <Badge tone="neutral" className="msg-verdict">
-              Vérification de la syntaxe…
-            </Badge>
-          )}
-          {status === "clean" && (
-            <m.div
-              className="msg-verdict-wrap"
-              variants={pop}
-              initial="hidden"
-              animate="show"
-            >
-              <Badge
-                tone="success"
-                className="msg-verdict"
-                title="Aucune syntaxe hors chapitre détectée"
-              >
-                ✓ Syntaxe du chapitre respectée
-              </Badge>
-            </m.div>
-          )}
-          {status === "warned" && (
-            <m.div
-              className="badge-warn-wrap msg-verdict-wrap"
-              variants={pop}
-              initial="hidden"
-              animate="show"
-            >
-              <Badge tone="warning" className="msg-verdict">
-                ⚠ Syntaxe à vérifier
-              </Badge>
-              <ul className="warn-list">
-                {warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </m.div>
-          )}
-
           {status === "stopped" && (
             <p className="msg-stopped">Réponse arrêtée avant la fin.</p>
           )}
@@ -288,36 +243,116 @@ function Message({
             </ActionRow>
           )}
 
-          <GroundingStrip pinned={pinned} retrieved={retrieved} />
-
-          {/* Actions on a finished answer: copy all of it (the Algorithme
-              column has its own copy button for the pseudocode alone), and
-              ask again when it was cut short. */}
-          {finished && (
-            <div className="msg-actions">
-              <CopyAnswer text={content} />
-              {onRetry && (
-                <button type="button" className="msg-action" onClick={onRetry}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" />
-                  </svg>
-                  Régénérer
-                </button>
-              )}
-              {onPractice && <PracticeMenu onPick={onPractice} />}
-              {onFeedback && status !== "stopped" && (
-                <Feedback
-                  value={message.feedback}
-                  onRate={(rating) => onFeedback(message.id, rating)}
-                />
-              )}
-            </div>
-          )}
+          {/* One strip under the answer, not four.
+              What the answer IS (the checker's verdict, the chapter sources it
+              was built on) sits on the left as quiet chips; what you can DO
+              with it sits on the right and stays out of sight until the
+              pointer or the keyboard reaches this answer (.msg-foot-tools in
+              App.css). The next move - another hint, your own attempt, the
+              solution - is not here: it is the ActionRow above, where it can
+              be seen without hunting. */}
+          <MessageFooter
+            status={status}
+            warnings={warnings}
+            pinned={pinned}
+            retrieved={retrieved}
+            tools={
+              finished && (
+                <>
+                  <CopyAnswer text={content} />
+                  {onRetry && (
+                    <button type="button" className="msg-action" onClick={onRetry}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4" />
+                      </svg>
+                      <span className="msg-action-label">Régénérer</span>
+                    </button>
+                  )}
+                  {onPractice && <PracticeMenu onPick={onPractice} />}
+                  {onFeedback && status !== "stopped" && (
+                    <Feedback
+                      value={message.feedback}
+                      onRate={(rating) => onFeedback(message.id, rating)}
+                    />
+                  )}
+                </>
+              )
+            }
+          />
         </>
       )}
     </m.div>
   );
 }
+
+/**
+ * Everything that is true *about* an answer, on one line under it.
+ *
+ * It replaced three stacked strips - a full-width verdict badge, a bordered
+ * grounding box, and a row of text buttons - which together put four bands of
+ * furniture under every single answer and made a two-line reply look like a
+ * dashboard. They say small things, so they are small: chips on the left,
+ * tools on the right.
+ *
+ * The row wraps, and the grounding body is 100% wide, so opening it drops it
+ * onto its own line underneath without a wrapper of its own.
+ *
+ * The verdict reports what the checker found - not that the answer is right,
+ * which is why it says "syntaxe" rather than "vérifié".
+ */
+function MessageFooter({ status, warnings, pinned, retrieved, tools }) {
+  const verdict = VERDICTS[status];
+  const grounded = pinned?.length || retrieved?.length;
+  if (!verdict && !grounded && !tools) return null;
+
+  return (
+    <footer className="msg-foot">
+      {verdict &&
+        (status === "checking" ? (
+          <span className="msg-chip is-checking">{verdict.label}</span>
+        ) : (
+          // Pops from its left edge when it resolves - the one moment here
+          // worth noticing.
+          <m.span
+            className={`msg-chip is-${verdict.tone}`}
+            variants={pop}
+            initial="hidden"
+            animate="show"
+            title={verdict.title}
+          >
+            <span className="msg-chip-dot" aria-hidden="true" />
+            {verdict.label}
+          </m.span>
+        ))}
+
+      <GroundingStrip pinned={pinned} retrieved={retrieved} />
+
+      {tools && <div className="msg-foot-tools">{tools}</div>}
+
+      {status === "warned" && warnings?.length > 0 && (
+        <ul className="warn-list">
+          {warnings.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ul>
+      )}
+    </footer>
+  );
+}
+
+const VERDICTS = {
+  checking: { label: "Vérification de la syntaxe…" },
+  clean: {
+    tone: "ok",
+    label: "Syntaxe du chapitre respectée",
+    title: "Aucune syntaxe hors chapitre détectée",
+  },
+  warned: {
+    tone: "warn",
+    label: "Syntaxe à vérifier",
+    title: "Le vérificateur a relevé de la syntaxe hors chapitre",
+  },
+};
 
 /**
  * The line shown while the request waits in Groq's queue - for the
@@ -417,7 +452,9 @@ function CopyAnswer({ text }) {
             <path d="M5 15V6a2 2 0 0 1 2-2h8" />
           </svg>
         )}
-        {copied ? "Copié" : "Copier la réponse"}
+        {/* Short, because the icon already says what it does and the whole
+            footer has to stay on one line beside the chips. */}
+        <span className="msg-action-label">{copied ? "Copié" : "Copier"}</span>
       </button>
     </>
   );
