@@ -1497,3 +1497,10 @@
   background: rgb(0 0 0 / 0.35);
   color: #ddd0ff;
 }
+
+/* The mockup's own chrome: its greys sit on near-white, so they need to be
+   darker than the browser-chrome grey they imitate (axe: color-contrast). */
+.fx-window-bar span,
+.fx-code-head span {
+  color: #4b5563;
+}
