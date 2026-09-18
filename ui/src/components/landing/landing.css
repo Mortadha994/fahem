@@ -1479,3 +1479,21 @@
     font-size: clamp(2.1rem, 9vw, 2.6rem);
   }
 }
+
+/* The amber "Presque !" box is light in both themes, so its inline code has to
+   be read against it - not against the page (axe: color-contrast, dark). */
+.fx-mini-verdict {
+  color: #2a1a03;
+}
+.fx-mini-verdict code {
+  background: rgb(255 255 255 / 0.65);
+  color: #4c1d95;
+}
+:root[data-theme="dark"] .fx-mini-verdict {
+  background: color-mix(in srgb, #fbbf24 22%, #1a1408);
+  color: #fde9bd;
+}
+:root[data-theme="dark"] .fx-mini-verdict code {
+  background: rgb(0 0 0 / 0.35);
+  color: #ddd0ff;
+}
