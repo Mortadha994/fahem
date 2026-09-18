@@ -316,7 +316,7 @@ export default function Landing() {
             </div>
 
             {/* --- try it ------------------------------------------------- */}
-            <section className="fx-section" id="essayer">
+            <section className="fx-section fx-tint" id="essayer">
               <Head
                 kicker="Essaie tout de suite"
                 title={
@@ -391,7 +391,7 @@ export default function Landing() {
             </section>
 
             {/* --- versus ------------------------------------------------- */}
-            <section className="fx-section fx-section-narrow">
+            <section className="fx-section fx-section-narrow fx-tint">
               <Head
                 kicker="La différence"
                 title={
@@ -475,7 +475,7 @@ export default function Landing() {
             </section>
 
             {/* --- parents and teachers ----------------------------------- */}
-            <section className="fx-section fx-section-narrow" id="parents">
+            <section className="fx-section fx-section-narrow fx-tint" id="parents">
               <m.div className="fx-parents" variants={rise} {...inView}>
                 <h2>Tu es parent ou professeur ?</h2>
                 <ul>

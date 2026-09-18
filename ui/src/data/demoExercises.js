@@ -15,6 +15,7 @@
 const somme = {
   id: "somme",
   tab: "La somme",
+  short: "Lire deux entiers, afficher leur somme.",
   statement:
     "Écrire un algorithme qui lit deux entiers A et B, calcule leur somme et l'affiche.",
   hint: "Tu as besoin de trois variables entières : les deux nombres lus, et la somme.\n\n**Indice** : additionne les deux valeurs lues et range le résultat dans une troisième variable avec `←`.\n\nQuelle instruction écrirais-tu pour calculer la somme ?",
@@ -39,9 +40,8 @@ const somme = {
 | Lire (B) | B = int(input("Donner B : ")) |
 | S ← A + B | S = A + B |
 | Ecrire ("La somme est ", S) | print("La somme est ", S) |
-| Fin | |
-
-### Trace d'exécution (A = 7, B = 5)
+| Fin | |`,
+  trace: `### Trace d'exécution (A = 7, B = 5)
 
 | Étape | A | B | S |
 |---|---|---|---|
@@ -75,6 +75,7 @@ const somme = {
 const carre = {
   id: "carre",
   tab: "Le carré",
+  short: "Lire un réel, afficher son carré.",
   statement: "Écrire un algorithme qui lit un nombre réel X et affiche son carré.",
   hint: "Il te faut deux variables réelles : le nombre lu et son carré.\n\n**Indice** : multiplier un nombre par lui-même suffit, il n'y a pas de fonction à connaître ici.\n\nÉcris l'instruction qui calcule le carré.",
   answer: `**Ce que demande l'exercice** : lire un réel et afficher son carré.
@@ -95,9 +96,8 @@ const carre = {
 | Lire (X) | X = float(input("Donner X : ")) |
 | carre ← X * X | carre = X * X |
 | Ecrire ("Le carré est ", carre) | print("Le carré est ", carre) |
-| Fin | |
-
-### Trace d'exécution (X = 2.5)
+| Fin | |`,
+  trace: `### Trace d'exécution (X = 2.5)
 
 | Étape | X | carre |
 |---|---|---|
@@ -129,6 +129,7 @@ const carre = {
 const chiffres = {
   id: "chiffres",
   tab: "Les chiffres",
+  short: "Séparer les dizaines et les unités d'un nombre.",
   statement:
     "Écrire un algorithme qui lit un entier N de deux chiffres et affiche son chiffre des dizaines et son chiffre des unités.",
   hint: "Deux opérateurs du cours suffisent : l'un donne le quotient d'une division entière, l'autre son reste.\n\n**Indice** : `div` te donne la partie entière d'une division, `mod` le reste.\n\nLequel utiliserais-tu pour les dizaines ?",
@@ -153,9 +154,8 @@ const chiffres = {
 | u ← N mod 10 | u = N % 10 |
 | Ecrire ("Dizaines : ", d) | print("Dizaines : ", d) |
 | Ecrire ("Unités : ", u) | print("Unités : ", u) |
-| Fin | |
-
-### Trace d'exécution (N = 47)
+| Fin | |`,
+  trace: `### Trace d'exécution (N = 47)
 
 | Étape | N | d | u |
 |---|---|---|---|

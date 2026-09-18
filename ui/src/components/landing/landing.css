@@ -20,15 +20,19 @@
   --mint: #2dd4a7;
   --pink: #f472b6;
   --amber: #fbbf24;
-  --page: #ffffff;
-  --page-alt: #f6f6fb;
+  /* Light mode is built on three greys, not on white alone: the page is a
+     shade off white, the tinted bands are clearly a step down, and only the
+     cards are pure white. Without that gap everything floats on one flat
+     sheet and the page reads as washed out. */
+  --page: #fbfbfe;
+  --page-alt: #eff0f8;
   --text: #0b0c14;
-  --text-dim: #5a5f75;
-  --line: #e6e6f0;
+  --text-dim: #545974;
+  --line: #e0e1ee;
   --card: #ffffff;
-  --shadow-sm: 0 1px 2px rgb(11 12 20 / 0.05);
-  --shadow-md: 0 10px 30px rgb(11 12 20 / 0.08);
-  --shadow-lg: 0 30px 70px rgb(11 12 20 / 0.16);
+  --shadow-sm: 0 1px 2px rgb(11 12 20 / 0.06);
+  --shadow-md: 0 10px 30px rgb(11 12 20 / 0.1);
+  --shadow-lg: 0 30px 70px rgb(11 12 20 / 0.18);
   --rad: 18px;
   --rad-sm: 12px;
   --maxw: 1200px;
@@ -56,6 +60,23 @@
 }
 .fx-section-narrow {
   max-width: 62rem;
+}
+/* A section that sits one shade below the page, edge to edge. The band is
+   drawn behind the content rather than on it so the section keeps its own
+   max-width; .fx clips the overflow, so the 100vw is safe. */
+.fx-tint {
+  position: relative;
+  isolation: isolate;
+}
+.fx-tint::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 auto 0 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  background: var(--page-alt);
+  border-block: 1px solid var(--line);
 }
 .fx-head {
   max-width: 44rem;
@@ -1028,16 +1049,31 @@
   grid-template-columns: 1.4rem 1fr;
   gap: 8px;
 }
+/* "Sans Fahem" is the dull column, not a black hole: on a light page a slab of
+   --ink here was the one part that fought the rest of the page. It is a muted
+   grey card instead, and keeps the dark treatment where the page is dark. */
 .fx-versus-col.is-them {
-  background: var(--ink);
-  color: var(--on-ink-dim);
+  background: color-mix(in srgb, var(--text) 6%, var(--page-alt));
+  border: 1px solid var(--line);
+  color: var(--text-dim);
 }
 .fx-versus-col.is-them h3 {
-  color: var(--on-ink);
+  color: color-mix(in srgb, var(--text) 80%, var(--text-dim));
 }
 .fx-versus-col.is-them li span {
-  color: #fb7185;
+  color: #be123c;
   font-weight: 800;
+}
+:root[data-theme="dark"] .fx-versus-col.is-them {
+  background: var(--ink);
+  border-color: var(--ink-line);
+  color: var(--on-ink-dim);
+}
+:root[data-theme="dark"] .fx-versus-col.is-them h3 {
+  color: var(--on-ink);
+}
+:root[data-theme="dark"] .fx-versus-col.is-them li span {
+  color: #fb7185;
 }
 .fx-versus-col.is-us {
   background: var(--card);
@@ -1107,11 +1143,13 @@
 }
 
 /* --- parents -------------------------------------------------------------------------------------- */
+/* The section behind it is tinted, so the card is the white one here. */
 .fx-parents {
   padding: clamp(1.5rem, 4vw, 2.5rem);
   border-radius: var(--rad);
-  background: var(--page-alt);
+  background: var(--card);
   border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
 }
 .fx-parents h2 {
   margin: 0 0 1rem;
@@ -1345,19 +1383,26 @@
 .fx .lpd {
   gap: 0.9rem;
 }
-.fx .lpd-tabs,
+.fx .lpd-choice {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--text-dim);
+  box-shadow: var(--shadow-sm);
+}
+.fx .lpd-choice-tab {
+  color: var(--text);
+}
+.fx .lpd-choice.is-on {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 1px var(--violet),
+    0 10px 24px color-mix(in srgb, var(--violet) 22%, transparent);
+}
 .fx .lpd-modes {
-  background: var(--page-alt);
+  background: var(--card);
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.fx .lpd-tab,
 .fx .lpd-mode {
   color: var(--text-dim);
-}
-.fx .lpd-tab.is-on {
-  background: var(--card);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 .fx .lpd-mode.is-on {
   background: linear-gradient(135deg, var(--violet), var(--violet-deep));
@@ -1373,29 +1418,30 @@
   border-radius: var(--rad);
   background: var(--card);
   box-shadow: var(--shadow-lg);
-  max-height: 34rem;
-  scrollbar-width: thin;
 }
 .fx .lpd-window > .fx-window-bar {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   background: var(--page-alt);
   border-bottom: 1px solid var(--line);
 }
 .fx .lpd-window > .fx-window-bar span {
   color: var(--text-dim);
 }
-.fx .lpd-bubble,
-.fx .lpd-answer {
-  margin-inline: 1.25rem;
+.fx .lpd-body {
+  padding: 1.25rem;
 }
 .fx .lpd-bubble {
-  margin-top: 1.25rem;
   background: color-mix(in srgb, var(--violet) 10%, var(--page-alt));
 }
-.fx .lpd-answer {
-  margin-bottom: 1.25rem;
+.fx .lpd-more-btn {
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+.fx .lpd-more-btn:hover {
+  border-color: var(--violet);
+  color: var(--text);
+}
+.fx .lpd-trace {
+  color: var(--text);
 }
 .fx .lpd-cta {
   color: var(--text-dim);
