@@ -6227,6 +6227,7 @@ h3 {
 }
 .lpd-modes {
   display: inline-flex;
+  justify-self: start;
   flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
