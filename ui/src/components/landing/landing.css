@@ -446,7 +446,7 @@
   perspective: 1400px;
   /* Room on three sides: the floating cards live outside the window, never
      on top of the answer. */
-  padding: 3rem 0 4rem 5.5rem;
+  padding: 3.5rem 0 4.5rem 7.5rem;
 }
 .fx-window {
   max-width: 32rem;
@@ -568,10 +568,10 @@
   font-weight: 700;
 }
 .fx-float-steps {
-  left: 0;
-  top: 28%;
+  left: -1rem;
+  top: 26%;
   z-index: 2;
-  width: 10.5rem;
+  width: 9.75rem;
 }
 .fx-float-steps figcaption {
   margin-bottom: 0.5rem;
@@ -581,12 +581,13 @@
   letter-spacing: 0.06em;
 }
 .fx-float-verdict {
-  right: -0.5rem;
-  top: 0;
+  right: -1rem;
+  bottom: 1.5rem;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
+  max-width: 15rem;
 }
 .fx-float-verdict figcaption {
   display: grid;
@@ -599,8 +600,8 @@
   font-size: 1.5rem;
 }
 .fx-float-term {
-  left: 0;
-  bottom: 0.5rem;
+  left: -1rem;
+  bottom: -1rem;
   z-index: 2;
   padding: 0;
   overflow: hidden;
@@ -1402,4 +1403,26 @@
 .fx .lpd-cta a {
   color: color-mix(in srgb, var(--violet) 80%, var(--text));
   font-weight: 700;
+}
+
+.fx-mini-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+.fx-mini-checks li {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr;
+  gap: 6px;
+}
+.fx-mini-checks li span {
+  color: #16a34a;
+  font-weight: 800;
+}
+.fx-mini-checks li:last-child span {
+  color: #d97706;
 }

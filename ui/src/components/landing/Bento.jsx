@@ -80,6 +80,17 @@ export default function Bento({ photos }) {
             </span>
           </div>
         </div>
+        <ul className="fx-mini-checks">
+          <li>
+            <span aria-hidden="true">✓</span> La lecture des deux entiers est juste
+          </li>
+          <li>
+            <span aria-hidden="true">✓</span> Test sur un exemple : 7 et 5 → 12
+          </li>
+          <li>
+            <span aria-hidden="true">!</span> Il manque le tableau de déclaration
+          </li>
+        </ul>
       </Tile>
 
       <Tile
