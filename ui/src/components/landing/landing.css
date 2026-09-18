@@ -1426,3 +1426,56 @@
 .fx-mini-checks li:last-child span {
   color: #d97706;
 }
+
+/* --- phones: the stage unstacks, the bar keeps only what it needs --------------------------------- */
+@media (max-width: 860px) {
+  /* The sticky bar at the bottom carries the call to action; the header keeps
+     the brand, the theme and the menu. */
+  .fx-bar-end .fx-btn-primary {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .fx-stage {
+    padding: 1.75rem 0 0;
+  }
+  .fx-window {
+    max-width: none;
+  }
+  /* The cards stop floating and simply follow the window, in the order they
+     matter: what you get, then the proof. */
+  .fx-float {
+    position: static;
+    width: auto !important;
+    margin-top: 0.75rem;
+  }
+  .fx-float-steps {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+  .fx-float-steps figcaption {
+    margin: 0;
+  }
+  .fx-float-steps .fx-mini-rail {
+    grid-auto-flow: column;
+    gap: 10px;
+  }
+  .fx-float-steps .fx-mini-rail li {
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.68rem;
+    text-align: center;
+  }
+  .fx-hero {
+    padding-bottom: 2.5rem;
+  }
+}
+@media (max-width: 420px) {
+  .fx-float-steps {
+    display: none;
+  }
+  .fx-h1 {
+    font-size: clamp(2.1rem, 9vw, 2.6rem);
+  }
+}
