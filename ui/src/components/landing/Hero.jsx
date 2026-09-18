@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useScroll, useSpring, useTransform } from "motion/react";
 import * as m from "motion/react-m";
@@ -36,6 +36,18 @@ export default function Hero({ scope, exercises }) {
   const frontY = useTransform(soft, [0, 1], [0, -130]);
   const backY = useTransform(soft, [0, 1], [0, -80]);
   const glow = useTransform(soft, [0, 1], [1, 0.35]);
+
+  // On a phone the cards are laid out under the window rather than floating
+  // over it (landing.css), so the parallax would simply push them into it.
+  const [stacked, setStacked] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const apply = () => setStacked(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  const drift = (value) => (stacked ? undefined : value);
 
   return (
     <section className="fx-hero" ref={stage}>
@@ -91,7 +103,7 @@ export default function Hero({ scope, exercises }) {
         <div className="fx-stage">
           <m.div
             className="fx-window"
-            style={{ y: windowY }}
+            style={{ y: drift(windowY) }}
             initial={{ opacity: 0, y: 40, rotateX: 12, scale: 0.96 }}
             animate={{
               opacity: 1,
@@ -162,7 +174,7 @@ export default function Hero({ scope, exercises }) {
           {/* Guided step, floating behind */}
           <m.figure
             className="fx-float fx-float-steps"
-            style={{ y: backY }}
+            style={{ y: drift(backY) }}
             initial={{ opacity: 0, x: -30, y: 20 }}
             animate={{
               opacity: 1,
@@ -188,7 +200,7 @@ export default function Hero({ scope, exercises }) {
           {/* Verdict, floating in front */}
           <m.figure
             className="fx-float fx-float-verdict"
-            style={{ y: frontY }}
+            style={{ y: drift(frontY) }}
             initial={{ opacity: 0, x: 30, y: 30 }}
             animate={{
               opacity: 1,
@@ -209,7 +221,7 @@ export default function Hero({ scope, exercises }) {
           {/* The program, running */}
           <m.figure
             className="fx-float fx-float-term"
-            style={{ y: frontY }}
+            style={{ y: drift(frontY) }}
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0, transition: { ...EASE_OUT, delay: 0.85 } }}
           >
