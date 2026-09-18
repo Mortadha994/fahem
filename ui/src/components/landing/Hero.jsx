@@ -24,7 +24,7 @@ const rise = (delay = 0) => ({
   animate: { opacity: 1, y: 0, transition: { ...EASE_OUT, delay } },
 });
 
-export default function Hero({ scope, exercises }) {
+export default function Hero({ exercises }) {
   const stage = useRef(null);
   const { scrollYProgress } = useScroll({
     target: stage,
@@ -60,11 +60,6 @@ export default function Hero({ scope, exercises }) {
 
       <div className="fx-hero-inner">
         <div className="fx-hero-copy">
-          <m.p className="fx-pill" {...rise(0)}>
-            <span className="fx-pill-dot" aria-hidden="true" />
-            {scope}
-          </m.p>
-
           <m.h1 className="fx-h1" {...rise(0.06)}>
             Ton prof d'algo,
             <br />

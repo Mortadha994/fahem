@@ -22,7 +22,7 @@ import "./landing/landing.css";
  *
  * Everything stated here is checkable against the app, on purpose: no
  * testimonials, no student counts, no "utilisé par N lycées". The figures,
- * the programme, the scope label, the chapter answer in the FAQ and the
+ * the programme, the chapter answer in the FAQ and the
  * syntax strip all come from GET /public/overview (public_overview.py), so
  * publishing a chapter updates this page within a minute.
  *
@@ -40,13 +40,6 @@ import "./landing/landing.css";
 const shortNiveau = (label) => label.replace(/ année$/, "");
 const lowerFirst = (text) => text.charAt(0).toLowerCase() + text.slice(1);
 const isReady = (chapter) => chapter.status === "active";
-
-function scopeLabel(overview) {
-  if (!overview) return "Algorithmique — lycée";
-  const n = overview.totals.chapters_available;
-  const years = overview.totals.niveaux.map(shortNiveau).join(" · ") || "Lycée";
-  return `${years} — ${plural(n, "chapitre")} disponible${n > 1 ? "s" : ""}`;
-}
 
 function chaptersAnswer(overview) {
   if (!overview)
@@ -228,7 +221,6 @@ export default function Landing() {
     };
   }, [menuOpen]);
 
-  const scope = scopeLabel(overview);
   const faq = faqFrom(overview);
   const programme = overview?.chapters ?? [];
   const ready = programme.filter(isReady);
@@ -300,7 +292,7 @@ export default function Landing() {
           )}
 
           <main>
-            <Hero scope={scope} exercises={exercises} />
+            <Hero exercises={exercises} />
 
             {/* --- syntax strip ------------------------------------------- */}
             <div className="fx-marquee" aria-hidden="true">
@@ -563,7 +555,6 @@ export default function Landing() {
               </span>
               Fahem
             </p>
-            <p className="fx-foot-scope">{scope}</p>
             <nav aria-label="Pied de page">
               <a href="#essayer">Essayer</a>
               <a href="#fonctionnalites">Ce que ça fait</a>
