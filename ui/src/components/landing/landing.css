@@ -446,9 +446,11 @@
   perspective: 1400px;
   /* Room on three sides: the floating cards live outside the window, never
      on top of the answer. */
-  padding: 2.5rem 1.5rem 3.5rem 4rem;
+  padding: 3rem 0 4rem 5.5rem;
 }
 .fx-window {
+  max-width: 32rem;
+  margin-left: auto;
   border-radius: var(--rad);
   overflow: hidden;
   background: #fff;
@@ -567,8 +569,9 @@
 }
 .fx-float-steps {
   left: 0;
-  top: 30%;
+  top: 28%;
   z-index: 2;
+  width: 10.5rem;
 }
 .fx-float-steps figcaption {
   margin-bottom: 0.5rem;
@@ -578,8 +581,8 @@
   letter-spacing: 0.06em;
 }
 .fx-float-verdict {
-  right: 0;
-  top: 1rem;
+  right: -0.5rem;
+  top: 0;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -596,8 +599,8 @@
   font-size: 1.5rem;
 }
 .fx-float-term {
-  left: 1.5rem;
-  bottom: 0;
+  left: 0;
+  bottom: 0.5rem;
   z-index: 2;
   padding: 0;
   overflow: hidden;
