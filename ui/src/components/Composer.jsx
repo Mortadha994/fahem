@@ -22,8 +22,14 @@ import { SPRING_HOVER } from "../lib/motion.js";
  * Either is hidden when the admin turned it off.
  *
  * `followUp` switches the placeholder once the thread has messages.
- * `chapterLabel` is shown as a chip, because the chapter decides which syntax
- * the answer will use. `inputRef` lets the chat put the caret in the box.
+ * `note` is one quiet sentence beside the clip - the chat puts what Fahem
+ * remembers of this discussion there. It used to be a band of its own above
+ * the composer, next to a chip repeating the chapter already named in the
+ * header and a permanent keyboard legend: three strips of explanation around
+ * a box whose placeholder already says what to do. The legend now appears
+ * while the box has focus, which is when it is of any use, and never on a
+ * phone, where none of those keys exist.
+ * `inputRef` lets the chat put the caret in the box.
  */
 export default function Composer({
   value,
@@ -38,7 +44,7 @@ export default function Composer({
   maxLength = 2000,
   inputRef,
   followUp = false,
-  chapterLabel,
+  note,
   attachment,
   attachError,
   onAttach,
@@ -47,6 +53,9 @@ export default function Composer({
   const ref = useRef(null);
   const fileRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  // The keyboard legend is only worth screen space while the box is in use.
+  const [focused, setFocused] = useState(false);
+  const keys = focused && !dragging;
   const setRef = (el) => {
     ref.current = el;
     if (inputRef) inputRef.current = el;
@@ -161,6 +170,8 @@ export default function Composer({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={
             attachment
               ? "Ajoute une précision si tu veux (facultatif)…"
@@ -299,11 +310,14 @@ export default function Composer({
                 <path d="M20.5 11.5 12.4 19.6a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
               </svg>
             </button>
-            {chapterLabel && <span className="composer-chip">{chapterLabel}</span>}
-            <span className="composer-hint">
+            {/* is-keys marks the one variant that assumes a keyboard, so a
+                touch screen can drop it and keep the note. */}
+            <span className={`composer-hint${keys ? " is-keys" : ""}`}>
               {dragging
                 ? "Dépose ta photo ou ton PDF ici"
-                : "Entrée pour envoyer · Maj+Entrée pour aller à la ligne · Ctrl+V une capture"}
+                : keys
+                  ? "Entrée pour envoyer · Maj+Entrée pour aller à la ligne · Ctrl+V une capture"
+                  : note}
             </span>
           </div>
           {/* Send and stop swap with a quick scale-fade; the one showing

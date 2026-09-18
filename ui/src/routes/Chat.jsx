@@ -36,6 +36,23 @@ const IS_MAC =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
 /**
+ * What Fahem keeps of this discussion, in one sentence, for the line beside
+ * the composer. The backend carries the last three exchanges forward
+ * (session_memory.py), and saying so is the point: a student whose fourth
+ * question gets answered without the first one's context should know why.
+ * Nothing to say on an empty or still-loading thread.
+ */
+function memoryNote(messages, quiet) {
+  if (quiet) return undefined;
+  const asked = messages.filter((msg) => msg.role === "user").length;
+  if (!asked) return undefined;
+  const kept = Math.min(3, asked);
+  return kept === 1
+    ? "Fahem se souvient de l'échange précédent."
+    : `Fahem se souvient des ${kept} derniers échanges.`;
+}
+
+/**
  * The chat screen.
  *
  * Lifted out of App.jsx in Phase 3b so App can be the auth + router shell.
@@ -1224,20 +1241,6 @@ export default function Chat() {
         </AnimatePresence>
       </div>
 
-      {/* Session memory, said out loud: what Fahem keeps of this discussion,
-          and how to start without it. */}
-      {!isEmpty && !activeLoading && (
-        <p className="chat-memory">
-          <span aria-hidden="true">◎</span>{" "}
-          {Math.min(3, messages.filter((msg) => msg.role === "user").length) === 1
-            ? "Fahem se souvient de l'échange précédent de cette discussion."
-            : `Fahem se souvient des ${Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers échanges de cette discussion.`}
-          <button type="button" className="chat-memory-new" onClick={newDiscussion}>
-            Repartir de zéro
-          </button>
-        </p>
-      )}
-
       <Composer
         value={draft}
         onChange={setDraft}
@@ -1253,7 +1256,11 @@ export default function Chat() {
         maxLength={attachment ? 190 : 2000}
         inputRef={composerRef}
         followUp={!isEmpty}
-        chapterLabel={`Chapitre ${currentChapter}`}
+        // Session memory, said out loud - but beside the box rather than as a
+        // band of its own above it. The chapter is not repeated here: the
+        // header names it, and "Repartir de zéro" was the header's "Nouvelle"
+        // button under a second name.
+        note={memoryNote(messages, isEmpty || activeLoading)}
         attachment={attachment}
         attachError={attachError}
         onAttach={acceptFile}

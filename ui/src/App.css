@@ -1531,14 +1531,9 @@ h3 {
   font-size: var(--text-xs);
   color: var(--fg-dim);
 }
-.composer-chip {
-  flex: none;
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-full);
-  background: rgb(106 79 224 / 0.12);
-  color: var(--fg);
-  font-weight: 600;
-}
+/* One line, whatever it is saying: the memory note at rest, the keyboard
+   legend while the box has focus, the drop target while a file is over it.
+   It never wraps, so the composer's height never jumps as it changes. */
 .composer-hint {
   overflow: hidden;
   white-space: nowrap;
@@ -1714,9 +1709,11 @@ h3 {
   padding-bottom: 0;
   border-bottom: 0;
 }
-/* The shortcut line means nothing without a keyboard. */
+/* The shortcut line means nothing without a keyboard - but the same element
+   also carries the memory note, which matters on a phone as much as anywhere,
+   so only the keyboard variant goes. */
 @media (hover: none), (pointer: coarse) {
-  .composer-hint {
+  .composer-hint.is-keys {
     display: none;
   }
 }
@@ -4822,30 +4819,6 @@ h3 {
   margin: var(--space-4) auto;
   color: var(--fg-dim);
   text-align: center;
-}
-.chat-memory {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px var(--space-2);
-  margin: 0 auto;
-  padding: 2px var(--space-3, 0.75rem);
-  max-width: 48rem;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-}
-.chat-memory-new {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.chat-memory-new:hover {
-  text-decoration: underline;
 }
 .composer-count {
   margin: 0;
