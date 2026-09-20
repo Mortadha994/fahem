@@ -101,6 +101,9 @@ export const resetQueue = (model) =>
   request("/admin/controls/queues/reset", { method: "POST", body: { model } });
 export const fetchUsers = (query) => request("/admin/users", { query });
 export const fetchUser = (id) => request(`/admin/users/${encodeURIComponent(id)}`);
+/** One account's week-by-week activity and spend (admin_user_activity.py). */
+export const fetchUserActivity = (id, weeks) =>
+  request(`/admin/users/${encodeURIComponent(id)}/activity`, { query: { weeks } });
 export const createUser = (body) => request("/admin/users", { method: "POST", body });
 export const updateUser = (id, body) =>
   request(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", body });

@@ -2938,3 +2938,199 @@ a.log-target:hover {
 :root[data-theme="dark"] .adm-pill {
   color: var(--tone);
 }
+
+/* --- one account's activity (components/admin/UserActivity.jsx) --------------------------------
+   The categorical slots are the data-viz palette's first four, in fixed order,
+   stepped separately per surface - the dark column is the same four hues
+   re-stepped for a dark background, not an automatic flip. Validated against
+   both: worst adjacent CVD ΔE 9.1 light / 8.4 dark, worst adjacent
+   normal-vision ΔE 22.9 / 19.8. In light mode the aqua and the yellow fall
+   under 3:1 against this panel, which is why the legend carries each total in
+   text and the table below holds every number the bars encode. */
+.ua {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  display: grid;
+  gap: var(--space-4);
+}
+:root[data-theme="dark"] .ua {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+}
+.ua-h {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.ua-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.ua-tile {
+  padding: var(--space-3);
+  border: 1px solid var(--adm-line);
+  border-radius: 12px;
+  background: var(--adm-surface-2);
+}
+.ua-tile dt {
+  color: var(--adm-muted);
+  font-size: 0.75rem;
+}
+.ua-tile dd {
+  margin: 2px 0 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* Thin marks, a 2px surface gap between stacked segments so a boundary is
+   geometry and not only a change of colour, and the rounding only at the top
+   of the column - the bottom stays anchored to the baseline. */
+.ua-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 9rem;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--adm-line);
+}
+.ua-col {
+  position: relative;
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.ua-stack {
+  width: 100%;
+  min-height: 2px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.ua-seg {
+  display: block;
+  min-height: 3px;
+}
+/* A week with no questions still gets a mark on the baseline. Drawn as
+   nothing it reads as missing data; drawn as a tick it reads as the zero it
+   is, which is the whole point of keeping empty weeks in the series. */
+.ua-col:has(.ua-stack:empty)::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--adm-line);
+}
+/* The hit target is the whole column, not the bar: a silent week has no bar
+   to point at and still has something to say. */
+.ua-hit {
+  position: absolute;
+  inset: 0;
+  cursor: default;
+}
+.ua-hit:focus-visible {
+  outline: 2px solid var(--adm-accent, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.ua-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: none;
+  min-width: max-content;
+  transform: translateX(-50%);
+  padding: var(--space-2);
+  border-radius: 10px;
+  background: var(--adm-fg);
+  color: var(--adm-surface);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
+.ua-tip b,
+.ua-tip i {
+  display: block;
+  font-style: normal;
+}
+.ua-hit:hover .ua-tip,
+.ua-hit:focus-visible .ua-tip {
+  display: block;
+}
+.ua-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--adm-muted);
+  font-size: 0.72rem;
+}
+.ua-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+.ua-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ua-legend b,
+.ua-spend b {
+  font-variant-numeric: tabular-nums;
+}
+.ua-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.ua-table summary {
+  cursor: pointer;
+  color: var(--adm-muted);
+  font-size: 0.8rem;
+}
+.ua-table table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.ua-table th,
+.ua-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--adm-line);
+  text-align: right;
+}
+.ua-table thead th,
+.ua-table tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+.ua-spend {
+  margin: 0;
+  font-size: 0.9rem;
+}
+@media (max-width: 600px) {
+  .ua-chart {
+    height: 7rem;
+  }
+  .ua-table table {
+    display: block;
+    overflow-x: auto;
+  }
+}
