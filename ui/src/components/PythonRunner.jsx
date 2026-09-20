@@ -138,7 +138,15 @@ export default function PythonRunner({ code }) {
                     ? "Chargement de Python…"
                     : state === "running"
                       ? "Exécution…"
-                      : "▶ Exécuter"}
+                      : // The triangle is decoration: bare, the button
+                        // announces as "black right-pointing triangle
+                        // Exécuter".
+                        [
+                          <span key="i" aria-hidden="true">
+                            ▶{" "}
+                          </span>,
+                          "Exécuter",
+                        ]}
                 </m.button>
                 {state === "loading" && (
                   <span className="py-run-hint">

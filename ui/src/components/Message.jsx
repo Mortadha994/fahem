@@ -201,12 +201,15 @@ function Message({
                   tone="primary"
                   onClick={() => onPracticeStart(practiceStatement(content), "guided")}
                 >
-                  🧭 Me guider pas à pas
+                  {/* The emoji is decoration on a labelled button. Left bare
+                      it joins the accessible name, and the button announces
+                      as "compass Me guider pas à pas". */}
+                  <span aria-hidden="true">🧭</span> Me guider pas à pas
                 </ActionButton>
               )}
               {onPropose && (
                 <ActionButton onClick={onPropose}>
-                  ✍️ Je propose ma solution
+                  <span aria-hidden="true">✍️</span> Je propose ma solution
                 </ActionButton>
               )}
               {onPracticeStart && (
@@ -224,7 +227,8 @@ function Message({
             <ActionRow fresh={fresh}>
               {onGuided && (
                 <ActionButton tone="primary" onClick={() => onGuided("next_step")}>
-                  {guidedStep === 3 ? "🏁 Dernière étape" : "💡 Indice suivant"}
+                  <span aria-hidden="true">{guidedStep === 3 ? "🏁" : "💡"}</span>{" "}
+                  {guidedStep === 3 ? "Dernière étape" : "Indice suivant"}
                   <span className="guided-arrow" aria-hidden="true">
                     →
                   </span>
@@ -232,7 +236,7 @@ function Message({
               )}
               {onPropose && (
                 <ActionButton onClick={onPropose}>
-                  ✍️ Je propose ma solution
+                  <span aria-hidden="true">✍️</span> Je propose ma solution
                 </ActionButton>
               )}
               {onGuided && (

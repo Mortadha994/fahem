@@ -597,6 +597,9 @@ h3 {
   border-left: 1px solid var(--line);
   background: var(--bg);
   box-shadow: -24px 0 60px -30px rgb(0 0 0 / 0.5);
+  /* Full-width sheet on a phone, so its last discussion must clear the
+     gesture bar. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 /* A brand edge down the panel's inner side, like the active nav link's. */
 .history-panel::before {
@@ -1462,9 +1465,14 @@ h3 {
 /* ---------- composer ---------- */
 /* The thread's bottom edge fades into the composer instead of meeting it at a
    hard border line, so the card reads as floating over the conversation. */
+/* The composer sits at the end of the shell's column, flush with the bottom
+   of the screen, so on a phone with a gesture bar its send button lands in the
+   home indicator's strip. The inset is added to the padding rather than
+   replacing it, so a device without one is unchanged. */
 .composer {
   position: relative;
-  padding: var(--space-2) var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-4)
+    calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   background: var(--canvas);
 }
 .composer::before {
@@ -2137,8 +2145,16 @@ h3 {
 
 /* A row since Phase 6: the sidebar beside the content, with no horizontal bar
    above either of them on a wide screen. */
+/* 100dvh, not 100vh. On a phone browser 100vh is the *largest* viewport - the
+   one with the URL bar hidden - so while the bar is showing the layout is
+   taller than the screen, and this box's overflow:hidden clips whatever sits
+   at the end of the column. That is the composer. The note below records the
+   same failure arriving by another route; dvh tracks the viewport as the bar
+   collapses and expands, which is what this needs. vh stays as the fallback
+   for anything without dvh. */
 .shell {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   overflow: hidden;
 }
@@ -2191,12 +2207,16 @@ h3 {
   display: flex;
   min-height: 0;
 }
+/* Below 900px this is a full-height drawer, and Déconnexion and the theme
+   toggle are pinned to its bottom edge - inside the gesture bar's strip
+   without the inset. */
 .appnav {
   width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  padding: var(--space-3) var(--space-3)
+    calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
   background: var(--side);
   border-right: 1px solid var(--line);
   overflow-y: auto;
