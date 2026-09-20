@@ -377,6 +377,11 @@ class ChatMessage(Base):
         # from the tutor, and a third value would be a bug worth failing on.
         CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role"),
         Index("ix_chat_messages_session_id_created_at", "session_id", "created_at"),
+        # How a discussion is actually read back: every message of one
+        # session, in `position` order. Created by d4e8b1f6a3c2 and declared
+        # here only later, which is why `alembic check` used to propose
+        # dropping it - the database had it, the model did not.
+        Index("ix_chat_messages_session_id_position", "session_id", "position"),
         Index(
             "uq_chat_messages_session_client_id",
             "session_id",
@@ -635,7 +640,13 @@ class AdminAuditEntry(Base):
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    __table_args__ = (Index("ix_admin_audit_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_admin_audit_created_at", "created_at"),
+        # The audit log is filtered by family (IA, Comptes, Files d'attente),
+        # which is a prefix match on `action`. Created by b8d4f2a6c1e9 and
+        # declared here only later, like the chat_messages one above.
+        Index("ix_admin_audit_action", "action"),
+    )
 
 
 class AnswerFeedback(Base):
