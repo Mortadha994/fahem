@@ -39,6 +39,7 @@ import admin
 import admin_chapters
 import admin_controls
 import admin_monitoring
+import admin_user_activity
 import ai_control
 import algo_notation
 import answer_check
@@ -168,6 +169,9 @@ app.include_router(admin_monitoring.router)
 
 # AI controls: pause, daily budget guard, live limits, queue reset. Same gate.
 app.include_router(admin_controls.router)
+
+# One student's activity and spend over time, for the charts on their page.
+app.include_router(admin_user_activity.router)
 
 # Chat history, per account: each student's discussions, scoped to their own
 # rows on every route - see chat_history.py.
