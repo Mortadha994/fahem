@@ -2,7 +2,7 @@
 
 ```
 docker compose up --build -d                      # recommended: the whole stack
-.venv/Scripts/python.exe -m uvicorn api:app --reload --port 8000   # or natively
+.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000   # or natively
 ```
 
 Natively, Postgres, Qdrant and Redis still have to be running
@@ -146,7 +146,7 @@ internals in error text" is a separate threshold from "add a login".
       gated behind whatever identifies a legitimate student, or trimmed to
       the pinned tables only.
 - [x] **Restrict CORS to the real origin.** No longer a code change: origins
-      come from the `CORS_ORIGINS` env var (comma-separated) via `config.py`,
+      come from the `CORS_ORIGINS` env var (comma-separated) via `app/core/config.py`,
       defaulting to the same localhost dev ports (5173, 5174). Set the var to
       the real origin when hosting — but note the default is still permissive
       for local dev, so a deployment that *forgets* to set it falls back to
@@ -163,7 +163,7 @@ internals in error text" is a separate threshold from "add a login".
 ## Gatekeeper (added after the pre-launch list above)
 
 Every request to `/solve` and `/solve/stream` now passes through
-`gatekeeper.py` before `build_context` runs:
+`app/llm/gatekeeper.py` before `build_context` runs:
 
 - **> 2000 characters** → fixed decline, zero model calls.
 - **Classifier** (one cheap call, output forced to one of three words) →

@@ -17,7 +17,7 @@ const POLL_MS = 2500;
  * Uploaded chapters: the list, and the form that starts a new one.
  *
  * Chapter 1 is not listed: it is built into Fahem and managed in code, not
- * here (see chapter_store.py). The note under the heading says so, so its
+ * here (see app/rag/chapter_store.py). The note under the heading says so, so its
  * absence does not read as a bug.
  */
 export default function AdminChapters() {

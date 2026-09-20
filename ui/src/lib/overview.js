@@ -2,7 +2,7 @@ import { API_URL } from "../config.js";
 
 /**
  * What Fahem offers right now - chapters, counts, features - for the public
- * landing page (GET /public/overview, no sign-in; see public_overview.py).
+ * landing page (GET /public/overview, no sign-in; see app/routes/public_overview.py).
  *
  * Resolves to null instead of throwing: the landing page must render without
  * it, and it gives up after `timeoutMs` so a slow backend never holds the page's

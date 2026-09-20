@@ -2,7 +2,7 @@ import { API_URL } from "../config.js";
 import { ChapterError, UnauthorizedError } from "./chapters.js";
 
 /**
- * The student's progress (GET /progress, see progress.py): per chapter each
+ * The student's progress (GET /progress, see app/routes/progress.py): per chapter each
  * exercise's status, the counts and the next exercise; the latest checked
  * solutions; the recurring notation mistakes. Same errors as lib/chapters.js.
  */
@@ -31,7 +31,7 @@ export const VERDICT_LABELS = {
   a_revoir: { label: "À revoir", icon: "✗", tone: "danger" },
 };
 
-/** answer_check.py's finding kinds, in words - and what to remember. */
+/** app/grading/answer_check.py's finding kinds, in words - and what to remember. */
 export const MISTAKES = {
   operator: {
     label: "Opérateur Python dans l'algorithme",

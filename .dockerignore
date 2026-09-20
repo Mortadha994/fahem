@@ -1,6 +1,7 @@
-# Build context hygiene. The backend image copies only *.py and
-# requirements.txt, but an unfiltered context still ships .venv, node_modules
-# and the vector store to the daemon on every build.
+# Build context hygiene. The backend image copies only app/, scripts/,
+# tests/, alembic/ and requirements.txt, but an unfiltered context still
+# ships .venv, node_modules and the vector store to the daemon on every
+# build.
 
 .venv/
 __pycache__/

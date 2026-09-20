@@ -21,7 +21,7 @@ import "./controls.css";
 /**
  * "Contrôles": what the Surveillance IA page shows, the admin can act on.
  *
- * Everything writes to GET/PUT /admin/controls (admin_controls.py) and takes
+ * Everything writes to GET/PUT /admin/controls (app/routes/admin/admin_controls.py) and takes
  * effect for students within seconds, without a restart. The page reads top
  * to bottom as the questions an admin asks:
  *

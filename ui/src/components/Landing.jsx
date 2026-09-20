@@ -23,7 +23,7 @@ import "./landing/landing.css";
  * Everything stated here is checkable against the app, on purpose: no
  * testimonials, no student counts, no "utilisé par N lycées". The figures,
  * the programme, the chapter answer in the FAQ and the
- * syntax strip all come from GET /public/overview (public_overview.py), so
+ * syntax strip all come from GET /public/overview (app/routes/public_overview.py), so
  * publishing a chapter updates this page within a minute.
  *
  * Shape: a dark, lit hero with the product rebuilt in markup (landing/Hero),

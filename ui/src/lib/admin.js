@@ -76,7 +76,7 @@ export function errorMessage(err) {
   }
   if (typeof detail === "string") {
     if (status === 409 && detail.includes("admin accounts cannot be deleted"))
-      return "Un compte administrateur ne peut pas être supprimé ici. Retire d'abord le rôle avec promote_admin.py.";
+      return "Un compte administrateur ne peut pas être supprimé ici. Retire d'abord le rôle avec scripts/promote_admin.py.";
     if (status === 400 && detail.includes("own account"))
       return "Tu ne peux pas supprimer ton propre compte.";
     if (status === 404 && detail === "user not found") return "Compte introuvable.";
@@ -87,9 +87,9 @@ export function errorMessage(err) {
 
 export const fetchAdminWhoAmI = () => request("/admin/whoami");
 export const fetchAdminStats = () => request("/admin/stats");
-/** Groq load, usage and chat activity (admin_monitoring.py). */
+/** Groq load, usage and chat activity (app/routes/admin/admin_monitoring.py). */
 export const fetchMonitoring = () => request("/admin/monitoring");
-/** Live AI settings, daily budget, queues, admin log (admin_controls.py). */
+/** Live AI settings, daily budget, queues, admin log (app/routes/admin/admin_controls.py). */
 export const fetchControls = () => request("/admin/controls");
 export const updateControls = (values) =>
   request("/admin/controls", { method: "PUT", body: values });
@@ -101,7 +101,7 @@ export const resetQueue = (model) =>
   request("/admin/controls/queues/reset", { method: "POST", body: { model } });
 export const fetchUsers = (query) => request("/admin/users", { query });
 export const fetchUser = (id) => request(`/admin/users/${encodeURIComponent(id)}`);
-/** One account's week-by-week activity and spend (admin_user_activity.py). */
+/** One account's week-by-week activity and spend (app/routes/admin/admin_user_activity.py). */
 export const fetchUserActivity = (id, weeks) =>
   request(`/admin/users/${encodeURIComponent(id)}/activity`, { query: { weeks } });
 export const createUser = (body) => request("/admin/users", { method: "POST", body });
@@ -213,7 +213,7 @@ async function sendFile(url, method, file, contentType) {
 /**
  * Send a chapter source: a PDF, or a Markdown course written to the template
  * (docs/modele-cours.md). The file is the raw request body, not multipart -
- * see admin_chapters.py. `replace` re-imports an existing chapter. A .md
+ * see app/routes/admin/admin_chapters.py. `replace` re-imports an existing chapter. A .md
  * course carries its own title, so `title` is only needed for a PDF.
  */
 export function uploadChapterSource({ id, title, file, replace = false }) {

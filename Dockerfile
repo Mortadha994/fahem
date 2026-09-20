@@ -26,11 +26,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Source only. chunks.json and data/ are runtime state and arrive as bind
 # mounts; the vector store lives in the qdrant service - see
 # docker-compose.yml.
-COPY *.py ./
+#
+# app/ is the application, scripts/ the command-line tools (an admin
+# promotion, the demo seed) run with `python -m scripts.<name>`, and tests/
+# the suite, which runs inside this container against the compose stack
+# (`docker compose exec -T backend python -m tests.test_chat_flow`) - nothing
+# bind-mounts the source, so a test that is not copied cannot be run.
+COPY app ./app
+COPY scripts ./scripts
+COPY tests ./tests
 
-# Migrations. Separate COPY lines because `COPY *.py` above matches neither the
-# ini file nor the alembic/ directory, so `alembic upgrade head` inside the
-# container would fail on a missing config rather than a missing database.
+# Migrations. Separate COPY lines because the two COPY lines above match
+# neither the ini file nor the alembic/ directory, so `alembic upgrade head`
+# inside the container would fail on a missing config rather than a missing
+# database.
 COPY alembic.ini ./
 COPY alembic ./alembic
 
@@ -42,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 
 # Single process, no --reload: /solve/stream is a generator-backed
 # StreamingResponse, and a reloader restart mid-stream would truncate it.
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

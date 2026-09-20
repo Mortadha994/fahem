@@ -67,7 +67,7 @@ function ChapterView({ id }) {
   // here remounts this component (see the key in ChapterRoute).
   const [startedTexts] = useState(startedExerciseTexts);
 
-  // Each exercise's status from the server (progress.py): réussi, solution vue,
+  // Each exercise's status from the server (app/routes/progress.py): réussi, solution vue,
   // commencé - and the next one to do. Until it arrives (or if it fails), the
   // browser's own "à finir" marker stands in.
   const [progress, setProgress] = useState(null);

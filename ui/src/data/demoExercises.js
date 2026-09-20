@@ -5,7 +5,7 @@
  * Written, not generated: a visitor tries Fahem before signing in, so these
  * must cost no token, never vary, and never be wrong. They are marketing
  * copy that happens to be a solution - the real tutor's answers come from
- * the model, grounded in the chapter (see prompts.py).
+ * the model, grounded in the chapter (see app/llm/prompts.py).
  *
  * `answer` is the markdown the chat itself renders, so the demo shows the
  * real components: the Algorithme | Python table, its copy button, and

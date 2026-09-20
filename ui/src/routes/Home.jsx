@@ -41,7 +41,7 @@ export default function Home() {
   const [failed, setFailed] = useState(false);
   // chapter id -> exercise énoncés, for the available chapters only.
   const [exercises, setExercises] = useState({});
-  // chapter id -> { done, started, total } from the server (progress.py);
+  // chapter id -> { done, started, total } from the server (app/routes/progress.py);
   // the browser-side count below stands in until it arrives.
   const [serverProgress, setServerProgress] = useState(null);
   useEffect(() => {

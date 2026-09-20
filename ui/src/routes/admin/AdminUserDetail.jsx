@@ -19,7 +19,7 @@ import { IconActivity, IconShield, IconUser } from "../../components/admin/icons
 import UserActivity from "../../components/admin/UserActivity.jsx";
 
 /* The school system, as the student's own profile question offers it
-   (models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
+   (app/core/models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
 const NIVEAUX = [
   ["2eme", "2ème année"],
   ["3eme", "3ème année"],
@@ -639,7 +639,7 @@ export default function AdminUserDetail() {
                           {isSelf
                             ? "Tu ne peux pas supprimer ton propre compte."
                             : isAdminAccount
-                              ? "Un compte admin doit d'abord perdre son rôle via promote_admin.py."
+                              ? "Un compte admin doit d'abord perdre son rôle via scripts/promote_admin.py."
                               : "Définitif : le compte et ses données sont effacés."}
                         </p>
                       </div>

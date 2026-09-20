@@ -38,7 +38,7 @@ const IS_MAC =
 /**
  * What Fahem keeps of this discussion, in one sentence, for the line beside
  * the composer. The backend carries the last three exchanges forward
- * (session_memory.py), and saying so is the point: a student whose fourth
+ * (app/grading/session_memory.py), and saying so is the point: a student whose fourth
  * question gets answered without the first one's context should know why.
  * Nothing to say on an empty or still-loading thread.
  */
@@ -190,7 +190,7 @@ export default function Chat() {
   }, [activeId, activeLoading, ensureLoaded]);
 
   // Mode guidé / Vérifier ma réponse, as the admin set them. The starting
-  // values are what the server ships (runtime_settings.py), not the quietest
+  // values are what the server ships (app/core/runtime_settings.py), not the quietest
   // possible chat: /chat/features takes a moment, and while it was answering
   // the composer opened in Solution complète and then flipped to Mode guidé,
   // which is the mode the student actually wanted. A send in that window went
@@ -555,7 +555,7 @@ export default function Chat() {
               ...msg,
               // "none" when there's no real Algorithme solution to have
               // checked - e.g. the model asked for the problem statement
-              // instead of answering (see prompts.py). Zero violations on
+              // instead of answering (see app/llm/prompts.py). Zero violations on
               // that isn't "verified", it's "nothing to verify" - see
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
@@ -1042,7 +1042,7 @@ export default function Chat() {
               {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
               <m.div variants={rise}>
-                {/* The three kinds of message the backend routes (gatekeeper.py):
+                {/* The three kinds of message the backend routes (app/llm/gatekeeper.py):
                     an exercise, a question on the course, the student's own
                     program - said up front so a first-time student knows all
                     three are welcome. */}
