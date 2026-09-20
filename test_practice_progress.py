@@ -228,7 +228,9 @@ def main() -> None:
         overrides.pop("practice_daily_limit")
         llm_queue._sync_client().delete(limit_key)
 
-        def failing_stream(messages, priority=None, budget=None, route=None, memory_chars=0):
+        def failing_stream(
+            messages, priority=None, budget=None, route=None, memory_chars=0, user_id=None
+        ):
             raise llm_queue.QueueTimeout("llm_queue:test", 1.0, 0)
             yield  # pragma: no cover - generator
 
