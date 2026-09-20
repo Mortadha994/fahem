@@ -3022,11 +3022,52 @@ a.log-target:hover {
   color: var(--adm-muted);
   font-size: 0.75rem;
 }
+.ua-tile {
+  position: relative;
+  overflow: hidden;
+}
 .ua-tile dd {
   margin: 2px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 1.5rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+/* The arrow says which way; the colour only agrees with it. Reading this
+   with the hues stripped out still tells you the direction. */
+.ua-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--adm-muted);
+}
+.ua-delta.is-up {
+  color: #0f7a55;
+}
+.ua-delta.is-down {
+  color: #a86500;
+}
+:root[data-theme="dark"] .ua-delta.is-up {
+  color: #48c79b;
+}
+:root[data-theme="dark"] .ua-delta.is-down {
+  color: #e0a53c;
+}
+/* A shape, not a chart: it sits behind the number as context, quiet enough
+   that the figure stays the thing being read. */
+.ua-spark {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 60%;
+  height: 28px;
+  color: var(--viz-1);
+  opacity: 0.4;
+  pointer-events: none;
 }
 /* Thin marks, a 2px surface gap between stacked segments so a boundary is
    geometry and not only a change of colour, and the rounding only at the top

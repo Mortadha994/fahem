@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as m from "motion/react-m";
 import { errorMessage, fetchUserActivity } from "../../lib/admin.js";
 import { SPRING_ENTER, stagger } from "../../lib/motion.js";
+import CountUp from "../CountUp.jsx";
 
 /**
  * One student's last twelve weeks, on their own page in the console.
@@ -131,19 +132,105 @@ function weekLabel(iso) {
   });
 }
 
-function Tiles({ totals, exercises }) {
+/**
+ * The twelve weekly counts as one line, drawn on arrival.
+ *
+ * A shape, not a chart: no axis, no labels, nothing to read a value off. It
+ * is there so the headline number carries its own recent history instead of
+ * being a figure with no past. The real numbers are in the chart below and in
+ * its table, so this is decorative in the strict sense and hidden from
+ * assistive tech.
+ *
+ * Drawn with Motion's pathLength (SVG animation docs) rather than by hand
+ * with stroke-dasharray: it is one 0-1 value, and MotionConfig's
+ * reducedMotion="user" in AdminLayout turns it off with everything else.
+ */
+function Spark({ points }) {
+  const W = 96;
+  const H = 28;
+  const peak = Math.max(1, ...points);
+  const step = W / Math.max(1, points.length - 1);
+  // A cubic through the midpoints: smooth without overshooting past a value,
+  // which a spline through the points themselves would do.
+  const xy = points.map((p, i) => [i * step, H - (p / peak) * (H - 3) - 1.5]);
+  let d = `M ${xy[0][0]} ${xy[0][1]}`;
+  for (let i = 0; i < xy.length - 1; i += 1) {
+    const [x1, y1] = xy[i];
+    const [x2, y2] = xy[i + 1];
+    const mid = (x1 + x2) / 2;
+    d += ` C ${mid},${y1} ${mid},${y2} ${x2},${y2}`;
+  }
+
+  return (
+    <svg className="ua-spark" viewBox={`0 0 ${W} ${H}`} aria-hidden="true" focusable="false">
+      <m.path
+        d={d}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        transition={{ duration: 0.9, ease: "easeOut", delay: 0.15 }}
+      />
+    </svg>
+  );
+}
+
+/**
+ * ↑ 62 % — the arrow carries the direction, so colour never has to.
+ *
+ * Nothing under 10 % is shown. Week-to-week counts wobble, and an arrow on a
+ * 3 % move claims a direction the data has not got - it would also sit
+ * directly under a reading that calls the same student regular, and the two
+ * must not contradict each other.
+ */
+const NOISE = 10;
+
+function Delta({ now, before }) {
+  if (!before) return null;
+  const pct = Math.round(((now - before) / before) * 100);
+  if (Math.abs(pct) < NOISE) return null;
+  const up = pct > 0;
+  return (
+    <span className={`ua-delta${up ? " is-up" : " is-down"}`}>
+      <span aria-hidden="true">{up ? "↑" : "↓"}</span>
+      {Math.abs(pct)} %
+      <span className="sr-only">
+        {up ? "en hausse" : "en baisse"} par rapport aux 4 semaines précédentes
+      </span>
+    </span>
+  );
+}
+
+function Tiles({ totals, exercises, weeks }) {
+  const sum = (list) => list.reduce((n, w) => n + w.questions, 0);
   const items = [
-    ["Questions posées", nf.format(totals.questions)],
-    ["Jours actifs", nf.format(totals.active_days)],
-    ["Discussions", nf.format(totals.discussions)],
-    ["Exercices réussis", nf.format(exercises.done)],
+    {
+      label: "Questions posées",
+      value: totals.questions,
+      // Only this one has a series behind it, so only this one gets a shape
+      // and a delta. Putting a sparkline on a number with no history would
+      // be decoration pretending to be information.
+      spark: weeks.map((w) => w.questions),
+      now: sum(weeks.slice(-HALF)),
+      before: sum(weeks.slice(-HALF * 2, -HALF)),
+    },
+    { label: "Jours actifs", value: totals.active_days },
+    { label: "Discussions", value: totals.discussions },
+    { label: "Exercices réussis", value: exercises.done },
   ];
   return (
     <dl className="ua-tiles">
-      {items.map(([label, value]) => (
-        <div className="ua-tile" key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
+      {items.map((it) => (
+        <div className="ua-tile" key={it.label}>
+          <dt>{it.label}</dt>
+          <dd>
+            <CountUp value={it.value} />
+            {it.before !== undefined && <Delta now={it.now} before={it.before} />}
+          </dd>
+          {it.spark && it.value > 0 && <Spark points={it.spark} />}
         </div>
       ))}
     </dl>
@@ -261,7 +348,7 @@ export default function UserActivity({ userId }) {
         ))}
       </ul>
 
-      <Tiles totals={totals} exercises={exercises} />
+      <Tiles totals={totals} exercises={exercises} weeks={weeks} />
 
       <h3 className="ua-h">Questions par semaine</h3>
       {asked ? (
