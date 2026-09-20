@@ -1,0 +1,206 @@
+/* =========================================================================
+   The console, dressed in the "Industry" design system.
+
+   Industry (claude.ai/design, read through DesignSync) is a wireframe: steel
+   blue on a light technical ground, Barlow Condensed over Barlow, a modular
+   grid, and cards framed as blueprint objects - square-cornered, hairline
+   bordered, with "+" registration marks at their corners. Cards are line
+   drawings rather than filled blocks; the primary button is the one solid
+   object on the board.
+
+   This file is ONLY token overrides and frame treatment, layered after
+   admin.css. Nothing here changes markup or layout, and removing the single
+   import in AdminLayout.jsx puts the console back exactly as it was - which
+   is the point: it is a dressing, not a rewrite.
+
+   Scoped to .adm, like everything else in the console, so the student app
+   keeps Fahem's own violet and its rounded, filled surfaces. The two are
+   deliberately different languages now, and that is a decision to make
+   consciously rather than by accident.
+
+   One deliberate departure from the system. Industry is mono - "do not add
+   decorative color beyond the steel accent" - but the weekly chart encodes
+   four categories, and four steps of a single ramp are not separable for a
+   colourblind reader (the data-viz rule: sequential is for magnitude,
+   categorical needs distinct hues). Series colour is data, not decoration,
+   so the chart keeps its validated four-hue palette. Everything that is
+   decoration follows Industry.
+   ========================================================================= */
+
+/* Self-hosted, like the app's own typeface: no third-party request, and it
+   works offline. */
+@import "@fontsource/barlow/400.css";
+@import "@fontsource/barlow/500.css";
+@import "@fontsource/barlow/700.css";
+@import "@fontsource/barlow-condensed/400.css";
+@import "@fontsource/barlow-condensed/600.css";
+
+.adm {
+  /* Ground, surfaces and ink, straight from Industry's theme.json. */
+  --adm-bg: #f2f2f3;
+  --adm-surface: #f7f7f8;
+  --adm-surface-2: #e9e9ea;
+  --adm-line: color-mix(in srgb, #1d1f20 16%, transparent);
+  --adm-fg: #1d1f20;
+  --adm-dim: #5d5d60;
+
+  /* The single steel accent, with its ramp for hovers and pressed states. */
+  --adm-accent: #5980a6;
+  --adm-accent-hover: #416180;
+  --adm-accent-soft: #eef6ff;
+  --adm-accent-2: #627d98;
+  --adm-brand-grad: linear-gradient(135deg, #5980a6, #416180);
+
+  /* The command bar is the accent's deepest step - steel as ground, type
+     reversed to paper, which is how Industry uses a full field. */
+  --adm-bar: #1d2d3d;
+  --adm-bar-fg: #f2f2f3;
+  --adm-bar-dim: #94bce3;
+
+  /* Status stays a status palette - it is meaning, not decoration - but
+     pulled toward the system's muted register. */
+  --adm-ok: #2f6b53;
+  --adm-ok-bg: #e7f0eb;
+  --adm-warn: #8a5a1f;
+  --adm-danger: #8c3131;
+  --adm-danger-bg: #f4e9e9;
+
+  /* Square corners and a hairline instead of a soft rounded block. */
+  --adm-radius: 4px;
+  --adm-shadow: 0 1px 2px color-mix(in srgb, #2b2b2d 14%, transparent);
+
+  --adm-font: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --adm-font-heading: "Barlow Condensed", var(--adm-font);
+}
+
+/* Dark: the same steel, stepped for a dark ground rather than inverted. */
+:root[data-theme="dark"] .adm {
+  --adm-bg: #14181c;
+  --adm-surface: #1a1f24;
+  --adm-surface-2: #21272e;
+  --adm-line: color-mix(in srgb, #f2f2f3 14%, transparent);
+  --adm-fg: #eef1f4;
+  --adm-dim: #9fb0bf;
+  --adm-accent: #94bce3;
+  --adm-accent-hover: #b5d9fd;
+  --adm-accent-soft: #24303b;
+  --adm-bar: #0f1519;
+  --adm-bar-fg: #eef1f4;
+  --adm-ok: #6fae92;
+  --adm-ok-bg: #1b2a24;
+  --adm-warn: #d3a05e;
+  --adm-danger: #d98b8b;
+  --adm-danger-bg: #2c1f1f;
+}
+
+/* Condensed headings over Barlow body - the pairing the system is built on. */
+.adm h1,
+.adm h2,
+.adm h3,
+.adm h4,
+.adm .adm-h1,
+.adm .adm-h2,
+.adm .ua-h {
+  font-family: var(--adm-font-heading);
+  letter-spacing: -0.015em;
+}
+
+/* Square everything the console rounds. Industry's one rounded exception is
+   nothing here, so this is a blanket rule rather than a list that would
+   drift out of date as the console grows. */
+.adm [class*="adm-"],
+.adm [class*="ua-"],
+.adm [class*="cx-"] {
+  border-radius: 0;
+}
+/* The pieces that are round because they are round, not because of a radius
+   scale: avatars, status dots, the swatch keys in a legend. */
+.adm .adm-avatar,
+.adm .adm-dot,
+.adm .ua-note-dot,
+.adm .adm-spinner {
+  border-radius: 50%;
+}
+.adm .ua-swatch {
+  border-radius: 0;
+}
+
+/* Cards as line drawings, not filled blocks. */
+.adm .adm-panel,
+.adm .ua-tile {
+  background: transparent;
+  border: 1px solid var(--adm-line);
+  box-shadow: none;
+}
+/* The reading block keeps a fill: it is the one thing on the page that
+   should read as a note pinned to the board rather than another frame. */
+.adm .ua-read {
+  background: var(--adm-surface-2);
+  border-color: var(--adm-line);
+}
+
+/* The registration marks. Drawn with pseudo-elements rather than the four
+   <i class="corner"> children the system's own HTML uses, because these are
+   React components and a frame is presentation - it does not belong in the
+   markup. Same 11px crosshair, same 55% ink. */
+.adm .adm-panel {
+  position: relative;
+}
+.adm .adm-panel::before,
+.adm .adm-panel::after {
+  content: "";
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+  /* One crosshair drawn from two hairlines, repeated at the opposite corner
+     by the second pseudo-element. */
+  background-image:
+    linear-gradient(to right, currentColor 0 100%),
+    linear-gradient(to bottom, currentColor 0 100%);
+  background-size:
+    100% 1px,
+    1px 100%;
+  background-position:
+    left 5px,
+    5px top;
+  background-repeat: no-repeat;
+  color: color-mix(in srgb, var(--adm-fg) 55%, transparent);
+}
+.adm .adm-panel::before {
+  top: -6px;
+  left: -6px;
+}
+.adm .adm-panel::after {
+  bottom: -6px;
+  right: -6px;
+}
+
+/* The avatar picks a hue per account from a hardcoded palette and sets it as
+   an inline style, so nothing but !important reaches it - and this layer is
+   not allowed to edit markup. Industry is mono: an account's identity is its
+   name, not a colour, so every avatar is the one steel accent with the
+   initial reversed to paper. This is the only !important here, and it exists
+   to beat an inline style rather than a specificity fight. */
+.adm .adm-avatar {
+  background: var(--adm-accent) !important;
+  color: #f2f2f3;
+}
+
+/* Thin-stroke icons: Industry's set is Lucide at 1.5, and the console draws
+   its own icons at 2. */
+.adm svg [stroke-width="2"],
+.adm .adm-icon svg,
+.adm .adm-tab svg {
+  stroke-width: 1.5;
+}
+
+/* Keyboard focus is the system's, everywhere. */
+.adm :focus-visible {
+  outline: 2px solid var(--adm-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.adm ::selection {
+  background: color-mix(in srgb, var(--adm-accent) 30%, transparent);
+}
