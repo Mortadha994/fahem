@@ -3026,6 +3026,9 @@ a.log-target:hover {
   position: relative;
   overflow: hidden;
 }
+/* Proportional figures, not tabular: equal-width digits make a standalone
+   number this size read loose. tabular-nums is for columns that align
+   vertically - the table and the axis ticks. */
 .ua-tile dd {
   margin: 2px 0 0;
   display: flex;
@@ -3033,7 +3036,6 @@ a.log-target:hover {
   gap: 8px;
   font-size: 1.5rem;
   font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 /* The arrow says which way; the colour only agrees with it. Reading this
    with the hues stripped out still tells you the direction. */
@@ -3059,36 +3061,71 @@ a.log-target:hover {
 }
 /* A shape, not a chart: it sits behind the number as context, quiet enough
    that the figure stays the thing being read. */
+/* Its own band under the number rather than floating behind it, where it
+   crossed the digits. A shape for context; the values are in the chart. */
 .ua-spark {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 60%;
-  height: 28px;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin-top: 6px;
   color: var(--viz-1);
-  opacity: 0.4;
+  opacity: 0.45;
   pointer-events: none;
 }
 /* Thin marks, a 2px surface gap between stacked segments so a boundary is
    geometry and not only a change of colour, and the rounding only at the top
    of the column - the bottom stays anchored to the baseline. */
+/* The plot: gridlines behind, columns in front, week labels under. The
+   container grows to include the axis band rather than fixing a height that
+   would crop it. */
+.ua-plot {
+  position: relative;
+  padding-left: 2.25rem;
+}
+.ua-grid {
+  position: absolute;
+  inset: 0 0 1.25rem 2.25rem;
+  pointer-events: none;
+}
+/* Hairline, solid, one step off the surface, and behind the data - never
+   dashed, which would read as a threshold rather than a grid. */
+.ua-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--adm-line);
+}
+.ua-gridline b {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: -0.55em;
+  color: var(--adm-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  /* Ticks line up vertically, which is where equal-width digits belong. */
+  font-variant-numeric: tabular-nums;
+}
 .ua-chart {
+  position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  height: 9rem;
-  padding-bottom: 2px;
-  border-bottom: 1px solid var(--adm-line);
+  gap: 2px;
+  height: 10rem;
 }
 .ua-col {
   position: relative;
   flex: 1 1 0;
   height: 100%;
   display: flex;
+  justify-content: center;
   align-items: flex-end;
 }
+/* Capped rather than filling its slot: the leftover in the band is air, and
+   it is what stops a column chart reading as a wall of colour. */
 .ua-stack {
   width: 100%;
+  max-width: 24px;
   min-height: 2px;
   display: flex;
   flex-direction: column-reverse;
@@ -3106,7 +3143,9 @@ a.log-target:hover {
 .ua-col:has(.ua-stack:empty)::after {
   content: "";
   position: absolute;
-  inset: auto 0 0 0;
+  inset: auto auto 0 50%;
+  translate: -50% 0;
+  width: 24px;
   height: 2px;
   border-radius: 2px;
   background: var(--adm-line);
@@ -3148,12 +3187,18 @@ a.log-target:hover {
 .ua-hit:focus-visible .ua-tip {
   display: block;
 }
-.ua-axis {
+.ua-xaxis {
   display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
+  gap: 2px;
+  height: 1.25rem;
+  padding-top: 5px;
   color: var(--adm-muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.ua-xaxis span {
+  flex: 1 1 0;
+  text-align: center;
 }
 .ua-legend {
   display: flex;
@@ -3203,8 +3248,15 @@ a.log-target:hover {
   font-weight: 600;
 }
 .ua-spend {
-  margin: 0;
+  margin: 4px 0 0;
   font-size: 0.9rem;
+}
+.ua-footnote {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--adm-line);
+  color: var(--adm-muted);
+  font-size: 0.78rem;
 }
 @media (max-width: 600px) {
   .ua-chart {

@@ -251,17 +251,42 @@ function Tiles({ totals, exercises, weeks }) {
  * across the row without an axis competing with it; the exact numbers live in
  * the tooltip and the table.
  */
+/**
+ * A scale whose ticks are numbers a person would say out loud: the smallest
+ * step from 1 / 2 / 5 / 10 / … that covers the peak in four bands or fewer.
+ * 25 becomes 0-10-20-30, 7 becomes 0-2-4-6-8.
+ */
+function scaleFor(peak) {
+  const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  const step = steps.find((s) => Math.ceil(peak / s) <= 4) ?? steps[steps.length - 1];
+  const max = Math.max(step, Math.ceil(peak / step) * step);
+  const ticks = [];
+  for (let v = 0; v <= max; v += step) ticks.push(v);
+  return { max, ticks };
+}
+
 function Bars({ weeks }) {
   const peak = Math.max(1, ...weeks.map((w) => w.questions));
+  const { max, ticks } = scaleFor(peak);
   return (
-    <m.div
-      className="ua-chart"
-      role="img"
-      aria-label="Questions par semaine, par mode"
-      variants={stagger(0.035)}
-      initial="hidden"
-      animate="show"
-    >
+    <div className="ua-plot">
+      {/* Hairline, solid, one step off the surface, and behind the data.
+          Without them every value had to be hovered for to be read at all. */}
+      <div className="ua-grid" aria-hidden="true">
+        {ticks.map((t) => (
+          <span key={t} className="ua-gridline" style={{ bottom: `${(t / max) * 100}%` }}>
+            <b>{nf.format(t)}</b>
+          </span>
+        ))}
+      </div>
+      <m.div
+        className="ua-chart"
+        role="img"
+        aria-label="Questions par semaine, par mode"
+        variants={stagger(0.035)}
+        initial="hidden"
+        animate="show"
+      >
       {weeks.map((w) => (
         <div className="ua-col" key={w.start}>
           {/* Each column grows from the baseline in turn. scaleY rather than
@@ -270,7 +295,7 @@ function Bars({ weeks }) {
               MotionConfig reducedMotion="user" in AdminLayout drops it. */}
           <m.div
             className="ua-stack"
-            style={{ height: `${(w.questions / peak) * 100}%`, originY: 1 }}
+            style={{ height: `${(w.questions / max) * 100}%`, originY: 1 }}
             variants={{
               hidden: { scaleY: 0, opacity: 0 },
               show: { scaleY: 1, opacity: 1, transition: SPRING_ENTER },
@@ -308,8 +333,15 @@ function Bars({ weeks }) {
             </span>
           </span>
         </div>
-      ))}
-    </m.div>
+        ))}
+      </m.div>
+      {/* Every other week, so the row reads without the labels colliding. */}
+      <div className="ua-xaxis" aria-hidden="true">
+        {weeks.map((w, i) => (
+          <span key={w.start}>{i % 2 === 0 ? weekLabel(w.start) : ""}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -361,10 +393,6 @@ export default function UserActivity({ userId }) {
       {asked ? (
         <>
           <Bars weeks={weeks} />
-          <div className="ua-axis" aria-hidden="true">
-            <span>{weekLabel(weeks[0].start)}</span>
-            <span>{weekLabel(weeks[weeks.length - 1].start)}</span>
-          </div>
           {/* The legend carries the totals as text: in light mode two of
               these four hues fall under 3:1 on this surface, so the numbers
               have to be readable without telling the colours apart. */}
@@ -410,20 +438,22 @@ export default function UserActivity({ userId }) {
         </p>
       )}
 
-      <h3 className="ua-h">Jetons consommés</h3>
+      {/* With spend to show this is a section; with none it is a footnote.
+          A heading over "there is nothing yet" is an orphan, and drawing an
+          empty chart instead would read as "this student costs nothing",
+          which is a different claim from "not measured yet". */}
       {spend.since ? (
-        <p className="ua-spend">
-          <b>{nf.format(spend.tokens)}</b> jetons sur {nf.format(spend.calls)} appels,
-          depuis le {new Date(spend.since).toLocaleDateString("fr-FR")}.
-        </p>
+        <div>
+          <h3 className="ua-h">Jetons consommés</h3>
+          <p className="ua-spend">
+            <b>{nf.format(spend.tokens)}</b> jetons sur {nf.format(spend.calls)}{" "}
+            appels, depuis le {new Date(spend.since).toLocaleDateString("fr-FR")}.
+          </p>
+        </div>
       ) : (
-        // Said plainly rather than drawn as an empty chart: nothing has been
-        // measured yet, and a flat line at zero would read as "this student
-        // costs nothing", which is a different claim.
-        <p className="adm-muted">
-          Le compteur par élève vient d'être mis en place : rien n'est encore
-          attribué à ce compte. Les chiffres se rempliront à partir de ses
-          prochaines questions.
+        <p className="ua-footnote">
+          Jetons : le compteur par élève vient d'être mis en place, rien n'est
+          encore attribué à ce compte.
         </p>
       )}
     </div>
