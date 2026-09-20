@@ -155,6 +155,21 @@
 * {
   box-sizing: border-box;
 }
+/* Every tappable thing responds on the first tap. Without this a mobile
+   browser may hold the tap back ~300ms waiting to see whether a second one
+   turns it into a double-tap zoom, which reads as the app being slow.
+   manipulation keeps panning and pinch-zoom, and only gives up double-tap
+   zoom on the controls themselves - never on the text. */
+button,
+a,
+label,
+select,
+summary,
+[role="button"],
+[role="tab"],
+[role="radio"] {
+  touch-action: manipulation;
+}
 html,
 body,
 #root {
@@ -2054,6 +2069,44 @@ h3 {
   .boot-dots {
     animation: none;
     border-top-color: var(--line);
+  }
+}
+
+/* Off-screen until focused, then a real button at the top-left corner. Not
+   display:none and not sr-only: it has to be reachable by Tab, and visible
+   once it is, or it helps nobody. */
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+  transform: translateY(calc(-100% - var(--space-4)));
+}
+/* :focus, not :focus-visible. This link exists only for people arriving by
+   keyboard, and it must show for every way focus can land on it - including
+   a programmatic focus() - not only the ones the browser judges to deserve a
+   focus ring. */
+.skip-link:focus {
+  transform: none;
+  outline: 2px solid var(--bg);
+  outline-offset: 2px;
+}
+/* The target must not draw a focus ring of its own when the link lands on
+   it - the reader asked to go there, they do not need telling. */
+.shell-body:focus {
+  outline: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skip-link {
+    transition: transform var(--dur-fast) var(--ease);
   }
 }
 
