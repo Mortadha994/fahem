@@ -63,7 +63,7 @@ export default function Hero({ exercises }) {
           <m.h1 className="fx-h1" {...rise(0.06)}>
             Ton prof d'algo,
             <br />
-            <span className="fx-h1-grad">à 22 h, un dimanche.</span>
+            <span className="fx-h1-grad">disponible 24/7.</span>
           </m.h1>
 
           <m.p className="fx-hero-lead" {...rise(0.12)}>
