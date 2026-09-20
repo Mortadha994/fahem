@@ -30,10 +30,9 @@ import {
   IconX,
 } from "./icons.jsx";
 import "./admin.css";
-// The console dressed in the "Industry" design system. Layered after
-// admin.css because it is token overrides and frame treatment only - delete
-// this one line to put the console back as it was.
-import "./industry.css";
+// The "Industry" dressing (industry.css) is deliberately NOT imported: it
+// was tried and rejected. The file stays for reference - re-adding the
+// import is all it takes - but the console keeps Fahem's own look.
 
 /**
  * Fahem Console: the admin shell.
