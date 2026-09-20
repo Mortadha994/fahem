@@ -66,7 +66,12 @@ export default function Composer({
     if (!el) return;
     // Reset before measuring or the box can only ever grow.
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    // The cap is 13.75rem, matching the stylesheet's max-height, and read from
+    // the root font size rather than hardcoded at 220px: at 200% text zoom a
+    // fixed pixel cap is half the lines it should be, and the box stops
+    // growing while the text keeps coming.
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    el.style.height = `${Math.min(el.scrollHeight, 13.75 * rem)}px`;
   }, [value]);
 
   // The server declines anything past its cap; say so here, before sending,

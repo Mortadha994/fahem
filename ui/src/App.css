@@ -1511,7 +1511,9 @@ h3 {
 .composer textarea {
   width: 100%;
   min-height: 2.25rem;
-  max-height: 220px;
+  /* rem, not px: at 200% text zoom a 220px cap is half the lines it is meant
+     to be, and the box stops growing while the text keeps coming. */
+  max-height: 13.75rem;
   padding: var(--space-1) 0;
   border: 0;
   outline: 0;
@@ -1581,12 +1583,16 @@ h3 {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* One stroke weight for every line icon in the app, whatever its size - the
+   way Lucide and Feather draw them. It used to run 1.8 / 2 / 2.2 with no
+   rule behind it, and backwards at that: the 14px icons carried the heaviest
+   relative stroke and the 20px ones the lightest. */
 .composer-attach svg {
   width: 1.15rem;
   height: 1.15rem;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1744,7 +1750,7 @@ h3 {
   height: 20px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1838,7 +1844,7 @@ h3 {
   height: 18px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -2495,7 +2501,7 @@ h3 {
   height: 20px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition:
