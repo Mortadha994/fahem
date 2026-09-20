@@ -2966,6 +2966,46 @@ a.log-target:hover {
   font-size: 0.95rem;
   font-weight: 700;
 }
+/* The reading of the numbers. Each line is a statement about what was
+   measured, so the dot is a marker and not a verdict: tone only says how
+   much attention the line is asking for, never good or bad - a quiet
+   student may simply have finished the chapter. Never colour alone, so the
+   sentence always carries the meaning on its own. */
+.ua-read {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--adm-line);
+  border-radius: 12px;
+  background: var(--adm-surface-2);
+  list-style: none;
+  font-size: 0.85rem;
+}
+.ua-note {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+.ua-note-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--adm-muted);
+  transform: translateY(1px);
+}
+.ua-note.is-up .ua-note-dot,
+.ua-note.is-good .ua-note-dot {
+  background: #1baf7a;
+}
+.ua-note.is-watch .ua-note-dot,
+.ua-note.is-down .ua-note-dot {
+  background: #eda100;
+}
+.ua-note.is-cold .ua-note-dot {
+  background: #2a78d6;
+}
 .ua-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));

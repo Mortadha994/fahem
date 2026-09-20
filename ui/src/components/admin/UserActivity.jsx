@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import * as m from "motion/react-m";
 import { errorMessage, fetchUserActivity } from "../../lib/admin.js";
+import { SPRING_ENTER, stagger } from "../../lib/motion.js";
 
 /**
  * One student's last twelve weeks, on their own page in the console.
@@ -29,6 +31,95 @@ const MODES = [
 ];
 
 const nf = new Intl.NumberFormat("fr-FR");
+
+const HALF = 4; // weeks per half when comparing recent activity to before it
+
+/**
+ * The numbers, read out loud.
+ *
+ * The charts below answer "what happened"; this answers "so what", which is
+ * the question the console is actually opened with. It is arithmetic on the
+ * series and nothing more - no model, no score - so it says what it measured
+ * and stops there. Three separate readings rather than one verdict, because
+ * they are independent: a student can be busy and still only ever take
+ * solutions, and that is exactly the case worth spotting.
+ *
+ * `tone` only ever marks something as worth a look, never as good or bad:
+ * a quiet student may have finished the chapter.
+ */
+function read(weeks, totals) {
+  const recent = weeks.slice(-HALF);
+  const before = weeks.slice(-HALF * 2, -HALF);
+  const sum = (list, key = "questions") => list.reduce((n, w) => n + w[key], 0);
+  const now = sum(recent);
+  const then = sum(before);
+  const asked = sum(weeks);
+
+  if (!asked) {
+    return [{ tone: "cold", text: "Aucune question sur les douze semaines." }];
+  }
+
+  const out = [];
+
+  // How long since the last question, counted from the end of the series.
+  let silent = 0;
+  for (let i = weeks.length - 1; i >= 0 && weeks[i].questions === 0; i -= 1) silent += 1;
+
+  if (silent >= 3) {
+    out.push({
+      tone: "cold",
+      text: `Silencieux depuis ${silent} semaines.`,
+    });
+  } else if (then > 0 && now >= then * 1.5) {
+    out.push({
+      tone: "up",
+      text: `En hausse : ${nf.format(now)} questions sur 4 semaines contre ${nf.format(then)} les 4 précédentes.`,
+    });
+  } else if (then > 0 && now <= then * 0.5) {
+    out.push({
+      tone: "down",
+      text: `En baisse : ${nf.format(now)} questions sur 4 semaines contre ${nf.format(then)} les 4 précédentes.`,
+    });
+  } else {
+    out.push({
+      tone: "flat",
+      text: `Rythme régulier : ${nf.format(now)} questions ces 4 semaines.`,
+    });
+  }
+
+  // What they do with Fahem, which is a different question from how much.
+  const full = sum(weeks, "full");
+  const guided = sum(weeks, "guided");
+  if (full / asked >= 0.6) {
+    out.push({
+      tone: "watch",
+      text: `Demande surtout la solution complète (${Math.round((full / asked) * 100)} % de ses questions).`,
+    });
+  } else if (guided / asked >= 0.5) {
+    out.push({
+      tone: "good",
+      text: `Travaille surtout en mode guidé (${Math.round((guided / asked) * 100)} % de ses questions).`,
+    });
+  }
+
+  // Volume, said as a fact rather than as a recommendation - what counts as
+  // "a lot" depends on limits only you know.
+  if (now >= 40) {
+    out.push({
+      tone: "watch",
+      text: `Usage soutenu : ${nf.format(Math.round(now / HALF))} questions par semaine en moyenne sur le dernier mois.`,
+    });
+  }
+
+  if (totals.active_days >= 1 && asked / totals.active_days >= 15) {
+    out.push({
+      tone: "watch",
+      text: `Sessions denses : environ ${Math.round(asked / totals.active_days)} questions par jour actif.`,
+    });
+  }
+
+  return out;
+}
 
 /** "8 sept." - short enough to sit under a narrow bar. */
 function weekLabel(iso) {
@@ -69,10 +160,28 @@ function Tiles({ totals, exercises }) {
 function Bars({ weeks }) {
   const peak = Math.max(1, ...weeks.map((w) => w.questions));
   return (
-    <div className="ua-chart" role="img" aria-label="Questions par semaine, par mode">
+    <m.div
+      className="ua-chart"
+      role="img"
+      aria-label="Questions par semaine, par mode"
+      variants={stagger(0.035)}
+      initial="hidden"
+      animate="show"
+    >
       {weeks.map((w) => (
         <div className="ua-col" key={w.start}>
-          <div className="ua-stack" style={{ height: `${(w.questions / peak) * 100}%` }}>
+          {/* Each column grows from the baseline in turn. scaleY rather than
+              height so it is a compositor transform, and the origin is the
+              axis, so they rise out of it instead of unfolding in place.
+              MotionConfig reducedMotion="user" in AdminLayout drops it. */}
+          <m.div
+            className="ua-stack"
+            style={{ height: `${(w.questions / peak) * 100}%`, originY: 1 }}
+            variants={{
+              hidden: { scaleY: 0, opacity: 0 },
+              show: { scaleY: 1, opacity: 1, transition: SPRING_ENTER },
+            }}
+          >
             {MODES.map(({ key, varName }) =>
               w[key] > 0 ? (
                 <span
@@ -85,7 +194,7 @@ function Bars({ weeks }) {
                 />
               ) : null
             )}
-          </div>
+          </m.div>
           {/* The whole column is the hit target, not the bar: an empty week
               has no bar to point at and still has something to say. */}
           <span className="ua-hit" tabIndex={0}>
@@ -94,9 +203,10 @@ function Bars({ weeks }) {
               {w.questions === 0 ? (
                 <i>aucune question</i>
               ) : (
-                MODES.filter((m) => w[m.key] > 0).map((m) => (
-                  <i key={m.key}>
-                    {m.label} : {nf.format(w[m.key])}
+                // Not `m`: that is the Motion namespace in this file.
+                MODES.filter((mode) => w[mode.key] > 0).map((mode) => (
+                  <i key={mode.key}>
+                    {mode.label} : {nf.format(w[mode.key])}
                   </i>
                 ))
               )}
@@ -105,7 +215,7 @@ function Bars({ weeks }) {
           </span>
         </div>
       ))}
-    </div>
+    </m.div>
   );
 }
 
@@ -135,7 +245,22 @@ export default function UserActivity({ userId }) {
   const asked = weeks.some((w) => w.questions > 0);
 
   return (
-    <section className="ua" aria-label="Activité de ce compte">
+    // A plain div, not a labelled <section>: that would be a landmark, and
+    // the Activité tab already names this region. Two names for one thing is
+    // just more to step through.
+    <div className="ua">
+      {/* The reading first, the evidence under it. Plain arithmetic on the
+          series below, labelled as such - it points at what to look at, it
+          does not decide anything. */}
+      <ul className="ua-read">
+        {read(weeks, totals).map((r) => (
+          <li key={r.text} className={`ua-note is-${r.tone}`}>
+            <span className="ua-note-dot" aria-hidden="true" />
+            {r.text}
+          </li>
+        ))}
+      </ul>
+
       <Tiles totals={totals} exercises={exercises} />
 
       <h3 className="ua-h">Questions par semaine</h3>
@@ -207,6 +332,6 @@ export default function UserActivity({ userId }) {
           prochaines questions.
         </p>
       )}
-    </section>
+    </div>
   );
 }
