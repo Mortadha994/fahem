@@ -96,7 +96,9 @@ def main() -> None:
         pin = SimpleNamespace(chunk_id="p1", label="Opérateurs", section="II", content="div mod")
         return SimpleNamespace(pinned=[pin], retrieved=[], render=lambda: "CONTEXTE div mod ←")
 
-    def fake_stream_groq(messages, priority=None, budget=None, route=None, memory_chars=0):
+    def fake_stream_groq(
+        messages, priority=None, budget=None, route=None, memory_chars=0, user_id=None
+    ):
         state["stream"].append({"messages": messages, "route": route})
         yield state["answer"]
 
