@@ -436,6 +436,15 @@ class LlmCall(Base):
     # and how much session memory went with it.
     route: Mapped[str | None] = mapped_column(String(16), nullable=True)
     memory_chars: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # The account this call was made for, where there is one: a warm-up or an
+    # admin-triggered call has none, and every row written before the column
+    # existed has none either. SET NULL on delete, so closing an account does
+    # not erase the spend it caused (see the migration).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -443,6 +452,8 @@ class LlmCall(Base):
             name="ck_llm_calls_status",
         ),
         Index("ix_llm_calls_created_at", "created_at"),
+        # How the per-student charts read this table.
+        Index("ix_llm_calls_user_id_created_at", "user_id", "created_at"),
     )
 
 

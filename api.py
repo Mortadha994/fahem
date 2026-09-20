@@ -1040,6 +1040,10 @@ def solve_stream(
                 budget=budget,
                 route=prompt_route,
                 memory_chars=len(memory_text or ""),
+                # Whose spend this was, for the per-student charts in the
+                # console. Never the admin looking at them - this is the solve
+                # path, and the user here is the student who asked.
+                user_id=user.id,
             ):
                 # Still waiting - for a slot, or on Groq's Retry-After inside
                 # it. Sent before any delta, so the student sees why nothing

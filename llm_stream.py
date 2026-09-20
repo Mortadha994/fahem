@@ -36,6 +36,7 @@ def stream_groq(
     budget: llm_queue.WaitBudget | None = None,
     route: str | None = None,
     memory_chars: int = 0,
+    user_id=None,
 ) -> Iterator[str | llm_queue.Waiting]:
     """Yield answer-content fragments as they arrive, preceded by
     llm_queue.Waiting markers while the request waits. Reasoning is discarded.
@@ -74,7 +75,11 @@ def stream_groq(
     age_after_seconds, aging_drop = llm_queue.aging_for(llm_queue.KIND_SOLVE)
     # What this solve cost, for the admin console (llm_usage).
     record = llm_usage.CallRecord(
-        model=GROQ_MODEL, kind=llm_queue.KIND_SOLVE, route=route, memory_chars=memory_chars
+        model=GROQ_MODEL,
+        kind=llm_queue.KIND_SOLVE,
+        route=route,
+        memory_chars=memory_chars,
+        user_id=user_id,
     )
     try:
         with llm_queue.SyncWaiter(

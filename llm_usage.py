@@ -22,6 +22,7 @@ import queue
 import re
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from config import LLM_USAGE_RECORDING, REDIS_URL
@@ -59,6 +60,9 @@ class CallRecord:
     # Solves only: the prompt that answered, and the session memory it carried.
     route: str | None = None
     memory_chars: int = 0
+    # The account the call was made for, when there is one. A warm-up or an
+    # admin-triggered call leaves it None, which is what the column stores.
+    user_id: uuid.UUID | None = None
     _done: bool = False
 
     def mark_admitted(self) -> None:
@@ -94,6 +98,7 @@ class CallRecord:
             "detail": self.detail,
             "route": self.route,
             "memory_chars": self.memory_chars,
+            "user_id": self.user_id,
         }
 
     def finish(self) -> None:
