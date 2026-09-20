@@ -144,8 +144,8 @@ def main() -> None:
         # --- features ---------------------------------------------------------------------
         f = client.get("/chat/features").json()
         check(
-            "features: guided and check are on, new discussions start in full mode",
-            f["guided"] is True and f["check"] is True and f["defaultMode"] == "full",
+            "features: guided and check are on, new discussions start guided",
+            f["guided"] is True and f["check"] is True and f["defaultMode"] == "guided",
             f,
         )
 

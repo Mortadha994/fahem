@@ -189,12 +189,17 @@ export default function Chat() {
     ensureLoaded(activeId).catch(() => setFailedId(activeId));
   }, [activeId, activeLoading, ensureLoaded]);
 
-  // Mode guidé / Vérifier ma réponse, as the admin set them. Off until known:
-  // a failed fetch leaves the chat as it was before these modes existed.
+  // Mode guidé / Vérifier ma réponse, as the admin set them. The starting
+  // values are what the server ships (runtime_settings.py), not the quietest
+  // possible chat: /chat/features takes a moment, and while it was answering
+  // the composer opened in Solution complète and then flipped to Mode guidé,
+  // which is the mode the student actually wanted. A send in that window went
+  // as "full" too. A failed fetch now leaves the shipped defaults standing
+  // rather than silently turning guided mode off.
   const [features, setFeatures] = useState({
-    guided: false,
-    check: false,
-    defaultMode: "full",
+    guided: true,
+    check: true,
+    defaultMode: "guided",
   });
   useEffect(() => {
     let cancelled = false;

@@ -17,6 +17,7 @@ console's "Contrôle de l'IA" panel:
   guided_mode_enabled       bool   the chat's "Mode guidé" (hints before the solution)
   check_answer_enabled      bool   the chat's "Vérifier ma réponse"
   default_chat_mode         str    "full" or "guided": a new discussion's mode
+                                   (ships "guided")
   practice_enabled          bool   the chat's "Exercice similaire"
   practice_daily_limit      int    similar exercises one student may generate per day
 
@@ -127,7 +128,10 @@ SPECS: dict[str, Spec] = {
     "attachments_enabled": Spec(True, _bool),
     "guided_mode_enabled": Spec(True, _bool),
     "check_answer_enabled": Spec(True, _bool),
-    "default_chat_mode": Spec("full", _chat_mode),
+    # Guided by default: Fahem is a tutor, and handing over the whole solution
+    # first is what a student would have got from any generic assistant. The
+    # admin can still set "full" in Contrôles, per deployment.
+    "default_chat_mode": Spec("guided", _chat_mode),
     "practice_enabled": Spec(True, _bool),
     "practice_daily_limit": Spec(10, _int_between(1, 100)),
 }
