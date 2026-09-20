@@ -20,6 +20,10 @@ curriculum text it was built on.
 
 ## What a student gets
 
+- **A landing page to try, not only to read.** Before any account, the
+  *Essaie* section runs three real chapter exercises through Fahem's three
+  modes — *La solution*, *Mode guidé*, *Ma réponse* — from canned answers:
+  no sign-in, no model call, and nothing that scrolls inside the page.
 - **Sign in with Google or an email and password.** Every screen sits behind
   the sign-in; there is no anonymous access. Email accounts get address
   verification and password reset by email.
@@ -60,6 +64,9 @@ Learning features on top of the tutor:
   Fahem leads the exercise in four steps — 🔍 Comprendre, 💡 Indice,
   🧩 Squelette (declaration table + algorithm with blanks), 🏁 Solution — with
   « Indice suivant », « Je propose ma solution » and « Voir la solution ».
+  It is now what a new discussion opens in — the student switches to the full
+  solution when they want it, and `default_chat_mode` in *Contrôles* moves
+  everyone back the other way.
 - **Vérifier ma réponse.** The student pastes (or photographs) their own
   solution and gets a verdict (Correct / Presque / À revoir), a line-by-line
   correction table, a test on an example, and the full correction folded away.
@@ -89,6 +96,13 @@ with four tabs — *En direct* (Groq load, token usage against the daily limit),
 *Contrôles* (pause the AI, budget guard, one switch per student feature, limits,
 queues), *Journal* (every admin action, with revert) and *24 heures* (usage,
 answers per prompt, students' 👍 / 👎, guided steps and verdicts).
+
+Each account carries an **Activité** tab of its own: twelve weeks of that one
+student — questions per week split by mode, the mix of modes, discussions,
+tokens and calls — each chart under a sentence saying what it reads as
+(growing, steady or fading; learning with the tutor or taking solutions off
+it). It exists to answer one question per account: does this person need more
+room, or an offer.
 
 ---
 
@@ -248,7 +262,8 @@ past work counts and it can never drift from the history.
 | **Auth** | Two ways in. Google Identity Services on the frontend, verified server-side against Google's keys; and email + password (Argon2id), with emailed verification and reset links. Either way the backend issues its own signed session in an `httpOnly` cookie (PyJWT); the Google token is never treated as a session. A closed `role` (`student` / `admin`) gates the console; the admin role is granted only out of band by `promote_admin.py`. |
 | **Rate limiting** | slowapi over Redis. Solving and attachment reading are limited **per user** (`10/minute;100/hour` by default, a shared budget); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
 | **Groq queue** | `llm_queue.py`: a Redis priority queue per model in front of every Groq call. Classifications rank ahead of solves, a solve waiting 20 s can no longer be jumped, a 429 is retried in the slot with `Retry-After`, and one request never waits more than 120 s in total. The UI gets `waiting` SSE events with the position. |
-| **AI monitoring** | `llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. |
+| **AI monitoring** | `llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. Each row also carries the `user_id` that caused it, so spend can be read per account. |
+| **Per-account activity** | `admin_user_activity.py` serves `GET /admin/users/{id}/activity`: weekly buckets (1–52, 12 by default) of questions by mode, discussions, tokens and calls, plus the exercise mix. Weeks with nothing are still emitted, so a gap reads as a gap rather than closing up. Spend only goes back to the migration that added `llm_calls.user_id`, and the response says when the meter starts instead of implying the whole history is there. |
 | **Landing page** | Updates itself: `public_overview.py` serves `GET /public/overview` (no sign-in, cached 60 s) — every chapter with its topics, exercise count and course-extract count, the totals, and feature switches — and `Landing.jsx` builds its numbers, programme cards, scope badge, chapter FAQ, syntax strip and photo claims from it. Publishing a chapter or adding exercises in the console shows up there within a minute; only a new *kind* of feature needs a card in `FEATURES`. |
 | **Chat history** | `chat_history.py` stores each account's discussions; every route is scoped to the caller's own rows. The list arrives light and a discussion loads in full when opened; saves upsert messages by id and carry a version (a stale save is a 409, merged and retried); the server saves each finished exchange itself. |
 | **Live controls** | `runtime_settings.py` (cached, validated) + `ai_control.py` + `admin_controls.py`: pause, daily budget guard, per-student limit, queue timeout, retries, and a switch per student feature — applied within seconds, each change written to `admin_audit` with who made it, revertible. |
@@ -293,6 +308,7 @@ erDiagram
         int rating "-1 | 1"
     }
     LLM_CALLS {
+        uuid user_id "whose call — nullable, from a2c7e4b9d631"
         string kind
         string route
         int tokens
@@ -330,6 +346,7 @@ erDiagram
 | `GET /progress` | cookie | Per chapter: each exercise's status, the next one, recent checks, recurring mistakes |
 | `/admin/*` · `/admin/chapters/*` | cookie + admin | The console: users, stats, and the chapter upload/publish workflow |
 | `GET /admin/monitoring` | cookie + admin | Groq load and usage, chat activity, routes, feedback, learning stats (Surveillance IA) |
+| `GET /admin/users/{id}/activity` | cookie + admin | One account's weekly activity and spend (`?weeks=1…52`, 12 by default) |
 | `GET` / `PUT /admin/controls` · `POST /admin/controls/queues/reset` | cookie + admin | Live AI controls |
 | `GET /admin/audit` · `POST /admin/audit/{id}/revert` | cookie + admin | The action log, and putting a settings change back |
 
@@ -650,7 +667,9 @@ than from a redesign. It was built out step by step against
   finished answer (not the token stream), WAI-ARIA tabs with arrow-key
   navigation, AA contrast on the accent in both themes, a designed double
   focus ring, and `prefers-reduced-motion` respected everywhere something
-  moves.
+  moves. Every signed-in screen opens on a skip link to the content, shown on
+  plain `:focus` — `:focus-visible` is not reliably raised when a link is
+  focused from script, which hid it the first time.
 - **Touch targets.** Every control has a 44px minimum hit area.
 - **Safe deletion.** Deleting a discussion asks *Supprimer ?* inline first;
   blur or Escape backs out.
@@ -690,6 +709,7 @@ password_auth.py     /auth: email+password signup/login, verification, reset
 admin.py             /admin: role gate, stats, user management
 admin_chapters.py    /admin/chapters: upload → extract → review → publish
 admin_monitoring.py  /admin/monitoring: Groq load, usage, chat activity
+admin_user_activity.py  /admin/users/{id}/activity: one account, week by week
 chat_history.py      /chat: discussions, feedback, features
 session_memory.py    what a discussion remembers, compacted for the prompt
 answer_check.py      notation mistakes in a student's own solution; verdict parsing
@@ -721,6 +741,8 @@ rag_store.py         embedding + Qdrant storage
 extract_chapter.py   PDF → tagged chunks          (offline tool)
 patch_chunks.py      pinned corrections           (offline tool)
 promote_admin.py     grant/revoke the admin role  (offline tool)
+seed_demo_activity.py  a demo account with twelve weeks of activity, for
+                     the charts (--tokens, --remove)   (offline tool)
 docker-compose.share.yml / share.ps1        free test link (Cloudflare quick tunnel)
 docker-compose.ngrok.yml / share-ngrok.ps1  fixed test link with Google sign-in (ngrok)
 ```
@@ -736,6 +758,7 @@ components/          AppLayout, AppSidebar, Message, Composer, Markdown,
                      AlgoCode, GroundingStrip, HistoryPanel, ThemeToggle,
                      SignInScreen, PasswordAuthForm, GoogleSignIn,
                      AuthShell, ProfileSetup, PythonRunner, admin/*
+components/landing/  Hero.jsx, Bento.jsx and landing.css — the signed-out page
 components/learning/ Learning.jsx: step rail, verdict card, confetti, challenge card
 components/ui/       Button, Badge, Alert, Skeleton, EmptyState
 lib/                 api.js (SSE client + attachment upload), auth.js,
@@ -744,6 +767,7 @@ lib/                 api.js (SSE client + attachment upload), auth.js,
                      alignAlgoTable.js, remarkAlgoTable.js, hasRealSolution.js,
                      learning.js (guided state, verdicts), pythonRunner.js (Pyodide worker),
                      progressApi.js, algoNotation.js
+data/                demoExercises.js: the landing demo's canned answers
 grammar/             algoPseudocode.json (TextMate grammar), algoThemes.js
 ```
 
@@ -786,10 +810,9 @@ older imports elsewhere keep working.
 | **Phase 9** | Uploaded chapters — an admin upload → extract → review → publish workflow (9b: Markdown-authored chapters). |
 | **PR #11** | Solve from a photo or PDF; `CODE` / `QUESTION` gatekeeper routes and line-by-line answers; a slimmed sign-in screen; a light/dark toggle; the student profile (niveau + section) that scopes the chapter list and steers the tutor's tone; per-account chat history. |
 | **PR #12** | The Groq priority queue (phases A and B): `users.plan`, a Redis queue per model, 429 retry inside the slot. |
-| **Next PR** | Queue follow-ups (one wait deadline, gatekeeper `waiting` events, classifications ahead of solves, aging); the gatekeeper fix (no raw reasoning, identity and own-level questions answered); Surveillance IA; the free share modes (Cloudflare, ngrok with Google sign-in). Chapter 2's 12 exercises were added through the console (database, not code). |
-
-| **PR #13** | Surveillance IA KPIs; live AI controls with an action log and revert; the self-updating landing page; bottom toasts; `div` / `mod` guaranteed in the Algorithme column. |
-| **PR #14** | Session memory and the `FOLLOW_UP` route; the chat audit (per-discussion stop, light history, versioned and server-side saves, feedback, edit / regenerate); Mode guidé; Vérifier ma réponse; Exercice similaire; ▶ Exécuter le Python; Ma progression; the redesigned Contrôles page with a separate Journal tab; Motion throughout. Audit: [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md). |
+| **PR #13** | Queue follow-ups (one wait deadline, gatekeeper `waiting` events, classifications ahead of solves, aging); the gatekeeper fix (no raw reasoning, identity and own-level questions answered); Surveillance IA; the free share modes (Cloudflare, ngrok with Google sign-in). Chapter 2's 12 exercises were added through the console (database, not code). |
+| **PR #14** | Surveillance IA KPIs; live AI controls with an action log and revert; the self-updating landing page; bottom toasts; `div` / `mod` guaranteed in the Algorithme column. Session memory and the `FOLLOW_UP` route; the chat audit (per-discussion stop, light history, versioned and server-side saves, feedback, edit / regenerate); Mode guidé; Vérifier ma réponse; Exercice similaire; ▶ Exécuter le Python; Ma progression; the redesigned Contrôles page with a separate Journal tab; Motion throughout. Audit: [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md). |
+| **PR #15** | The audit's first findings closed (the learning modes' `exercise` field through the gatekeeper, « Réussi » only when the check came first, the budget guard on, heading order and live regions, the student bundle down to 695 kB). A landing page rebuilt around a demo anyone can play without an account. The chat's four strips of explanation folded into one line under an answer and one under the composer, and a skip link ahead of both. **Mode guidé as the default.** `llm_calls.user_id`, and an **Activité** tab per account: twelve weeks of charts to decide quotas and offers on. |
 
 ## Status and what's next
 
@@ -801,9 +824,10 @@ from a share link (see *Sharing a test link*).
 Next, roughly in order (details and more ideas in
 [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md)):
 
-- **Close the audit's first findings** — pass the `exercise` field of the
-  learning modes through the gatekeeper's checks; count « Réussi » only when
-  the check comes before the solution was shown; turn the daily budget guard on.
+- **Act on what the Activité tab shows** — the per-account charts are in; the
+  decision they were built for is still made by hand. `users.plan` and the
+  per-student solve limit are the levers already wired for it, so the missing
+  piece is the policy, not the plumbing.
 - **Ready-made answers for catalogue exercises** — generate hints, skeletons
   and solutions once, serve them instantly, and spare the daily Groq budget.
 - **Make practice a game** — an animated execution trace, Parsons puzzles, a bug
