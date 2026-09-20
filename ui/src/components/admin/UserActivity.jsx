@@ -49,12 +49,19 @@ const HALF = 4; // weeks per half when comparing recent activity to before it
  * a quiet student may have finished the chapter.
  */
 function read(weeks, totals) {
-  const recent = weeks.slice(-HALF);
-  const before = weeks.slice(-HALF * 2, -HALF);
   const sum = (list, key = "questions") => list.reduce((n, w) => n + w[key], 0);
-  const now = sum(recent);
-  const then = sum(before);
+  const now = sum(weeks.slice(-HALF));
   const asked = sum(weeks);
+  // The direction is taken across the whole period, not from the last four
+  // weeks against the four before them. A student who climbed from three
+  // questions a week to twenty-five did so gradually, and block-against-block
+  // that reads as flat - it was 71 against 64 on the first account this ran
+  // on, while the two halves were 109 against 45. The tile's delta still
+  // compares the recent blocks, which is a different and shorter question:
+  // momentum now, rather than where the term went.
+  const half = Math.floor(weeks.length / 2);
+  const early = sum(weeks.slice(0, half));
+  const late = sum(weeks.slice(-half));
 
   if (!asked) {
     return [{ tone: "cold", text: "Aucune question sur les douze semaines." }];
@@ -71,15 +78,15 @@ function read(weeks, totals) {
       tone: "cold",
       text: `Silencieux depuis ${silent} semaines.`,
     });
-  } else if (then > 0 && now >= then * 1.5) {
+  } else if (early > 0 && late >= early * 1.4) {
     out.push({
       tone: "up",
-      text: `En hausse : ${nf.format(now)} questions sur 4 semaines contre ${nf.format(then)} les 4 précédentes.`,
+      text: `En progression : ${nf.format(late)} questions sur les 6 dernières semaines contre ${nf.format(early)} les 6 premières.`,
     });
-  } else if (then > 0 && now <= then * 0.5) {
+  } else if (early > 0 && late <= early * 0.6) {
     out.push({
       tone: "down",
-      text: `En baisse : ${nf.format(now)} questions sur 4 semaines contre ${nf.format(then)} les 4 précédentes.`,
+      text: `En retrait : ${nf.format(late)} questions sur les 6 dernières semaines contre ${nf.format(early)} les 6 premières.`,
     });
   } else {
     out.push({
