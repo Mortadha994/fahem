@@ -60,6 +60,8 @@ const FORM_KEYS = [
   "default_chat_mode",
   "practice_enabled",
   "practice_daily_limit",
+  "solve_rate_limit_paid",
+  "practice_daily_limit_paid",
 ];
 
 function splitLimit(text) {
@@ -69,6 +71,7 @@ function splitLimit(text) {
 
 function formFrom(settings, which = "value") {
   const limit = splitLimit(settings.solve_rate_limit[which]);
+  const paidLimit = splitLimit(settings.solve_rate_limit_paid[which]);
   return {
     pauseMessage: settings.ai_pause_message.value,
     perMinute: limit?.perMinute ?? "",
@@ -82,6 +85,13 @@ function formFrom(settings, which = "value") {
     defaultMode: settings.default_chat_mode[which],
     practice: settings.practice_enabled[which],
     practiceLimit: String(settings.practice_daily_limit[which]),
+    // The subscriber tier. Same shape as the two above, read from its own
+    // settings rather than derived, so what an admin sees is the number a
+    // paying student actually gets.
+    paidPerMinute: paidLimit?.perMinute ?? "",
+    paidPerHour: paidLimit?.perHour ?? "",
+    rawPaidLimit: paidLimit ? null : settings.solve_rate_limit_paid[which],
+    paidPracticeLimit: String(settings.practice_daily_limit_paid[which]),
   };
 }
 
@@ -97,6 +107,10 @@ function formValues(form) {
     default_chat_mode: form.guided ? form.defaultMode : "full",
     practice_enabled: form.practice,
     practice_daily_limit: Number(form.practiceLimit),
+    solve_rate_limit_paid:
+      form.rawPaidLimit ??
+      `${Number(form.paidPerMinute)}/minute;${Number(form.paidPerHour)}/hour`,
+    practice_daily_limit_paid: Number(form.paidPracticeLimit),
   };
 }
 
@@ -481,6 +495,18 @@ export default function AiControls({ onChanged }) {
                   onChange={(v) => update({ practiceLimit: v })}
                 />
               </div>
+              <div className="cx-sub">
+                <span className="cx-sub-label">Par abonné et par jour</span>
+                <Stepper
+                  label="Exercices similaires par abonné et par jour"
+                  value={form.paidPracticeLimit}
+                  min={1}
+                  max={500}
+                  suffix="/ jour"
+                  changed={changed("practice_daily_limit_paid")}
+                  onChange={(v) => update({ paidPracticeLimit: v })}
+                />
+              </div>
             </SwitchRow>
           </div>
           <SettingMeta
@@ -492,6 +518,7 @@ export default function AiControls({ onChanged }) {
               "default_chat_mode",
               "practice_enabled",
               "practice_daily_limit",
+              "practice_daily_limit_paid",
             ]}
           />
         </m.section>
@@ -548,6 +575,48 @@ export default function AiControls({ onChanged }) {
                   </LimitField>
                 </>
               )}
+              {form.rawPaidLimit !== null ? (
+                <label className="cx-limit is-wide">
+                  <span className="cx-limit-title">Limite par abonné</span>
+                  <input
+                    className="adm-input"
+                    value={form.rawPaidLimit}
+                    onChange={(e) => update({ rawPaidLimit: e.target.value })}
+                  />
+                </label>
+              ) : (
+                <>
+                  <LimitField
+                    title="Questions par minute"
+                    hint="par abonné"
+                    setting={settings.solve_rate_limit_paid}
+                    settingKey="solve_rate_limit_paid"
+                    changed={changed("solve_rate_limit_paid")}
+                  >
+                    <Stepper
+                      label="Questions par minute, par abonné"
+                      value={form.paidPerMinute}
+                      min={1}
+                      max={1000}
+                      onChange={(v) => update({ paidPerMinute: v })}
+                    />
+                  </LimitField>
+                  <LimitField
+                    title="Questions par heure"
+                    hint="par abonné"
+                    changed={changed("solve_rate_limit_paid")}
+                  >
+                    <Stepper
+                      label="Questions par heure, par abonné"
+                      value={form.paidPerHour}
+                      min={1}
+                      max={10000}
+                      step={10}
+                      onChange={(v) => update({ paidPerHour: v })}
+                    />
+                  </LimitField>
+                </>
+              )}
               <LimitField
                 title="Attente max"
                 hint="dans la file, en secondes"
@@ -585,7 +654,12 @@ export default function AiControls({ onChanged }) {
             </div>
             <SettingMeta
               settings={settings}
-              keys={["solve_rate_limit", "queue_timeout_seconds", "retry_max"]}
+              keys={[
+                "solve_rate_limit",
+                "solve_rate_limit_paid",
+                "queue_timeout_seconds",
+                "retry_max",
+              ]}
             />
           </m.section>
 

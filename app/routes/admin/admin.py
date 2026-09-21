@@ -77,7 +77,12 @@ class AdminUser(BaseModel):
     sessions_valid_after: datetime | None
     niveau: str | None = None
     section: str | None = None
+    # `plan` is what is stored; `current_plan` is what applies today, which
+    # differ once plan_until has passed. The console shows both, so an admin
+    # can tell "free" from "paid, lapsed on 3 March".
     plan: str = "free"
+    plan_until: datetime | None = None
+    current_plan: str = "free"
     suspended_at: datetime | None = None
     suspended_reason: str | None = None
     solve_rate_limit: str | None = None
@@ -97,6 +102,8 @@ class AdminUser(BaseModel):
             niveau=user.niveau,
             section=user.section,
             plan=user.plan,
+            plan_until=user.plan_until,
+            current_plan=user.current_plan,
             suspended_at=user.suspended_at,
             suspended_reason=user.suspended_reason,
             solve_rate_limit=user.solve_rate_limit,
@@ -161,7 +168,11 @@ class UpdateUser(BaseModel):
     # leaves it unchanged.
     niveau: str | None = None
     section: str | None = None
+    # plan_until: when the subscription lapses. An explicit null means "no end
+    # date"; absent leaves it unchanged, so setting the plan alone does not
+    # silently clear a date an admin set earlier.
     plan: str | None = None
+    plan_until: datetime | None = None
     solve_rate_limit: str | None = None
 
     @field_validator("display_name")
@@ -313,6 +324,20 @@ def update_user(
             )
     if "plan" in sent and payload.plan not in PLANS:
         raise HTTPException(status_code=422, detail=f"Offre inconnue ({', '.join(PLANS)}).")
+    if "plan_until" in sent and payload.plan_until is not None:
+        end = payload.plan_until
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        # A date already in the past would store a subscription that is over
+        # before the request returns - almost always a typo, and it would read
+        # in the console as "paid" while behaving as free. Ending one now is
+        # what setting the plan back to free is for.
+        if end <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=422,
+                detail="La date de fin doit être dans le futur. Pour arrêter "
+                "l'abonnement maintenant, repasse l'offre à « gratuite ».",
+            )
     personal_limit = None
     if "solve_rate_limit" in sent and (payload.solve_rate_limit or "").strip():
         try:
@@ -332,6 +357,8 @@ def update_user(
             user.section = payload.section
         if "plan" in sent:
             user.plan = payload.plan
+        if "plan_until" in sent:
+            user.plan_until = payload.plan_until
         if "solve_rate_limit" in sent:
             user.solve_rate_limit = personal_limit
         s.flush()
@@ -345,7 +372,11 @@ def update_user(
     }
     if changes:
         runtime_settings.audit(me.email, "user.update", email, changes, target_id=str(user_id))
-    if "solve_rate_limit" in changes:
+    # The plan and its end date decide the limit now, not just the personal
+    # override, and ai_control caches all three together - so any of them
+    # changing has to drop the entry, or the account keeps its old allowance
+    # until the cache expires.
+    if changes.keys() & {"solve_rate_limit", "plan", "plan_until"}:
         ai_control.forget_user_limit(user_id)
     return after
 

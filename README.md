@@ -97,6 +97,13 @@ with four tabs — *En direct* (Groq load, token usage against the daily limit),
 queues), *Journal* (every admin action, with revert) and *24 heures* (usage,
 answers per prompt, students' 👍 / 👎, guided steps and verdicts).
 
+An account can carry a **subscription**: an admin sets it on the account's own
+page, with an end date or none, and a subscriber gets its own request rate and
+its own daily cap on generated exercises — both set in *Contrôles* beside the
+free ones — as well as priority in the Groq queue. Nothing is charged: the
+plan is a flag an admin flips, and it lapses on its date without any job
+having to run. A limit typed on one account still overrides both tiers.
+
 Each account carries an **Activité** tab of its own: twelve weeks of that one
 student — questions per week split by mode, the mix of modes, discussions,
 tokens and calls — each chart under a sentence saying what it reads as
@@ -266,7 +273,8 @@ past work counts and it can never drift from the history.
 | **Per-account activity** | `app/routes/admin/admin_user_activity.py` serves `GET /admin/users/{id}/activity`: weekly buckets (1–52, 12 by default) of questions by mode, discussions, tokens and calls, plus the exercise mix. Weeks with nothing are still emitted, so a gap reads as a gap rather than closing up. Spend only goes back to the migration that added `llm_calls.user_id`, and the response says when the meter starts instead of implying the whole history is there. |
 | **Landing page** | Updates itself: `app/routes/public_overview.py` serves `GET /public/overview` (no sign-in, cached 60 s) — every chapter with its topics, exercise count and course-extract count, the totals, and feature switches — and `Landing.jsx` builds its numbers, programme cards, scope badge, chapter FAQ, syntax strip and photo claims from it. Publishing a chapter or adding exercises in the console shows up there within a minute; only a new *kind* of feature needs a card in `FEATURES`. |
 | **Chat history** | `app/routes/chat_history.py` stores each account's discussions; every route is scoped to the caller's own rows. The list arrives light and a discussion loads in full when opened; saves upsert messages by id and carry a version (a stale save is a 409, merged and retried); the server saves each finished exchange itself. |
-| **Live controls** | `app/core/runtime_settings.py` (cached, validated) + `app/llm/ai_control.py` + `app/routes/admin/admin_controls.py`: pause, daily budget guard, per-student limit, queue timeout, retries, and a switch per student feature — applied within seconds, each change written to `admin_audit` with who made it, revertible. |
+| **Live controls** | `app/core/runtime_settings.py` (cached, validated) + `app/llm/ai_control.py` + `app/routes/admin/admin_controls.py`: pause, daily budget guard, per-student limit (free and subscriber), queue timeout, retries, and a switch per student feature — applied within seconds, each change written to `admin_audit` with who made it, revertible. |
+| **Subscriptions** | `users.plan` + `users.plan_until`, and one rule — `app/core/models.effective_plan` — that every consumer goes through: the queue priority, the request rate (`ai_control.solve_rate_limit`) and the daily practice cap (`app/main.practice_daily_limit`). Lapsing is decided on each read, so no job downgrades rows and a broken job cannot leave someone paying for nothing. |
 | **Progress** | `app/routes/progress.py` derives each exercise's status, the next exercise, the latest checks and the recurring mistakes from the chat tables. |
 | **Chapters** | `app/routes/chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `app/routes/admin/admin_chapters.py` + `app/rag/chapter_store.py` back the admin upload/publish workflow; `app/rag/course_markdown.py` reads a Markdown-authored chapter. |
 
@@ -287,7 +295,8 @@ erDiagram
         string role "student | admin"
         string niveau
         string section
-        string plan
+        string plan "free | paid"
+        datetime plan_until "when the subscription lapses; null = no end"
         string solve_rate_limit "personal override"
     }
     CHAT_SESSIONS {
@@ -623,6 +632,7 @@ docker compose --env-file env/.env --project-directory . -f docker/docker-compos
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_llm_usage  # per-call recording and /admin/monitoring
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_public_overview  # what the landing page is told
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_admin_controls   # live controls, audit log, revert
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_subscription   # the plan, its end date, and the limits it buys
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_algo_notation    # div / mod in the Algorithme column
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_session_memory   # compaction, prompts, follow-ups (--live calls the model)
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_chat_flow        # light list, versioned saves, server save, feedback
@@ -919,10 +929,12 @@ from a share link (see *Sharing a test link*).
 Next, roughly in order (details and more ideas in
 [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md)):
 
-- **Act on what the Activité tab shows** — the per-account charts are in; the
-  decision they were built for is still made by hand. `users.plan` and the
-  per-student solve limit are the levers already wired for it, so the missing
-  piece is the policy, not the plumbing.
+- **Act on what the Activité tab shows** — the per-account charts are in, and
+  the levers are now wired end to end: an admin sets a subscription (with an
+  end date) on an account, and that account gets its own request rate and
+  daily practice cap. What is still missing is payment: nothing charges
+  anyone, so the plan is a flag an admin flips after being paid some other
+  way.
 - **Ready-made answers for catalogue exercises** — generate hints, skeletons
   and solutions once, serve them instantly, and spare the daily Groq budget.
 - **Make practice a game** — an animated execution trace, Parsons puzzles, a bug

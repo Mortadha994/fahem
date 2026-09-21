@@ -180,7 +180,10 @@ export default function AdminUsers() {
                   {u.suspended_at && (
                     <span className="adm-tag adm-tag-danger">Suspendu</span>
                   )}
-                  {u.plan === "paid" && (
+                  {/* current_plan, not plan: a lapsed subscription is not a
+                      paying account, and showing it as one here would make
+                      the list disagree with the account's own page. */}
+                  {u.current_plan === "paid" && (
                     <span className="adm-tag adm-tag-ok">Payant</span>
                   )}
                 </td>

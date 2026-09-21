@@ -10,8 +10,11 @@ effect, before any model call:
                          before the rate limiter and a refused request does not
                          use up the student's quota.
   require_attachments    Same, for photo / PDF reading switched off.
-  solve_rate_limit(key)  slowapi's limit provider: the account's personal limit
-                         if an admin set one, else the global one - both live.
+  solve_rate_limit(key)  slowapi's limit provider: the account's personal
+                         limit if an admin set one, else the subscriber limit
+                         if the plan is running, else the global one - all live.
+  plan_of(user_id)       the account's plan as it applies now, from the same
+                         cached row.
 
 The 503 body is {"detail": {"code": ..., "message": ...}}; the chat shows the
 message as it is.
@@ -150,28 +153,55 @@ def retry_max() -> int:
 
 # --- rate limit -------------------------------------------------------------------------
 
-_user_limits: dict[str, tuple[float, str | None]] = {}
+# user id -> (read at, personal limit, plan, plan_until). The plan travels
+# with the limit because resolving one needs the other and they come from the
+# same row: two caches would mean two reads, and could disagree for a moment
+# after an admin changes both at once.
+_user_limits: dict[str, tuple[float, str | None, str | None, datetime | None]] = {}
 _user_lock = threading.Lock()
 
 
-def _personal_limit(user_id: str) -> str | None:
+def _account_limits(user_id: str) -> tuple[str | None, str | None, datetime | None]:
+    """(personal limit, plan, plan_until) for one account, cached briefly.
+
+    A plan that lapses between two reads keeps the old answer for up to
+    USER_LIMIT_CACHE_SECONDS. That is the same staleness the personal limit
+    has always had, and it errs by a few seconds of generosity at the moment a
+    subscription ends rather than by refusing a request that should pass.
+    """
     now = time.monotonic()
     with _user_lock:
         hit = _user_limits.get(user_id)
         if hit and now - hit[0] < USER_LIMIT_CACHE_SECONDS:
-            return hit[1]
-    value = None
+            return hit[1], hit[2], hit[3]
+    limit: str | None = None
+    plan: str | None = None
+    plan_until: datetime | None = None
     try:
         from app.core.db import session_scope
         from app.core.models import User
 
         with session_scope() as s:
-            value = s.scalar(select(User.solve_rate_limit).where(User.id == uuid.UUID(user_id)))
+            row = s.execute(
+                select(User.solve_rate_limit, User.plan, User.plan_until).where(
+                    User.id == uuid.UUID(user_id)
+                )
+            ).first()
+        if row is not None:
+            limit, plan, plan_until = row
     except Exception:
-        log.warning("could not read the personal limit of %s", user_id, exc_info=True)
+        log.warning("could not read the account limits of %s", user_id, exc_info=True)
     with _user_lock:
-        _user_limits[user_id] = (now, value)
-    return value
+        _user_limits[user_id] = (now, limit, plan, plan_until)
+    return limit, plan, plan_until
+
+
+def plan_of(user_id: str) -> str:
+    """The account's plan as it applies right now, through the same cache."""
+    from app.core.models import effective_plan
+
+    _, plan, plan_until = _account_limits(user_id)
+    return effective_plan(plan, plan_until)
 
 
 def forget_user_limit(user_id: uuid.UUID | str) -> None:
@@ -180,9 +210,25 @@ def forget_user_limit(user_id: uuid.UUID | str) -> None:
 
 
 def solve_rate_limit(key: str) -> str:
-    """slowapi limit provider. `key` is ratelimit.user_key's "user:<id>"."""
+    """slowapi limit provider. `key` is ratelimit.user_key's "user:<id>".
+
+    Three sources, most specific first:
+
+      1. a personal limit an admin typed on that one account;
+      2. solve_rate_limit_paid, if the subscription is running today;
+      3. solve_rate_limit, the shared one.
+
+    The personal limit wins over the plan deliberately: it is the escape hatch
+    for the account that needs something the tiers do not describe - a demo
+    account, a student to throttle - and a plan change must not silently undo
+    what an admin set by hand.
+    """
     if key.startswith("user:"):
-        personal = _personal_limit(key.removeprefix("user:"))
+        from app.core.models import PLAN_PAID, effective_plan
+
+        personal, plan, plan_until = _account_limits(key.removeprefix("user:"))
         if personal:
             return personal
+        if effective_plan(plan, plan_until) == PLAN_PAID:
+            return runtime_settings.get("solve_rate_limit_paid")
     return runtime_settings.get("solve_rate_limit")

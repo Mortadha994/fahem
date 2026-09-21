@@ -40,6 +40,27 @@ const SECTIONS_BY_NIVEAU = {
 };
 const LIMIT_RE = /^\s*(\d+)\s*\/\s*minute\s*;\s*(\d+)\s*\/\s*hour\s*$/i;
 
+/**
+ * The subscription in words.
+ *
+ * `plan` is what is stored, `current_plan` what applies today; they differ
+ * once the end date has passed. Saying only "Payante" for a lapsed account
+ * would explain neither why the student is being throttled nor what to do
+ * about it, so the lapsed case names its date.
+ */
+function planLabel(u) {
+  const day = u.plan_until
+    ? new Date(u.plan_until).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+  if (u.plan !== "paid") return "Gratuite";
+  if (u.current_plan !== "paid") return day ? `Expirée le ${day}` : "Expirée";
+  return day ? `Payante jusqu'au ${day}` : "Payante (sans date de fin)";
+}
+
 /** The editable account fields, as the form holds them. */
 function accountForm(u) {
   const limit = LIMIT_RE.exec(u.solve_rate_limit ?? "");
@@ -47,6 +68,9 @@ function accountForm(u) {
     niveau: u.niveau ?? "",
     section: u.section ?? "",
     plan: u.plan ?? "free",
+    // <input type="date"> wants YYYY-MM-DD; the API sends an ISO instant.
+    // Empty means "no end date", which is what the backend reads as null.
+    planUntil: u.plan_until ? u.plan_until.slice(0, 10) : "",
     customLimit: Boolean(u.solve_rate_limit),
     perMinute: limit?.[1] ?? "5",
     perHour: limit?.[2] ?? "50",
@@ -64,6 +88,12 @@ export default function AdminUserDetail() {
   const { user: me, onUnauthorized } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // The earliest end date the backend accepts: it refuses anything already
+  // past. Read when the account loads rather than while rendering - the clock
+  // is an external system, and a value read during render changes on its own
+  // between two renders.
+  const [minPlanUntil, setMinPlanUntil] = useState("");
 
   const [account, setAccount] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -97,6 +127,7 @@ export default function AdminUserDetail() {
         if (cancelled) return;
         setAccount(u);
         setControl(accountForm(u));
+        setMinPlanUntil(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
         setForm({
           display_name: u.display_name ?? "",
           email_verified: u.email_verified,
@@ -163,6 +194,8 @@ export default function AdminUserDetail() {
     (control.niveau !== (account.niveau ?? "") ||
       control.section !== (account.section ?? "") ||
       control.plan !== (account.plan ?? "free") ||
+      control.planUntil !==
+        (account.plan_until ? account.plan_until.slice(0, 10) : "") ||
       control.customLimit !== Boolean(account.solve_rate_limit) ||
       (control.customLimit &&
         `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour` !==
@@ -178,6 +211,15 @@ export default function AdminUserDetail() {
     setBusy("account");
     const body = {
       plan: control.plan,
+      // End of the chosen day, not its midnight: a subscription "until the
+      // 3rd" that stopped working at 00:00 on the 3rd would read as a bug to
+      // whoever set it. Free accounts send null - an end date without a
+      // subscription means nothing, and keeping one would resurrect itself
+      // the next time the plan is set back to paid.
+      plan_until:
+        control.plan === "paid" && control.planUntil
+          ? new Date(`${control.planUntil}T23:59:59`).toISOString()
+          : null,
       solve_rate_limit: control.customLimit
         ? `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour`
         : null,
@@ -291,8 +333,11 @@ export default function AdminUserDetail() {
             {account.suspended_at && (
               <span className="adm-tag adm-tag-danger">Suspendu</span>
             )}
-            {account.plan === "paid" && (
+            {account.current_plan === "paid" && (
               <span className="adm-tag adm-tag-ok">Payant</span>
+            )}
+            {account.plan === "paid" && account.current_plan !== "paid" && (
+              <span className="adm-tag adm-tag-dim">Abonnement expiré</span>
             )}
           </p>
 
@@ -308,7 +353,7 @@ export default function AdminUserDetail() {
               </div>
               <div>
                 <dt>Offre</dt>
-                <dd>{account.plan === "paid" ? "Payante" : "Gratuite"}</dd>
+                <dd>{planLabel(account)}</dd>
               </div>
               <div>
                 <dt>Limite</dt>
@@ -453,10 +498,30 @@ export default function AdminUserDetail() {
                           >
                             <option value="free">Gratuite</option>
                             <option value="paid">
-                              Payante (prioritaire dans la file)
+                              Payante (prioritaire, limites élargies)
                             </option>
                           </select>
                         </label>
+                        {control.plan === "paid" && (
+                          <label className="adm-field">
+                            <span>Fin de l'abonnement</span>
+                            <input
+                              type="date"
+                              className="adm-input"
+                              value={control.planUntil}
+                              // Today is already too late: the backend refuses
+                              // a date that has passed, since it would store a
+                              // subscription that is over on arrival.
+                              min={minPlanUntil}
+                              onChange={(e) =>
+                                setControl((c) => ({ ...c, planUntil: e.target.value }))
+                              }
+                            />
+                            <small className="adm-hint">
+                              Laisser vide : sans date de fin.
+                            </small>
+                          </label>
+                        )}
                       </div>
 
                       <fieldset className="ctl-field">

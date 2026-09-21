@@ -23,7 +23,7 @@ Alembic keeps its own directory because it insists on one.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -67,6 +67,32 @@ ROLES = (ROLE_STUDENT, ROLE_ADMIN)
 PLAN_FREE = "free"
 PLAN_PAID = "paid"
 PLANS = (PLAN_FREE, PLAN_PAID)
+
+
+def effective_plan(plan: str | None, plan_until: datetime | None) -> str:
+    """What the account's plan is *right now*.
+
+    A subscription can carry an end date (`users.plan_until`). It is not
+    enforced by a job that downgrades rows at midnight - nothing would then
+    hold while that job is broken or has not run yet. It is decided here,
+    every time the plan is read, so an expired subscription behaves exactly
+    like a free one from the first request after it lapses.
+
+    `plan_until` NULL means "no end date": a paid account stays paid until an
+    admin says otherwise. A naive datetime is read as UTC, because that is
+    what the column stores.
+
+    Everything that changes behaviour on the plan - the queue priority, both
+    limits - goes through this, so "paid" cannot come to mean two different
+    things in two different files.
+    """
+    if plan != PLAN_PAID:
+        return PLAN_FREE
+    if plan_until is None:
+        return PLAN_PAID
+    if plan_until.tzinfo is None:
+        plan_until = plan_until.replace(tzinfo=timezone.utc)
+    return PLAN_PAID if plan_until > datetime.now(timezone.utc) else PLAN_FREE
 
 
 # --- student profile ------------------------------------------------------------
@@ -136,9 +162,18 @@ class User(Base):
     # The subscription tier (see PLANS). Defaults to free in the database as
     # well as here, for the same reason the role does: a row written by
     # anything that does not know about plans must land on the unprivileged
-    # value. Read by llm_queue.priority_for; not enforced anywhere yet.
+    # value.
     plan: Mapped[str] = mapped_column(
         String(16), nullable=False, default=PLAN_FREE, server_default=PLAN_FREE
+    )
+    # When the subscription lapses. NULL means it does not - an admin ends it
+    # by hand. Nothing downgrades the row when this passes: `effective_plan`
+    # decides on every read, so a lapsed subscription behaves as free from the
+    # next request whether or not any job ran. Meaningless while plan is free,
+    # and left alone rather than cleared, so re-subscribing an account shows
+    # the admin what the previous end date was.
+    plan_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Set when the address owner clicks Fahem's verification link, or completes
@@ -184,6 +219,16 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def current_plan(self) -> str:
+        """The plan as it applies right now - see `effective_plan`.
+
+        Named current_plan rather than shadowing `plan`, so that the stored
+        column and the decision made from it stay separately readable: the
+        admin console shows both ("Payante, jusqu'au 3 mars" vs "expirée").
+        """
+        return effective_plan(self.plan, self.plan_until)
 
     __table_args__ = (
         # Defense in depth: the application never creates a user with no way to

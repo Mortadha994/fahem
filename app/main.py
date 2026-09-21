@@ -38,6 +38,7 @@ from slowapi.errors import RateLimitExceeded
 from app.auth import auth, password_auth
 from app.core import models, ratelimit, runtime_settings
 from app.core.config import CORS_ORIGINS
+from app.core.models import PLAN_FREE, PLAN_PAID
 from app.grading import algo_notation, answer_check, session_memory
 from app.grading.checker import check_constraints
 from app.llm import ai_control, gatekeeper, llm_queue
@@ -386,7 +387,8 @@ def solve(
     meta_chapitre, meta_topics = _meta_scope(payload)
     # Queue priority from the account's plan (llm_queue.priority_for): every
     # Groq call this request makes waits its turn at this priority.
-    priority = llm_queue.priority_for(user.plan)
+    # current_plan, not plan: a subscription that has lapsed queues as free.
+    priority = llm_queue.priority_for(user.current_plan)
     # One deadline for all of this request's waiting (llm_queue.WaitBudget).
     budget = llm_queue.WaitBudget(ai_control.queue_timeout_seconds())
     # What the tutor remembers of this discussion (app/grading/session_memory.py).
@@ -621,11 +623,26 @@ def release_practice_slot(user_id) -> None:
         log.exception("could not give the practice slot back")
 
 
-def take_practice_slot(user_id) -> bool:
+def practice_daily_limit(plan: str) -> int:
+    """Today's cap on generated exercises, for the plan that applies now.
+
+    Two settings rather than a multiplier, so an admin reads the actual
+    number a student gets in the console instead of computing it.
+    """
+    key = "practice_daily_limit_paid" if plan == PLAN_PAID else "practice_daily_limit"
+    return int(runtime_settings.get(key))
+
+
+def take_practice_slot(user_id, plan: str = PLAN_FREE) -> bool:
     """Count one generated exercise against today's per-student limit (Redis,
     reset at midnight UTC). False when the limit is reached. A Redis outage
-    lets the request through: the global rate limits still apply."""
-    limit = int(runtime_settings.get("practice_daily_limit"))
+    lets the request through: the global rate limits still apply.
+
+    The count is one key per student per day, not per plan: a student whose
+    subscription starts mid-day keeps what they have already used and simply
+    gets a higher ceiling for the rest of it.
+    """
+    limit = practice_daily_limit(plan)
     key = _practice_key(user_id)
     try:
         client = llm_queue._sync_client()
@@ -804,14 +821,18 @@ def solve_stream(
         )
 
     meta_chapitre, meta_topics = _meta_scope(payload)
-    priority = llm_queue.priority_for(user.plan)
+    plan = user.current_plan
+    priority = llm_queue.priority_for(plan)
     practice_on = (
         payload.mode == "practice"
         and payload.exercise_trusted
         and runtime_settings.get("practice_enabled")
     )
-    if practice_on and not take_practice_slot(user.id):
-        message = PRACTICE_LIMIT_MESSAGE.format(limit=runtime_settings.get("practice_daily_limit"))
+    if practice_on and not take_practice_slot(user.id, plan):
+        # The refused student is told the cap that applied to them, not the
+        # free one - quoting 10 to a subscriber who has just used 30 reads
+        # like a bug.
+        message = PRACTICE_LIMIT_MESSAGE.format(limit=practice_daily_limit(plan))
         return StreamingResponse(
             _gatekeeper_stream(
                 message, "gatekeeper", payload, started, {"route": "PRACTICE_LIMIT"}
@@ -1176,7 +1197,7 @@ async def solve_extract(
         # PDF parsing, image decoding and the model call all block; off the
         # event loop so one upload does not stall every other request.
         result = await run_in_threadpool(
-            attachments.extract, data, llm_queue.priority_for(user.plan)
+            attachments.extract, data, llm_queue.priority_for(user.current_plan)
         )
     except attachments.AttachmentError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.message) from exc

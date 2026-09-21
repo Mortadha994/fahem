@@ -324,6 +324,12 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 #                20-40 exercises; 100 leaves generous headroom and still caps
 #                what one compromised session can spend in an hour.
 RATE_LIMIT_SOLVE = os.environ.get("RATE_LIMIT_SOLVE", "10/minute;100/hour")
+# What a subscriber gets instead (app/llm/ai_control.solve_rate_limit). Three
+# times the free hourly allowance rather than none at all: the ceiling that
+# actually binds is Groq's daily token budget, which is shared, so an
+# unlimited paid tier would only mean subscribers exhaust it sooner for
+# everyone - including themselves.
+RATE_LIMIT_SOLVE_PAID = os.environ.get("RATE_LIMIT_SOLVE_PAID", "30/minute;300/hour")
 
 # /auth/google is reachable before there is a user to key on, so it is limited
 # per client IP instead.

@@ -11,6 +11,8 @@ console's "Contrôle de l'IA" panel:
                                    the text model has used this % of Groq's
                                    daily token limit (keeps a reserve)
   solve_rate_limit          str    the per-student limit, "10/minute;100/hour"
+  solve_rate_limit_paid     str    the same for a subscriber; a personal limit
+                                   on one account still wins over both
   queue_timeout_seconds     int    how long one request may wait for Groq
   retry_max                 int    429 retries inside a slot
   attachments_enabled       bool   photo / PDF reading on or off
@@ -20,6 +22,7 @@ console's "Contrôle de l'IA" panel:
                                    (ships "guided")
   practice_enabled          bool   the chat's "Exercice similaire"
   practice_daily_limit      int    similar exercises one student may generate per day
+  practice_daily_limit_paid int    the same for a subscriber
 
 A row in app_settings exists only for a key that was changed; get() falls
 back to the default. Values are validated on the way in (set_many), so
@@ -43,7 +46,12 @@ from typing import Any, Callable
 
 from limits import parse_many
 
-from app.core.config import GROQ_QUEUE_TIMEOUT_SECONDS, GROQ_RETRY_MAX, RATE_LIMIT_SOLVE
+from app.core.config import (
+    GROQ_QUEUE_TIMEOUT_SECONDS,
+    GROQ_RETRY_MAX,
+    RATE_LIMIT_SOLVE,
+    RATE_LIMIT_SOLVE_PAID,
+)
 
 log = logging.getLogger("fahem.runtime_settings")
 
@@ -123,6 +131,9 @@ SPECS: dict[str, Spec] = {
     # très sollicité". 90 % keeps a reserve for the rest of the day.
     "daily_budget_guard_pct": Spec(90, _budget_pct),
     "solve_rate_limit": Spec(RATE_LIMIT_SOLVE, rate_limit),
+    # What a subscriber gets instead. A personal limit set on one account
+    # still wins over both - see app/llm/ai_control.solve_rate_limit.
+    "solve_rate_limit_paid": Spec(RATE_LIMIT_SOLVE_PAID, rate_limit),
     "queue_timeout_seconds": Spec(int(GROQ_QUEUE_TIMEOUT_SECONDS), _int_between(15, 600)),
     "retry_max": Spec(GROQ_RETRY_MAX, _int_between(0, 5)),
     "attachments_enabled": Spec(True, _bool),
@@ -134,6 +145,9 @@ SPECS: dict[str, Spec] = {
     "default_chat_mode": Spec("guided", _chat_mode),
     "practice_enabled": Spec(True, _bool),
     "practice_daily_limit": Spec(10, _int_between(1, 100)),
+    # The same cap for a subscriber. Its own range, so a generous paid cap
+    # does not force the free one's ceiling up with it.
+    "practice_daily_limit_paid": Spec(30, _int_between(1, 500)),
 }
 
 
