@@ -89,12 +89,6 @@ export default function AdminUserDetail() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // The earliest end date the backend accepts: it refuses anything already
-  // past. Read when the account loads rather than while rendering - the clock
-  // is an external system, and a value read during render changes on its own
-  // between two renders.
-  const [minPlanUntil, setMinPlanUntil] = useState("");
-
   const [account, setAccount] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [form, setForm] = useState(null);
@@ -127,7 +121,6 @@ export default function AdminUserDetail() {
         if (cancelled) return;
         setAccount(u);
         setControl(accountForm(u));
-        setMinPlanUntil(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
         setForm({
           display_name: u.display_name ?? "",
           email_verified: u.email_verified,
@@ -211,19 +204,27 @@ export default function AdminUserDetail() {
     setBusy("account");
     const body = {
       plan: control.plan,
-      // End of the chosen day, not its midnight: a subscription "until the
-      // 3rd" that stopped working at 00:00 on the 3rd would read as a bug to
-      // whoever set it. Free accounts send null - an end date without a
-      // subscription means nothing, and keeping one would resurrect itself
-      // the next time the plan is set back to paid.
-      plan_until:
-        control.plan === "paid" && control.planUntil
-          ? new Date(`${control.planUntil}T23:59:59`).toISOString()
-          : null,
       solve_rate_limit: control.customLimit
         ? `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour`
         : null,
     };
+    // plan_until is sent only when it actually changes, or when the plan goes
+    // back to free (which clears it - an end date without a subscription
+    // means nothing, and a kept one would resurrect itself the next time the
+    // plan was set to paid). An expired account's form loads with the date it
+    // lapsed on, and the backend refuses a past date; resending it unchanged
+    // would make editing that account's class impossible.
+    const savedUntil = account.plan_until ? account.plan_until.slice(0, 10) : "";
+    if (control.plan !== "paid") {
+      if (account.plan_until) body.plan_until = null;
+    } else if (control.planUntil !== savedUntil) {
+      // End of the chosen day, not its midnight: a subscription "until the
+      // 3rd" that stopped working at 00:00 on the 3rd would read as a bug to
+      // whoever set it.
+      body.plan_until = control.planUntil
+        ? new Date(`${control.planUntil}T23:59:59`).toISOString()
+        : null;
+    }
     if (
       control.niveau !== (account.niveau ?? "") ||
       control.section !== (account.section ?? "")
@@ -496,11 +497,19 @@ export default function AdminUserDetail() {
                               setControl((c) => ({ ...c, plan: e.target.value }))
                             }
                           >
+                            {/* One word each. The select is a third of the
+                                row, and a parenthesis explaining what the
+                                paid tier gives was cut off mid-word
+                                ("limites éla…"); it belongs in the hint
+                                below, where there is room for it. */}
                             <option value="free">Gratuite</option>
-                            <option value="paid">
-                              Payante (prioritaire, limites élargies)
-                            </option>
+                            <option value="paid">Payante</option>
                           </select>
+                          {control.plan === "paid" && (
+                            <small className="adm-hint">
+                              Prioritaire dans la file, limites élargies.
+                            </small>
+                          )}
                         </label>
                         {control.plan === "paid" && (
                           <label className="adm-field">
@@ -509,10 +518,15 @@ export default function AdminUserDetail() {
                               type="date"
                               className="adm-input"
                               value={control.planUntil}
-                              // Today is already too late: the backend refuses
-                              // a date that has passed, since it would store a
-                              // subscription that is over on arrival.
-                              min={minPlanUntil}
+                              // Deliberately no `min`. A lapsed account's form
+                              // loads with the date it lapsed on, and a `min`
+                              // made the browser block the whole form - in
+                              // English, on a French page - so an admin could
+                              // not change the section of an expired account
+                              // without first editing a date they had no
+                              // business touching. The backend refuses a past
+                              // date in French, and an unchanged one is never
+                              // sent (see saveControl).
                               onChange={(e) =>
                                 setControl((c) => ({ ...c, planUntil: e.target.value }))
                               }
