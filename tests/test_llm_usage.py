@@ -5,7 +5,7 @@ real queue; real Postgres and Redis.
 Every row is written for a per-run fake model name and deleted at the end, so
 it can run against the stack's database without touching the console's data.
 
-    docker compose exec -T backend python -m tests.test_llm_usage
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_llm_usage
 """
 
 from __future__ import annotations

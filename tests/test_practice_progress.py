@@ -3,7 +3,7 @@ daily limit, the admin switch, and progress derived from discussions. Real app
 through TestClient, real Postgres and Redis; Groq, the classifier and retrieval
 are fakes, so no token is spent.
 
-    docker compose exec -T backend python -m tests.test_practice_progress
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_practice_progress
 """
 
 from __future__ import annotations

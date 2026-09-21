@@ -1,12 +1,12 @@
 ## Running the API
 
 ```
-docker compose up --build -d                      # recommended: the whole stack
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up --build -d                      # recommended: the whole stack
 .venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000   # or natively
 ```
 
 Natively, Postgres, Qdrant and Redis still have to be running
-(`docker compose up -d postgres qdrant redis`).
+(`docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up -d postgres qdrant redis`).
 
 ## Authentication and rate limits
 

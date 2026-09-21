@@ -2,9 +2,9 @@
 console's Activité charts have a shape to show before real students have made
 one.
 
-    docker compose exec -T backend python -m scripts.seed_demo_activity
-    docker compose exec -T backend python -m scripts.seed_demo_activity --remove
-    docker compose exec -T backend python -m scripts.seed_demo_activity --tokens
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m scripts.seed_demo_activity
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m scripts.seed_demo_activity --remove
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m scripts.seed_demo_activity --tokens
 
 Everything lands on its own account - demo-activite@fahem.invalid, "Élève de
 démonstration (test)" - and never on a real student's history. Re-running

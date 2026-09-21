@@ -3,7 +3,7 @@ memory, feedback. The real app through TestClient, real Postgres and Redis;
 Groq, the classifier and the course retrieval are replaced by fakes, so no
 token is spent.
 
-    docker compose exec -T backend python -m tests.test_chat_flow
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_chat_flow
 """
 
 from __future__ import annotations

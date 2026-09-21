@@ -4,7 +4,7 @@ name: fahem
 
 # Fahem - backend (FastAPI + RAG) and frontend (built UI behind nginx).
 #
-#   docker compose up --build
+#   docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up --build
 #   UI  http://localhost:5173
 #   API http://localhost:8000/health
 
@@ -89,7 +89,15 @@ services:
     restart: unless-stopped
 
   backend:
-    build: .
+    # The build context is the repository root, not docker/: the image copies
+    # app/, scripts/ and tests/, which live there. Every relative path in this
+    # file resolves against the project directory, which is why the commands
+    # in the README (and the two share scripts) pass `--project-directory .`
+    # from the root - without it Compose would take docker/ as the project
+    # directory and none of the bind mounts below would be found.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -117,11 +125,12 @@ services:
         # waiting for healthy means the limiter is enforcing from the first
         # request rather than failing open during startup.
         condition: service_healthy
-    # GROQ_API_KEY lives here. .env is gitignored; .env.example is the
-    # committed template. generate.py's own loader uses setdefault, so what
-    # compose injects wins over the file baked next to the source.
+    # GROQ_API_KEY lives here. env/.env is gitignored; env/.env.example is
+    # the committed template. app/llm/generate.py's own loader uses
+    # setdefault, so what compose injects wins over the file baked next to
+    # the source.
     env_file:
-      - .env
+      - env/.env
     volumes:
       # Extracted chapter text and test problems - both gitignored, both read
       # from the working directory by rag_store.py / context.py.

@@ -7,7 +7,7 @@ nothing. Runs the real auth, password_auth and admin routers through FastAPI's
 TestClient against real Postgres and Redis, with emails.send_quietly stubbed
 so nothing is mailed. Inside compose:
 
-    docker compose exec backend python -m tests.test_admin
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_admin
 
 Every row it creates is keyed by a per-run id and deleted at the end.
 

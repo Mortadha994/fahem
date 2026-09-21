@@ -1,8 +1,8 @@
 """Grant or revoke the admin role. The ONLY way to do either (Phase 7).
 
-    docker compose exec backend python -m scripts.promote_admin student@example.com
-    docker compose exec backend python -m scripts.promote_admin student@example.com --demote
-    docker compose exec backend python -m scripts.promote_admin --list
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m scripts.promote_admin student@example.com
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m scripts.promote_admin student@example.com --demote
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m scripts.promote_admin --list
 
 Why a script and not an endpoint: the first admin cannot be created through
 the app, because no admin exists yet to authorise it - and any HTTP route that

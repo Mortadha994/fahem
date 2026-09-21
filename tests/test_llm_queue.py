@@ -6,7 +6,7 @@ Each case uses its own queue key and deletes it afterwards, so it can run
 against the stack's Redis without touching anything else.
 
 Run inside the backend container (needs REDIS_URL):
-    docker compose exec -T backend python -m tests.test_llm_queue
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_llm_queue
 """
 
 from __future__ import annotations

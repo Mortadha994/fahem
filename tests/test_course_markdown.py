@@ -1,7 +1,7 @@
 """Tests for app/rag/course_markdown.py (Phase 9b). Pure parsing - no database.
 
-    docker compose cp docs/modele-cours.md backend:/app/docs/modele-cours.md
-    docker compose exec backend python -m tests.test_course_markdown
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml cp docs/modele-cours.md backend:/app/docs/modele-cours.md
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_course_markdown
 
 The shipped template (docs/modele-cours.md) is parsed too when present, so the
 file teachers copy can never drift into something the importer refuses.

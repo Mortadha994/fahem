@@ -76,7 +76,7 @@ def client_ip(request: Request) -> str:
     nothing sits in front of uvicorn, honouring a client-supplied header would
     let anyone reset their own counter by inventing an IP.
 
-    Behind a tunnel (share mode, docker-compose.share.yml) every request
+    Behind a tunnel (share mode, docker/docker-compose.share.yml) every request
     arrives from the proxy, so every visitor would share one bucket - five
     wrong passwords from one friend would lock out everyone. There
     TRUSTED_CLIENT_IP_HEADER names the header the edge sets (Cloudflare's

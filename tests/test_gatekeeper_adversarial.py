@@ -11,7 +11,7 @@ output, per the project owner's explicit requirement to see transcripts,
 not just an assertion that "it's secure".
 
 Run inside the backend container (needs GROQ_API_KEY):
-    docker compose exec -T backend python -m tests.test_gatekeeper_adversarial
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_gatekeeper_adversarial
 """
 
 from __future__ import annotations

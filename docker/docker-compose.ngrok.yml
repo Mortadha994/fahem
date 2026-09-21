@@ -1,6 +1,6 @@
 # Share mode with a FIXED address: an ngrok free static domain.
 #
-# Same idea as docker-compose.share.yml (the stack runs on this PC, a tunnel
+# Same idea as docker/docker-compose.share.yml (the stack runs on this PC, a tunnel
 # publishes the frontend, nginx serves the API under /api), but the address
 # never changes - so it can be registered once in Google Cloud Console and
 # "Se connecter avec Google" works for friends.
@@ -12,7 +12,7 @@
 #
 # Start / stop:
 #   powershell -ExecutionPolicy Bypass -File share-ngrok.ps1
-#   docker compose -f docker-compose.yml -f docker-compose.ngrok.yml stop ngrok
+#   docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.ngrok.yml stop ngrok
 
 services:
   frontend:

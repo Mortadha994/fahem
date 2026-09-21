@@ -380,6 +380,9 @@ scripts/               promote_admin · seed_demo_activity ·
                        extract_chapter · patch_chunks
 tests/                 the suite
 alembic/               migrations
+docker/                the Dockerfile, its ignore file, and the three
+                       compose files
+env/                   .env (gitignored) and .env.example
 ui/                    the React app (see Frontend, below)
 ```
 
@@ -434,10 +437,28 @@ so the two cannot drift. `.env` is gitignored — never commit it.
 
 ### 2. Start the stack
 
+The compose files live in `docker/` and the environment in `env/`, so every
+command carries two flags. They are not optional: Compose takes the directory
+of the first `-f` file as the project directory, so without
+`--project-directory .` it resolves the bind mounts against `docker/` and
+looks for `docker/.env`.
+
+Run from the repository root. Worth an alias:
+
+```powershell
+# PowerShell profile
+function dc { docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml @args }
+```
+
 ```bash
-docker compose up --build -d      # UI on http://localhost:5173, API on :8000
-docker compose exec backend alembic upgrade head      # first run: create the tables
-docker compose logs -f backend
+# bash
+alias dc='docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml'
+```
+
+```bash
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up --build -d      # UI on http://localhost:5173, API on :8000
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend alembic upgrade head      # first run: create the tables
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml logs -f backend
 ```
 
 Open the UI at **`http://localhost:5173`** — `localhost`, not `127.0.0.1`.
@@ -449,8 +470,8 @@ is a cross-site request, so sign-in would fail with a silent 401.
 ```bash
 python -m scripts.extract_chapter "data/your-chapter.pdf" --niveau 2eme --chapitre 1
 python -m scripts.patch_chunks          # applies pinned fixes, prints the arrow check
-docker compose exec backend python -m app.rag.rag_store --reset      # load chunks.json into Qdrant
-docker compose exec backend python -m app.rag.rag_store --describe   # what is in the store
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m app.rag.rag_store --reset      # load chunks.json into Qdrant
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m app.rag.rag_store --describe   # what is in the store
 ```
 
 **Read the `scripts/patch_chunks.py` output.** It lists every surviving `←` and every
@@ -459,7 +480,7 @@ has been told about — skim any declaration- or affectation-heavy page by hand.
 
 `chunks.json`, `sample_problems.json` and `data/` are bind-mounted, so
 rebuilding an image does not discard them. Qdrant, Postgres and the embedding
-model cache live in named volumes and survive `docker compose down`. Redis
+model cache live in named volumes and survive a `down`. Redis
 deliberately keeps nothing on disk — rate-limit counters are meant to be
 short-lived. The frontend image bakes `VITE_API_URL` and
 `VITE_GOOGLE_CLIENT_ID` in at build time, so changing either means rebuilding
@@ -469,8 +490,8 @@ it.
 
 ```bash
 cp sample_problems.example.json sample_problems.json   # then add your own problems
-docker compose exec backend python -m tests.test_retrieval   # prints retrieved chunks
-docker compose exec backend python -m app.rag.context          # pinned core + extras, with build check
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_retrieval   # prints retrieved chunks
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m app.rag.context          # pinned core + extras, with build check
 ```
 
 ### 5. Generate from the command line
@@ -488,7 +509,7 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt    # Windows
 # source .venv/bin/activate && pip install -r requirements.txt  # macOS/Linux
 
-docker compose up -d postgres qdrant redis                     # the stores still come from compose
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up -d postgres qdrant redis                     # the stores still come from compose
 .venv/Scripts/python.exe -m alembic upgrade head
 .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 
@@ -562,8 +583,8 @@ password - the share build hides the Google button, because Google refuses
 sign-ins from an origin not registered in its console (`origin_mismatch`) and
 the tunnel's address is random. The link lives as long as your PC and Docker are on, and
 changes when the tunnel restarts. Stop sharing with
-`docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel`;
-go back to local-only with a plain `docker compose up -d --build`.
+`dc -f docker/docker-compose.share.yml stop tunnel` (the alias from *Start the
+stack*); go back to local-only with a plain `dc up -d --build`.
 
 **With Google sign-in (fixed address).** Google only accepts sign-ins from
 origins registered for the OAuth client, so it needs an address that does not
@@ -582,7 +603,7 @@ change: an ngrok free static domain.
 
 ngrok's free plan shows visitors a one-time "You are about to visit" page;
 they click *Visit Site*. Stop with
-`docker compose -f docker-compose.yml -f docker-compose.ngrok.yml stop ngrok`.
+`dc -f docker/docker-compose.ngrok.yml stop ngrok`.
 
 Mind Groq's free tier: about 200,000 tokens a day for the text model, roughly
 35 solves shared by everyone. Admin → Surveillance IA shows how much is left.
@@ -592,24 +613,24 @@ Mind Groq's free tier: about 200,000 tokens a day for the text model, roughly
 ## Tests
 
 ```bash
-docker compose exec backend python -m tests.test_checker    # checker pass/fail suite
-docker compose exec backend python -m tests.test_auth       # token verification, sessions, config guards
-docker compose exec backend python -m tests.test_db         # models, constraints, cascades
-docker compose exec backend python -m tests.test_admin      # admin role gate and user management
-docker compose exec backend python -m tests.test_chapters_admin   # chapter upload/publish workflow
-docker compose exec backend python -m tests.test_course_markdown  # Markdown chapter parsing
-docker compose exec backend python -m tests.test_llm_queue  # Groq queue: priority, aging, deadline, 429 retry
-docker compose exec backend python -m tests.test_llm_usage  # per-call recording and /admin/monitoring
-docker compose exec backend python -m tests.test_public_overview  # what the landing page is told
-docker compose exec backend python -m tests.test_admin_controls   # live controls, audit log, revert
-docker compose exec backend python -m tests.test_algo_notation    # div / mod in the Algorithme column
-docker compose exec backend python -m tests.test_session_memory   # compaction, prompts, follow-ups (--live calls the model)
-docker compose exec backend python -m tests.test_chat_flow        # light list, versioned saves, server save, feedback
-docker compose exec backend python -m tests.test_guided_check     # Mode guidé steps, Vérifier ma réponse, notation pre-check
-docker compose exec backend python -m tests.test_practice_progress  # Exercice similaire, daily limit, progress
-docker compose exec backend python -m tests.test_gatekeeper_meta  # meta answers never leak reasoning (--live calls the model)
-docker compose exec backend python -m tests.test_retrieval  # retrieval inspection (no assertions)
-docker compose exec backend python -m tests.test_gatekeeper_adversarial   # adversarial transcripts; calls the model
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_checker    # checker pass/fail suite
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_auth       # token verification, sessions, config guards
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_db         # models, constraints, cascades
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_admin      # admin role gate and user management
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_chapters_admin   # chapter upload/publish workflow
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_course_markdown  # Markdown chapter parsing
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_llm_queue  # Groq queue: priority, aging, deadline, 429 retry
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_llm_usage  # per-call recording and /admin/monitoring
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_public_overview  # what the landing page is told
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_admin_controls   # live controls, audit log, revert
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_algo_notation    # div / mod in the Algorithme column
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_session_memory   # compaction, prompts, follow-ups (--live calls the model)
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_chat_flow        # light list, versioned saves, server save, feedback
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_guided_check     # Mode guidé steps, Vérifier ma réponse, notation pre-check
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_practice_progress  # Exercice similaire, daily limit, progress
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_gatekeeper_meta  # meta answers never leak reasoning (--live calls the model)
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_retrieval  # retrieval inspection (no assertions)
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_gatekeeper_adversarial   # adversarial transcripts; calls the model
 ```
 
 They are standalone scripts that print `[PASS]` lines and end with
@@ -799,8 +820,17 @@ scripts/                   offline tools, run as `python -m scripts.<name>`
 tests/                     the suite, run as `python -m tests.<name>`
 alembic/                   migrations
 
-docker-compose.share.yml / share.ps1        free test link (Cloudflare quick tunnel)
-docker-compose.ngrok.yml / share-ngrok.ps1  fixed test link with Google sign-in (ngrok)
+docker/
+  Dockerfile               the backend image; context is the repository root
+  Dockerfile.dockerignore  named for the Dockerfile, not .dockerignore - see
+                           the comment at its head before renaming it
+  docker-compose.yml       the stack
+  docker-compose.share.yml    free test link (Cloudflare quick tunnel), with share.ps1
+  docker-compose.ngrok.yml    fixed test link with Google sign-in, with share-ngrok.ps1
+
+env/
+  .env                     secrets and local overrides; gitignored
+  .env.example             the committed template
 ```
 
 **Frontend** (`ui/src`)

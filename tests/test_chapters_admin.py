@@ -14,7 +14,7 @@ than on a synthetic string.
 
 Inside compose (needs the embedding model, Postgres, Qdrant):
 
-    docker compose exec backend python -m tests.test_chapters_admin
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_chapters_admin
 
 Everything it creates - users, the chapter row, the PDF, the Qdrant points -
 is removed at the end, including after a failure.

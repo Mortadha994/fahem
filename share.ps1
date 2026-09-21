@@ -1,11 +1,20 @@
 # Share Fahem with friends through a free Cloudflare quick tunnel.
-# See docker-compose.share.yml for what this changes and why.
+# See docker/docker-compose.share.yml for what this changes and why.
 #
 #   powershell -ExecutionPolicy Bypass -File share.ps1
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$compose = @("compose", "-f", "docker-compose.yml", "-f", "docker-compose.share.yml")
+# --project-directory . because the compose files moved into docker/, and
+# Compose would otherwise resolve the bind mounts (and look for .env) there
+# rather than at the repository root. Set-Location above makes "." the root.
+$compose = @(
+    "compose",
+    "--env-file", "env/.env",
+    "--project-directory", ".",
+    "-f", "docker/docker-compose.yml",
+    "-f", "docker/docker-compose.share.yml"
+)
 
 Write-Host "1/3  Building and starting Fahem in share mode..."
 docker @compose up -d --build
@@ -20,7 +29,7 @@ while (-not $url -and (Get-Date) -lt $deadline) {
     $found = [regex]::Matches($logs, "https://[a-z0-9-]+\.trycloudflare\.com")
     if ($found.Count -gt 0) { $url = $found[$found.Count - 1].Value }
 }
-if (-not $url) { throw "No tunnel link after 90s - check: docker compose -f docker-compose.yml -f docker-compose.share.yml logs tunnel" }
+if (-not $url) { throw "No tunnel link after 90s - check: docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.share.yml logs tunnel" }
 
 Write-Host "3/3  Telling the backend its public address (for e-mail links)..."
 $env:FAHEM_PUBLIC_URL = $url
@@ -45,4 +54,4 @@ if ($healthy) {
 }
 Write-Host "Send this link to your friends. It works while this PC and Docker are on,"
 Write-Host "and changes if the tunnel restarts."
-Write-Host "Stop sharing:  docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel"
+Write-Host "Stop sharing:  docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.share.yml stop tunnel"

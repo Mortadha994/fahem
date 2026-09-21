@@ -19,13 +19,19 @@ import os
 from pathlib import Path
 
 
-def load_env(path: Path = Path(".env")) -> None:
+def load_env(path: Path | None = None) -> None:
     """Read KEY=value lines from a local .env into os.environ.
 
     Kept dependency-free and non-overriding: a variable already exported in the
     shell wins, so a one-off `export GROQ_API_KEY=...` still beats the file.
+
+    The file lives in env/.env. A bare .env at the root is still read when
+    there is one, so a checkout from before the move - or a one-off file
+    dropped beside the code - keeps working; env/ wins if both exist.
     """
-    if not path.exists():
+    candidates = [path] if path is not None else [Path("env/.env"), Path(".env")]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
         return
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -178,7 +184,7 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 # It is not a weak secret, it is a *published* one - anyone reading this repo
 # can sign a token for any user id and be authenticated as that user. It is a
 # full authentication bypass, not a hardening nit. The dev default exists so
-# `docker compose up` works out of the box; treat it like the fahem/fahem
+# `docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up` works out of the box; treat it like the fahem/fahem
 # Postgres credentials, on the same pre-launch checklist.
 # The default is >= 32 bytes so PyJWT does not raise InsecureKeyLengthWarning
 # (RFC 7518 3.2) on every call - the length is not what makes it unsafe, its

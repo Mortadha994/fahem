@@ -3,7 +3,7 @@ notation pre-check, what is saved and what the console counts. The real app
 through TestClient, real Postgres and Redis; Groq, the classifier and the
 course retrieval are fakes, so no token is spent.
 
-    docker compose exec -T backend python -m tests.test_guided_check
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_guided_check
 """
 
 from __future__ import annotations

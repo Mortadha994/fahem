@@ -1,7 +1,7 @@
 """Tests for app/grading/algo_notation.py: Python operators never reach the Algorithme
 column, and nothing else is touched. Pure functions - no services.
 
-    docker compose exec -T backend python -m tests.test_algo_notation
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_algo_notation
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@
 # The link works while this PC and Docker are running, and changes each time
 # the tunnel restarts. Stop sharing with:
 #
-#     docker compose -f docker-compose.yml -f docker-compose.share.yml stop tunnel
+#     docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.share.yml stop tunnel
 #
 # Needs Docker Compose 2.24+ (for !reset).
 

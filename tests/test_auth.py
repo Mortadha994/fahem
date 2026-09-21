@@ -12,7 +12,7 @@ exercised below with the claims dict Google would have returned, so the
 untested seam is exactly one function call wide.
 
 Needs a reachable Postgres:
-    docker compose up -d postgres
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up -d postgres
     .venv/Scripts/python.exe tests/test_auth.py
 
 It writes and then deletes its own rows, keyed by a per-run UUID in
@@ -229,7 +229,7 @@ def main() -> None:
 #     the real Resend send is verified separately, by hand, once.
 #   - auth.verify_google_id_token, only inside the Google-parity section -
 #     the same one-function seam the module docstring already names.
-# Needs Postgres AND Redis (inside compose: `docker compose exec backend
+# Needs Postgres AND Redis (inside compose: `docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend
 # python -m tests.test_auth`).
 # =============================================================================
 

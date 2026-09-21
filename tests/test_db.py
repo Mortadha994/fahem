@@ -5,7 +5,7 @@ __main__ guard shape rather than tests/test_checker.py's run-at-import shape, so
 importing this module (for a REPL poke, say) does not hit the database.
 
 Needs a reachable Postgres:
-    docker compose up -d postgres
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up -d postgres
     .venv/Scripts/python.exe tests/test_db.py
 
 It writes and then deletes its own rows, keyed by a per-run UUID in

@@ -15,7 +15,7 @@ Two parts, like the other gatekeeper script:
                      Groq quota, same as tests/test_gatekeeper_adversarial.py).
 
 Run inside the backend container:
-    docker compose exec -T backend python -m tests.test_gatekeeper_meta [--live]
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_gatekeeper_meta [--live]
 """
 
 from __future__ import annotations

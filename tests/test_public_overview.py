@@ -4,7 +4,7 @@ Real Postgres (the published chapters) and Qdrant (the extract counts); the
 catalogue is whatever this stack has published, so the checks compare the
 overview against the same sources rather than hard-coding today's numbers.
 
-    docker compose exec -T backend python -m tests.test_public_overview
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_public_overview
 """
 
 from __future__ import annotations

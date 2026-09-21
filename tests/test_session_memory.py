@@ -6,7 +6,7 @@ router excerpt, the retrieval query, build_messages, the gatekeeper request
 --live: a real two-turn discussion - an exercise, then a follow-up that only
 makes sense with the first turn in memory (spends Groq quota).
 
-    docker compose exec -T backend python -m tests.test_session_memory [--live]
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_session_memory [--live]
 """
 
 from __future__ import annotations

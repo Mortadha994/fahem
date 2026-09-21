@@ -8,7 +8,7 @@ model call - proof it got past the controls.
 Settings rows that exist before the run are restored afterwards, and every
 account and audit row the run creates is deleted.
 
-    docker compose exec -T backend python -m tests.test_admin_controls
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_admin_controls
 """
 
 from __future__ import annotations

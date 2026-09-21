@@ -2,7 +2,7 @@
 plus regression cases to confirm nothing that used to pass now fails.
 
 Run inside the backend container (needs torch via app/rag/context.py -> app/rag/rag_store.py):
-    docker compose exec -T backend python -m tests.test_checker_cases
+    docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec -T backend python -m tests.test_checker_cases
 """
 
 from app.grading.checker import check_constraints

@@ -2,6 +2,12 @@
 # tests/, alembic/ and requirements.txt, but an unfiltered context still
 # ships .venv, node_modules and the vector store to the daemon on every
 # build.
+#
+# Named Dockerfile.dockerignore, not .dockerignore: the build context is the
+# repository root while the Dockerfile lives here in docker/, and BuildKit
+# looks for <dockerfile>.dockerignore beside the Dockerfile before falling
+# back to .dockerignore at the context root. Renaming this file, or moving it
+# away from docker/Dockerfile, silently restores the unfiltered context.
 
 .venv/
 __pycache__/
