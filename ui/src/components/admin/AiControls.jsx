@@ -21,7 +21,7 @@ import "./controls.css";
 /**
  * "Contrôles": what the Surveillance IA page shows, the admin can act on.
  *
- * Everything writes to GET/PUT /admin/controls (admin_controls.py) and takes
+ * Everything writes to GET/PUT /admin/controls (app/routes/admin/admin_controls.py) and takes
  * effect for students within seconds, without a restart. The page reads top
  * to bottom as the questions an admin asks:
  *
@@ -263,13 +263,22 @@ export default function AiControls({ onChanged }) {
           </span>
           <div className="cx-hero-text">
             <p className="cx-eyebrow">État de l'IA</p>
-            <h2 className="cx-hero-title" role="status">
+            <h2 className="cx-hero-title">
               {status === "paused"
                 ? "En pause"
                 : status === "blocked"
                   ? "Garde-fou atteint"
                   : "Active"}
             </h2>
+            {/* The heading is read when the panel opens; a change of state is
+                announced separately, which a heading alone would not do. */}
+            <span className="sr-only" role="status">
+              {status === "paused"
+                ? "L'IA est en pause."
+                : status === "blocked"
+                  ? "Le garde-fou du budget est atteint."
+                  : "L'IA est active."}
+            </span>
             <p className="cx-hero-sub">
               {status === "paused"
                 ? "Aucune requête n'atteint l'IA : les élèves lisent ton message."

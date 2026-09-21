@@ -8,8 +8,8 @@ Two deviations from the stock template, both deliberate:
    and would put credentials in git.
 
 2. sys.path gets the repo root prepended. Alembic runs env.py with its own
-   directory context, so `import config` / `import models` would otherwise
-   fail depending on where the command was invoked from.
+   directory context, so `app.core.config` / `app.core.models` would
+   otherwise fail to resolve depending on where the command was invoked from.
 """
 
 import sys
@@ -20,11 +20,11 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# Repo root, so `config` and `models` are importable regardless of cwd.
+# Repo root, so the `app` package is importable regardless of cwd.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import DATABASE_URL  # noqa: E402
-from models import Base  # noqa: E402
+from app.core.config import DATABASE_URL  # noqa: E402
+from app.core.models import Base  # noqa: E402
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

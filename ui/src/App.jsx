@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "./components/AppLayout.jsx";
-import Landing from "./components/Landing.jsx";
 import SignInScreen from "./components/SignInScreen.jsx";
 import Home from "./routes/Home.jsx";
 import ChapterPage from "./routes/ChapterPage.jsx";
 import ProgressPage from "./routes/ProgressPage.jsx";
-import AdminLayout from "./components/admin/AdminLayout.jsx";
-import AdminDashboard from "./routes/admin/AdminDashboard.jsx";
-import AdminUserCreate from "./routes/admin/AdminUserCreate.jsx";
-import AdminUserDetail from "./routes/admin/AdminUserDetail.jsx";
-import AdminUsers from "./routes/admin/AdminUsers.jsx";
-import AdminChapters from "./routes/admin/AdminChapters.jsx";
-import AdminChapterDetail from "./routes/admin/AdminChapterDetail.jsx";
-import AdminMonitoring from "./routes/admin/AdminMonitoring.jsx";
+/* The console is a separate chunk, fetched when an admin opens /admin: a
+   student never downloads it (it carries its own layout, charts and controls,
+   and was a third of the bundle). */
+const Landing = lazy(() => import("./components/Landing.jsx"));
+const AdminLayout = lazy(() => import("./components/admin/AdminLayout.jsx"));
+const AdminDashboard = lazy(() => import("./routes/admin/AdminDashboard.jsx"));
+const AdminUserCreate = lazy(() => import("./routes/admin/AdminUserCreate.jsx"));
+const AdminUserDetail = lazy(() => import("./routes/admin/AdminUserDetail.jsx"));
+const AdminUsers = lazy(() => import("./routes/admin/AdminUsers.jsx"));
+const AdminChapters = lazy(() => import("./routes/admin/AdminChapters.jsx"));
+const AdminChapterDetail = lazy(() => import("./routes/admin/AdminChapterDetail.jsx"));
+const AdminMonitoring = lazy(() => import("./routes/admin/AdminMonitoring.jsx"));
 import Chat from "./routes/Chat.jsx";
 import ResetPassword from "./routes/ResetPassword.jsx";
 import ProfileSetup from "./components/ProfileSetup.jsx";
@@ -262,7 +265,12 @@ export default function App() {
     //     sentence saying what just happened.
     const wantsForm =
       location.pathname === SIGNIN_PATH || location.state?.authMode || formRequired;
-    if (!wantsForm) return <Landing />;
+    if (!wantsForm)
+      return (
+        <Suspense fallback={<div className="page" aria-busy="true" />}>
+          <Landing />
+        </Suspense>
+      );
 
     return (
       <SignInScreen
@@ -326,7 +334,14 @@ export default function App() {
             and every API call behind it is checked again - those are the
             checks that actually hold. */}
         {isAdmin(user) && (
-          <Route path="/admin" element={<AdminLayout />}>
+          <Route
+            path="/admin"
+            element={
+              <Suspense fallback={<div className="page" aria-busy="true" />}>
+                <AdminLayout />
+              </Suspense>
+            }
+          >
             <Route index element={<AdminDashboard />} />
             <Route path="utilisateurs" element={<AdminUsers />} />
             <Route path="utilisateurs/nouveau" element={<AdminUserCreate />} />

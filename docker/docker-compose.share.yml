@@ -1,0 +1,49 @@
+# Share mode: let friends test Fahem from their own devices, for free.
+#
+# Your PC keeps running the whole stack; a Cloudflare quick tunnel (no
+# account, no domain) gives it a public https://<random>.trycloudflare.com
+# address that forwards to the frontend. nginx serves the API under /api on
+# that same address, so one link is all anyone needs.
+#
+# Start it with the script, which also tells the backend the public address
+# (for the links in e-mails):
+#
+#     powershell -ExecutionPolicy Bypass -File share.ps1
+#
+# The link works while this PC and Docker are running, and changes each time
+# the tunnel restarts. Stop sharing with:
+#
+#     docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.share.yml stop tunnel
+#
+# Needs Docker Compose 2.24+ (for !reset).
+
+services:
+  frontend:
+    build:
+      args:
+        # Same-site API: ui/src/config.js resolves "/api" against the page's
+        # address, and ui/nginx.conf proxies it to the backend.
+        VITE_API_URL: /api
+        # Google refuses sign-ins from origins not registered in the Google
+        # Cloud Console (Error 400: origin_mismatch), and a quick tunnel's
+        # address is random. Built without a client id, the sign-in page
+        # offers e-mail and password only.
+        VITE_GOOGLE_CLIENT_ID: ""
+
+  backend:
+    # Not published on the host any more: the only way in is the tunnel, then
+    # nginx - which is what makes trusting CF-Connecting-IP safe.
+    ports: !reset []
+    environment:
+      TRUSTED_CLIENT_IP_HEADER: CF-Connecting-IP
+      # share.ps1 sets FAHEM_PUBLIC_URL once the tunnel has an address;
+      # password-reset and verification e-mails link there.
+      APP_BASE_URL: ${FAHEM_PUBLIC_URL:-http://localhost:5173}
+      PUBLIC_API_URL: ${FAHEM_PUBLIC_URL:-http://localhost:5173}/api
+
+  tunnel:
+    image: cloudflare/cloudflared:2025.8.1
+    command: ["tunnel", "--no-autoupdate", "--url", "http://frontend:80"]
+    depends_on:
+      - frontend
+    restart: unless-stopped

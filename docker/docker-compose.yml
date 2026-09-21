@@ -1,0 +1,182 @@
+# Project name, so the stack shows as "fahem" in Docker Desktop rather than
+# "learned", the directory name.
+name: fahem
+
+# Fahem - backend (FastAPI + RAG) and frontend (built UI behind nginx).
+#
+#   docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml up --build
+#   UI  http://localhost:5173
+#   API http://localhost:8000/health
+
+services:
+  # Relational store: users, chat sessions, chat messages. Nothing in the app
+  # reads it yet (Phase 0a) - it exists so migrations and the data layer have
+  # something real to run against.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fahem
+      POSTGRES_PASSWORD: fahem
+      POSTGRES_DB: fahem
+    ports:
+      # Exposed so host-side scripts (alembic, test_db.py) can reach it with
+      # config.py's localhost default, without going through the container.
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      # -U/-d matter: bare pg_isready reports ready while the init scripts are
+      # still creating the role and database, so backend would connect to a
+      # server that has no `fahem` user yet.
+      test: ["CMD-SHELL", "pg_isready -U fahem -d fahem"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # Vector store: the embedded chapter corpus that retrieval searches.
+  # Replaced the on-disk Chroma store in Phase 0b.
+  qdrant:
+    # Pinned to match qdrant-client's major.minor in requirements.txt. The
+    # client refuses to assume compatibility across a major, and warns on a
+    # minor gap > 1 - a floating tag here would eventually start every run
+    # with a version warning, or break outright.
+    image: qdrant/qdrant:v1.19.0
+    ports:
+      # 6333 is the HTTP API (6334 is gRPC, unused here). Exposed so
+      # host-side scripts - rag_store.py's ingest CLI, test_retrieval.py -
+      # can reach it with config.py's localhost default.
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      # The image ships no curl, wget or nc - only bash - so the probe uses
+      # bash's /dev/tcp rather than an HTTP client that is not there. The
+      # readiness signal we actually need is "accepting connections on 6333",
+      # which this gives exactly.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # Rate-limit counters (Phase 2). Nothing else uses Redis yet.
+  redis:
+    image: redis:7-alpine
+    # Persistence deliberately OFF (no RDB snapshots, no AOF). Rate-limit
+    # counters are short-lived by definition: the worst case on a restart is
+    # that every window resets early, which self-corrects within one window
+    # and cannot corrupt anything. Writing them to disk would buy a marginal
+    # anti-abuse edge in exchange for constant disk I/O and a volume to
+    # manage.
+    #
+    # Revisit if Redis ever holds session revocation state - see the
+    # follow-up flagged in this phase's report. That data is NOT ephemeral:
+    # losing it would silently un-revoke every revoked session.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      # Exposed so host-side checks can inspect counters directly, same
+      # reasoning as the postgres and qdrant ports.
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    # The build context is the repository root, not docker/: the image copies
+    # app/, scripts/ and tests/, which live there. Every relative path in this
+    # file resolves against the project directory, which is why the commands
+    # in the README (and the two share scripts) pass `--project-directory .`
+    # from the root - without it Compose would take docker/ as the project
+    # directory and none of the bind mounts below would be found.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Both override config.py's localhost defaults: inside the container,
+      # localhost is the container itself, not the services beside it.
+      DATABASE_URL: postgresql+psycopg://fahem:fahem@postgres:5432/fahem
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+      # data/ is organised by niveau/matière/chapitre since chapter 2 was
+      # added; chapter 1's lesson PDF moved with it.
+      LESSON_PDF_PATH: "data/2emme info/algo/chapitre 1/cours/Chap1_Structures_donnees_simples.pdf"
+    depends_on:
+      postgres:
+        # service_healthy, not the default service_started: Postgres accepts
+        # TCP well before it accepts queries, so plain start ordering just
+        # moves the race rather than removing it.
+        condition: service_healthy
+      qdrant:
+        # Same reasoning: the backend resolves pins against Qdrant on the
+        # first request, and a not-yet-listening store surfaces as a 422
+        # "could not assemble context" rather than as a startup failure.
+        condition: service_healthy
+      redis:
+        # A missing rate-limit store must not look like an unlimited one:
+        # waiting for healthy means the limiter is enforcing from the first
+        # request rather than failing open during startup.
+        condition: service_healthy
+    # GROQ_API_KEY lives here. env/.env is gitignored; env/.env.example is
+    # the committed template. app/llm/generate.py's own loader uses
+    # setdefault, so what compose injects wins over the file baked next to
+    # the source.
+    env_file:
+      - env/.env
+    volumes:
+      # Extracted chapter text and test problems - both gitignored, both read
+      # from the working directory by rag_store.py / context.py.
+      - ./chunks.json:/app/chunks.json
+      - ./sample_problems.json:/app/sample_problems.json
+      # Source PDFs are copyrighted and only ever read.
+      - ./data:/app/data:ro
+      # Phase 9: chapter PDFs uploaded through the admin console. A named
+      # volume, not a bind mount - it is written by the app, and must survive
+      # a rebuild of the backend image.
+      - chapter_uploads:/app/uploads
+      # Embedding model cache, so a recreate does not re-download it.
+      - hf-cache:/cache/huggingface
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./ui
+      args:
+        # Baked into the bundle at build time - see ui/Dockerfile.
+        #
+        # localhost, NOT 127.0.0.1: same-site is scheme + registrable domain,
+        # and ports are irrelevant to it, so localhost:5173 -> localhost:8000
+        # is same-site while localhost:5173 -> 127.0.0.1:8000 is cross-site.
+        # The SameSite=Lax session cookie auth.py issues is withheld entirely
+        # on a cross-site request, which would make sign-in fail with a silent
+        # 401 from /auth/me and no error pointing at the cause. Do not
+        # "normalise" this back to an IP.
+        VITE_API_URL: http://localhost:8000
+        # Interpolated from the same .env entry the backend reads, so the two
+        # copies cannot drift. The backend checks the ID token's `aud` claim
+        # against its GOOGLE_CLIENT_ID, so a mismatch fails every sign-in.
+        # Not a secret: it identifies the app to Google and ships in the
+        # bundle either way.
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    ports:
+      # 5173 on the host is deliberate, not cosmetic: the CORS allowlist in
+      # api.py permits only localhost:5173/5174, so any other host port makes
+      # the browser block every POST to /solve/stream.
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
+  pg-data:
+  qdrant-data:
+  chapter_uploads:

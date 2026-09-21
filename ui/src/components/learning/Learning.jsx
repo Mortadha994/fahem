@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Markdown from "../Markdown.jsx";
@@ -341,8 +341,23 @@ export function PracticeCard({ content, difficulty, fresh }) {
 /** "Exercice similaire", then how hard: three levels pop out of the button. */
 export function PracticeMenu({ onPick }) {
   const [open, setOpen] = useState(false);
+  const box = useRef(null);
+
+  // Escape, or a click anywhere else, puts the menu away.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    const onDown = (e) => !box.current?.contains(e.target) && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
+
   return (
-    <span className="practice-menu">
+    <span className="practice-menu" ref={box}>
       <m.button
         type="button"
         className={`msg-action practice-trigger${open ? " is-open" : ""}`}
@@ -358,7 +373,9 @@ export function PracticeMenu({ onPick }) {
         >
           +
         </m.span>
-        Exercice similaire
+        {/* Wrapped so a narrow screen can drop to the icon alone without
+            changing the button's accessible name. */}
+        <span className="msg-action-label">Exercice similaire</span>
       </m.button>
       <AnimatePresence>
         {open && (

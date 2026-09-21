@@ -15,10 +15,11 @@ import { useAuth } from "../../lib/authContext.js";
 import { useToast } from "../../lib/toast.js";
 import AdminAvatar from "../../components/admin/AdminAvatar.jsx";
 import AdminTabs from "../../components/admin/AdminTabs.jsx";
-import { IconShield, IconUser } from "../../components/admin/icons.jsx";
+import { IconActivity, IconShield, IconUser } from "../../components/admin/icons.jsx";
+import UserActivity from "../../components/admin/UserActivity.jsx";
 
 /* The school system, as the student's own profile question offers it
-   (models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
+   (app/core/models.py NIVEAUX / SECTIONS / SECTIONS_BY_NIVEAU). */
 const NIVEAUX = [
   ["2eme", "2ème année"],
   ["3eme", "3ème année"],
@@ -261,6 +262,7 @@ export default function AdminUserDetail() {
   const niveauLabel = NIVEAUX.find(([key]) => key === account.niveau)?.[1];
   const tabs = [
     { id: "profil", label: "Profil", Icon: IconUser },
+    { id: "activite", label: "Activité", Icon: IconActivity },
     {
       id: "securite",
       label: "Sécurité",
@@ -350,7 +352,12 @@ export default function AdminUserDetail() {
         <div className="adm-user-main">
           <AdminTabs label="Sections du compte" tabs={tabs}>
             {(tab) =>
-              tab === "profil" ? (
+              tab === "activite" ? (
+                <div className="adm-panel">
+                  <h2 className="adm-h2">Douze dernières semaines</h2>
+                  <UserActivity userId={account.id} />
+                </div>
+              ) : tab === "profil" ? (
                 <div className="adm-stack">
                   <form className="adm-panel adm-form" onSubmit={save}>
                     <h2 className="adm-h2">Modifier</h2>
@@ -632,7 +639,7 @@ export default function AdminUserDetail() {
                           {isSelf
                             ? "Tu ne peux pas supprimer ton propre compte."
                             : isAdminAccount
-                              ? "Un compte admin doit d'abord perdre son rôle via promote_admin.py."
+                              ? "Un compte admin doit d'abord perdre son rôle via scripts/promote_admin.py."
                               : "Définitif : le compte et ses données sont effacés."}
                         </p>
                       </div>

@@ -105,9 +105,14 @@
   cursor: pointer;
 }
 .cx-big-btn.is-stop {
+  /* Darkened against its own tint: the token orange on this background is
+     below AA (axe: color-contrast). */
   background: color-mix(in srgb, var(--adm-warn) 14%, var(--adm-surface));
-  color: var(--adm-warn);
+  color: color-mix(in srgb, var(--adm-warn) 70%, #000);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--adm-warn) 40%, transparent);
+}
+:root[data-theme="dark"] .cx-big-btn.is-stop {
+  color: var(--adm-warn);
 }
 .cx-big-btn.is-go {
   background: var(--adm-ok);

@@ -2920,3 +2920,350 @@ a.log-target:hover {
 .mon-learning-row p {
   margin: 0;
 }
+
+/* The status card's title sits on a tinted card: the raw tone is below AA in
+   the light theme (axe: color-contrast). */
+.adm-status-card-title {
+  color: color-mix(in srgb, var(--tone) 72%, #000);
+}
+:root[data-theme="dark"] .adm-status-card-title {
+  color: var(--tone);
+}
+
+/* The pill's label sits on a 12 % tint of its own tone: darkened in the light
+   theme to keep AA (axe: color-contrast). */
+.adm-pill {
+  color: color-mix(in srgb, var(--tone) 68%, #000);
+}
+:root[data-theme="dark"] .adm-pill {
+  color: var(--tone);
+}
+
+/* --- one account's activity (components/admin/UserActivity.jsx) --------------------------------
+   The categorical slots are the data-viz palette's first four, in fixed order,
+   stepped separately per surface - the dark column is the same four hues
+   re-stepped for a dark background, not an automatic flip. Validated against
+   both: worst adjacent CVD ΔE 9.1 light / 8.4 dark, worst adjacent
+   normal-vision ΔE 22.9 / 19.8. In light mode the aqua and the yellow fall
+   under 3:1 against this panel, which is why the legend carries each total in
+   text and the table below holds every number the bars encode. */
+.ua {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  display: grid;
+  gap: var(--space-4);
+}
+:root[data-theme="dark"] .ua {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+}
+.ua-h {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+/* The reading of the numbers. Each line is a statement about what was
+   measured, so the dot is a marker and not a verdict: tone only says how
+   much attention the line is asking for, never good or bad - a quiet
+   student may simply have finished the chapter. Never colour alone, so the
+   sentence always carries the meaning on its own. */
+.ua-read {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--adm-line);
+  border-radius: 12px;
+  background: var(--adm-surface-2);
+  list-style: none;
+  font-size: 0.85rem;
+}
+.ua-note {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+.ua-note-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--adm-muted);
+  transform: translateY(1px);
+}
+.ua-note.is-up .ua-note-dot,
+.ua-note.is-good .ua-note-dot {
+  background: #1baf7a;
+}
+.ua-note.is-watch .ua-note-dot,
+.ua-note.is-down .ua-note-dot {
+  background: #eda100;
+}
+.ua-note.is-cold .ua-note-dot {
+  background: #2a78d6;
+}
+.ua-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.ua-tile {
+  padding: var(--space-3);
+  border: 1px solid var(--adm-line);
+  border-radius: 12px;
+  background: var(--adm-surface-2);
+}
+.ua-tile dt {
+  color: var(--adm-muted);
+  font-size: 0.75rem;
+}
+.ua-tile {
+  position: relative;
+  overflow: hidden;
+}
+/* Proportional figures, not tabular: equal-width digits make a standalone
+   number this size read loose. tabular-nums is for columns that align
+   vertically - the table and the axis ticks. */
+.ua-tile dd {
+  margin: 2px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+/* The arrow says which way; the colour only agrees with it. Reading this
+   with the hues stripped out still tells you the direction. */
+.ua-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--adm-muted);
+}
+.ua-delta.is-up {
+  color: #0f7a55;
+}
+.ua-delta.is-down {
+  color: #a86500;
+}
+:root[data-theme="dark"] .ua-delta.is-up {
+  color: #48c79b;
+}
+:root[data-theme="dark"] .ua-delta.is-down {
+  color: #e0a53c;
+}
+/* A shape, not a chart: it sits behind the number as context, quiet enough
+   that the figure stays the thing being read. */
+/* Its own band under the number rather than floating behind it, where it
+   crossed the digits. A shape for context; the values are in the chart. */
+.ua-spark {
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin-top: 6px;
+  color: var(--viz-1);
+  opacity: 0.45;
+  pointer-events: none;
+}
+/* Thin marks, a 2px surface gap between stacked segments so a boundary is
+   geometry and not only a change of colour, and the rounding only at the top
+   of the column - the bottom stays anchored to the baseline. */
+/* The plot: gridlines behind, columns in front, week labels under. The
+   container grows to include the axis band rather than fixing a height that
+   would crop it. */
+.ua-plot {
+  position: relative;
+  padding-left: 2.25rem;
+}
+.ua-grid {
+  position: absolute;
+  inset: 0 0 1.25rem 2.25rem;
+  pointer-events: none;
+}
+/* Hairline, solid, one step off the surface, and behind the data - never
+   dashed, which would read as a threshold rather than a grid. */
+.ua-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--adm-line);
+}
+.ua-gridline b {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: -0.55em;
+  color: var(--adm-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  /* Ticks line up vertically, which is where equal-width digits belong. */
+  font-variant-numeric: tabular-nums;
+}
+.ua-chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10rem;
+}
+.ua-col {
+  position: relative;
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+/* Capped rather than filling its slot: the leftover in the band is air, and
+   it is what stops a column chart reading as a wall of colour. */
+.ua-stack {
+  width: 100%;
+  max-width: 24px;
+  min-height: 2px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.ua-seg {
+  display: block;
+  min-height: 3px;
+}
+/* A week with no questions still gets a mark on the baseline. Drawn as
+   nothing it reads as missing data; drawn as a tick it reads as the zero it
+   is, which is the whole point of keeping empty weeks in the series. */
+.ua-col:has(.ua-stack:empty)::after {
+  content: "";
+  position: absolute;
+  inset: auto auto 0 50%;
+  translate: -50% 0;
+  width: 24px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--adm-line);
+}
+/* The hit target is the whole column, not the bar: a silent week has no bar
+   to point at and still has something to say. */
+.ua-hit {
+  position: absolute;
+  inset: 0;
+  cursor: default;
+}
+.ua-hit:focus-visible {
+  outline: 2px solid var(--adm-accent, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.ua-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: none;
+  min-width: max-content;
+  transform: translateX(-50%);
+  padding: var(--space-2);
+  border-radius: 10px;
+  background: var(--adm-fg);
+  color: var(--adm-surface);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
+.ua-tip b,
+.ua-tip i {
+  display: block;
+  font-style: normal;
+}
+.ua-hit:hover .ua-tip,
+.ua-hit:focus-visible .ua-tip {
+  display: block;
+}
+.ua-xaxis {
+  display: flex;
+  gap: 2px;
+  height: 1.25rem;
+  padding-top: 5px;
+  color: var(--adm-muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.ua-xaxis span {
+  flex: 1 1 0;
+  text-align: center;
+}
+.ua-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+.ua-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ua-legend b,
+.ua-spend b {
+  font-variant-numeric: tabular-nums;
+}
+.ua-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.ua-table summary {
+  cursor: pointer;
+  color: var(--adm-muted);
+  font-size: 0.8rem;
+}
+.ua-table table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.ua-table th,
+.ua-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--adm-line);
+  text-align: right;
+}
+.ua-table thead th,
+.ua-table tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+.ua-spend {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+}
+.ua-footnote {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--adm-line);
+  color: var(--adm-muted);
+  font-size: 0.78rem;
+}
+@media (max-width: 600px) {
+  .ua-chart {
+    height: 7rem;
+  }
+  .ua-table table {
+    display: block;
+    overflow-x: auto;
+  }
+}

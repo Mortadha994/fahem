@@ -1,98 +1,49 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import AuthDemo from "./AuthDemo.jsx";
-import LineByLine from "./LineByLine.jsx";
-import Badge from "./ui/Badge.jsx";
+import {
+  LazyMotion,
+  MotionConfig,
+  domAnimation,
+  useScroll,
+  useSpring,
+} from "motion/react";
+import * as m from "motion/react-m";
+import Hero from "./landing/Hero.jsx";
+import Bento from "./landing/Bento.jsx";
+import LandingDemo from "./LandingDemo.jsx";
+import CountUp from "./CountUp.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { fetchOverview, listFr, plural } from "../lib/overview.js";
+import "./landing/landing.css";
 
 /*
  * The public page: what Fahem is, for a student who has never heard of it and
  * has not been asked for an e-mail address yet.
  *
- * Everything stated here is checkable against the app, on purpose. There are
- * no testimonials, no student counts and no "utilisé par N lycées".
+ * Everything stated here is checkable against the app, on purpose: no
+ * testimonials, no student counts, no "utilisé par N lycées". The figures,
+ * the programme, the chapter answer in the FAQ and the
+ * syntax strip all come from GET /public/overview (app/routes/public_overview.py), so
+ * publishing a chapter updates this page within a minute.
  *
- * And it follows the app by itself: the numbers, the programme, the scope
- * label, the chapter FAQ, the syntax strip's extra pairs and the photo claims
- * all come from GET /public/overview (public_overview.py), which counts the
- * published chapters, their exercises and the extracts the retriever holds.
- * Publish a chapter or add exercises in the console and this page says so
- * within a minute - no edit here. Only a brand-new *kind* of feature needs a
- * card added to FEATURES below. If the overview cannot be fetched, the page
- * still renders, without the figures it could not check.
+ * Shape: a dark, lit hero with the product rebuilt in markup (landing/Hero),
+ * then light sections alternating with dark bands, and one thing a visitor
+ * can actually touch before signing up (LandingDemo) - three real exercises,
+ * answered without a model call.
  *
- * A landing page for 16-year-olds can be loud without being untrue, and an
- * invented figure is the one thing a student would be right to distrust.
- *
- * Visually it reuses the signed-out showcase treatment wholesale - the same
- * aurora, the same glass, the same gradient text, the same AuthDemo the
- * sign-in panel runs - so arriving on /connexion from here reads as a
- * continuation rather than a different product. See the landing section of
- * App.css; every loop and entrance there stops under prefers-reduced-motion.
- *
- * Two layers of motion. CSS carries what must play at once (the hero, the
- * syntax strip, the loops). Motion - springs, scroll-linked effects, counters,
- * cursor-following cards - lives in landingMotion.js, imported on demand so
- * it is a separate chunk only this page downloads. The markup here is always
- * the finished page; that module only ever animates *towards* it.
+ * Motion: this page renders outside the app's provider, so it carries its own
+ * LazyMotion. Everything animated is transform/opacity, reveals are
+ * whileInView with `once`, and MotionConfig reducedMotion="user" drops the
+ * movement when the system asks for it.
  */
-
-/* Same idea as AuthShell's GLYPHS: the background is the syntax the course
-   uses, not generic shapes. Fixed positions, spread wider because this page
-   is several screens tall. */
-const GLYPHS = [
-  { t: "←", x: "5%", y: "8%", s: "5rem", d: "21s", b: "0px", o: 0.2 },
-  { t: "Lire", x: "86%", y: "6%", s: "1.7rem", d: "24s", b: "1px", o: 0.16 },
-  { t: "mod", x: "91%", y: "40%", s: "2.3rem", d: "22s", b: "0px", o: 0.16 },
-  { t: "≠", x: "8%", y: "52%", s: "3.2rem", d: "26s", b: "2px", o: 0.13 },
-  { t: "Ecrire", x: "74%", y: "72%", s: "1.5rem", d: "28s", b: "1px", o: 0.14 },
-  { t: "div", x: "4%", y: "88%", s: "1.6rem", d: "23s", b: "3px", o: 0.12 },
-  { t: "≤", x: "93%", y: "86%", s: "2.7rem", d: "25s", b: "2px", o: 0.13 },
-  { t: "←", x: "52%", y: "34%", s: "2.1rem", d: "27s", b: "3px", o: 0.1 },
-  { t: "Si", x: "36%", y: "94%", s: "1.9rem", d: "20s", b: "2px", o: 0.11 },
-  { t: "*", x: "26%", y: "22%", s: "2.5rem", d: "29s", b: "4px", o: 0.1 },
-];
-
-/** The honest numbers, counted by the backend (public_overview.py). Without
- *  the overview only the one that needs no counting is shown. */
-function factsFrom(overview) {
-  const facts = [
-    { n: "2", unit: "langages", label: "Algorithme et Python, côte à côte" },
-  ];
-  if (!overview) return facts;
-  const { exercises, excerpts, chapters_available: ready } = overview.totals;
-  facts.push({
-    n: String(exercises),
-    unit: exercises === 1 ? "exercice" : "exercices",
-    label: `dans ${plural(ready, "chapitre")}, corrigés à la demande`,
-  });
-  if (excerpts != null) {
-    facts.push({
-      n: String(excerpts),
-      unit: "extraits",
-      label: "de ton cours, cités à l'appui",
-    });
-  }
-  return facts;
-}
 
 const shortNiveau = (label) => label.replace(/ année$/, "");
 const lowerFirst = (text) => text.charAt(0).toLowerCase() + text.slice(1);
 const isReady = (chapter) => chapter.status === "active";
 
-/** "2ème — 2 chapitres disponibles": the hero badge and the footer. */
-function scopeLabel(overview) {
-  if (!overview) return "Algorithmique — lycée";
-  const n = overview.totals.chapters_available;
-  const years = overview.totals.niveaux.map(shortNiveau).join(" · ") || "Lycée";
-  return `${years} — ${plural(n, "chapitre")} disponible${n > 1 ? "s" : ""}`;
-}
-
-/** The FAQ's "which chapters" answer, written from the live list. */
 function chaptersAnswer(overview) {
   if (!overview)
-    return "La section Programme, plus haut, liste les chapitres disponibles.";
+    return "La section Programme, plus bas, liste les chapitres disponibles.";
   const name = (c) =>
     `le chapitre ${c.id} de ${shortNiveau(c.niveau_label)} (${lowerFirst(c.title)})`;
   const ready = overview.chapters.filter(isReady);
@@ -108,21 +59,18 @@ function chaptersAnswer(overview) {
   return answer;
 }
 
-/* The syntax strip: course notation beside its Python, which is the whole
-   pitch in one line. Chapter 1's pairs always; a later chapter's pairs join
-   only once that chapter is published - no Si or Pour while "à venir". */
+/* Course notation beside its Python: the whole pitch in one line. A later
+   chapter's pairs join only once that chapter is published. */
 const CHAPTER_SYNTAX = {
   2: [
     ["Si x > 0 Alors", "if x > 0 :"],
     ["Sinon", "else :"],
     ["a ET b", "a and b"],
-    ["a OU b", "a or b"],
     ["a ≠ b", "a != b"],
-    ["Selon mois", "match mois :"],
   ],
   3: [
-    ["Pour i de 1 à n Faire", "for i in range(1, n + 1) :"],
-    ["Tant que x > 0 Faire", "while x > 0 :"],
+    ["Pour i de 1 à n", "for i in range(1, n+1) :"],
+    ["Tant que x > 0", "while x > 0 :"],
   ],
 };
 
@@ -132,114 +80,46 @@ const SYNTAX = [
   ['Ecrire ("Bonjour")', 'print("Bonjour")'],
   ["a mod b", "a % b"],
   ["a div b", "a // b"],
-  ["carre ← x * x", "carre = x * x"],
   ["réel", "float"],
   ["entier", "int"],
-  ["chaîne", "str"],
-  ["booléen", "bool"],
-];
-
-/* The phone menu lists every section, including the interactive one the
-   desktop bar leaves out for width. */
-const MENU = [
-  { href: "#fonctionnalites", label: "Ce que ça fait" },
-  { href: "#ligne-a-ligne", label: "Ligne à ligne" },
-  { href: "#etapes", label: "Comment ça marche" },
-  { href: "#programme", label: "Programme" },
-  { href: "#questions", label: "Questions" },
-];
-
-const FEATURES = [
-  {
-    glyph: "←",
-    title: "La syntaxe de ton cours",
-    body: "Affectation avec ←, mod et div, Lire et Ecrire. Une réponse que tu peux recopier sur ta copie sans rien retraduire.",
-  },
-  {
-    glyph: "⇄",
-    title: "Algorithme, puis Python",
-    body: "Les deux versions dans la même réponse, ligne pour ligne. Tu vois ce que devient chaque instruction.",
-  },
-  {
-    glyph: "❝",
-    title: "Chaque réponse est sourcée",
-    body: "Fahem montre les passages du cours sur lesquels il s'appuie. Tu peux vérifier au lieu de croire.",
-  },
-  {
-    glyph: "✓",
-    title: "Une relecture avant la tienne",
-    body: "Un vérificateur repasse sur la réponse et signale une syntaxe douteuse, plutôt que de te la laisser apprendre.",
-  },
-  {
-    glyph: "☰",
-    title: "Les exercices de la série",
-    body: "Ouvre un exercice du chapitre : l'énoncé part tout seul, tu n'as rien à recopier.",
-  },
-  {
-    glyph: "⊘",
-    title: "Il reste dans le programme",
-    body: "Une question hors chapitre ? Il le dit. Un tuteur qui refuse d'inventer vaut mieux qu'un qui invente bien.",
-  },
-  {
-    glyph: "▣",
-    title: "Une photo suffit",
-    body: "Photo, capture d'écran ou PDF de l'énoncé : Fahem le lit et le résout comme si tu l'avais tapé.",
-    // Shown only while the backend has a vision model (public_overview.py).
-    requires: "photo_attachments",
-  },
-  {
-    glyph: "◎",
-    title: "Adapté à ta classe",
-    body: "Ton niveau et ta section, choisis une fois : tu ne vois que les chapitres de ton année.",
-  },
-  {
-    glyph: "↺",
-    title: "Tes discussions te suivent",
-    body: "Ton historique est lié à ton compte : retrouve tes exercices sur ton téléphone comme sur l'ordinateur.",
-  },
 ];
 
 const STEPS = [
   {
-    title: "Choisis, ou colle",
-    body: "Prends un exercice du chapitre, ou colle l'énoncé que ton prof a donné aujourd'hui.",
+    title: "Envoie ton exercice",
+    body: "Colle l'énoncé, prends-le en photo, ou choisis-en un dans la série de ton chapitre.",
   },
   {
-    title: "Lis la réponse",
-    body: "Algorithme, Python, et les parties du cours utilisées — rien qui sorte de ton chapitre.",
+    title: "Guidé, ou direct",
+    body: "Un indice pour chercher toi-même, ou la solution complète tout de suite. C'est toi qui décides.",
   },
   {
-    title: "Refais-le seul",
-    body: "C'est le but : la réponse est détaillée pour que tu puisses la refermer et recommencer sans elle.",
+    title: "Vérifie ta réponse",
+    body: "Écris ta solution, Fahem la corrige. Réussi tout seul = un exercice de plus dans ta progression.",
   },
 ];
 
 const VERSUS = {
   them: [
     "Écrit x = x + 1 là où ton cours écrit x ← x + 1",
-    "Mélange les niveaux et sort du programme",
-    "Invente une syntaxe qui ressemble à la bonne",
-    "Aucune source : à toi de deviner si c'est juste",
+    "Utilise des boucles pas encore vues en classe",
+    "Donne la réponse, jamais l'envie de chercher",
+    "Tu ne sais pas si c'est juste pour ton programme",
   ],
   us: [
     "Écrit la syntaxe de ton chapitre, à la lettre",
-    "Ne répond que sur ce que ton cours couvre",
-    "Relit sa propre réponse et signale ce qui cloche",
-    "Montre les extraits du cours qu'il a utilisés",
+    "Ne sort jamais de ce que tu as vu en cours",
+    "Te guide d'abord, puis corrige ce que tu écris",
+    "Montre le passage du cours qu'il a utilisé",
   ],
 };
 
-/** The FAQ, with the answers that depend on what is published built from the
- *  overview. */
 const faqFrom = (overview) => [
   {
-    q: "C'est gratuit ?",
+    q: "C'est vraiment gratuit ?",
     a: "Oui. Une adresse e-mail et un mot de passe, ou ton compte Google, et tu peux poser ta première question. Aucune carte bancaire.",
   },
-  {
-    q: "Quels chapitres sont couverts ?",
-    a: chaptersAnswer(overview),
-  },
+  { q: "Quels chapitres sont couverts ?", a: chaptersAnswer(overview) },
   ...(overview?.features.photo_attachments
     ? [
         {
@@ -250,175 +130,72 @@ const faqFrom = (overview) => [
     : []),
   {
     q: "Ce n'est pas de la triche ?",
-    a: "Fahem fait ce qu'un bon corrigé fait : il montre la démarche, pas seulement le résultat. Ton prof, lui, te demandera de refaire l'exercice seul le jour du devoir — c'est pour ça que chaque réponse est expliquée et sourcée.",
+    a: "Le mode guidé te fait chercher avant de montrer quoi que ce soit, et « Vérifier ma réponse » corrige ce que tu as écrit toi-même. Le jour du devoir, c'est ça qui compte.",
   },
   {
-    q: "En quoi c'est différent d'une IA classique ?",
-    a: "Un modèle généraliste a appris la syntaxe d'internet. Fahem ne répond qu'avec ton cours sous les yeux, dans la notation de ton manuel, et il indique d'où vient chaque élément de sa réponse.",
+    q: "En quoi c'est différent de ChatGPT ?",
+    a: "Une IA généraliste a appris la syntaxe d'internet. Fahem ne répond qu'avec ton cours sous les yeux, dans la notation de ton manuel, et il te montre d'où vient sa réponse.",
   },
   {
     q: "Ça marche sur téléphone ?",
-    a: "Oui, dans le navigateur, sans rien installer. Il n'y a pas d'application à télécharger.",
+    a: "Oui, dans le navigateur, sans rien installer.",
   },
 ];
 
-/** The hero demo tilts toward the cursor, exactly as the sign-in panel's copy
- *  of it does - .auth-sample reads --tilt-x/--tilt-y, wherever they are set. */
-function handleDemoPointer(event) {
-  if (event.pointerType !== "mouse") return;
-  const box = event.currentTarget;
-  const r = box.getBoundingClientRect();
-  // -1..1 across the window, clamped so the tilt eases off at the edges.
-  const nx = Math.max(-1, Math.min(1, ((event.clientX - r.left) / r.width) * 2 - 1));
-  const ny = Math.max(-1, Math.min(1, ((event.clientY - r.top) / r.height) * 2 - 1));
-  box.style.setProperty("--tilt-x", `${(-ny * 4).toFixed(2)}deg`);
-  box.style.setProperty("--tilt-y", `${(nx * 5).toFixed(2)}deg`);
-}
+const MENU = [
+  { href: "#essayer", label: "Essayer" },
+  { href: "#fonctionnalites", label: "Ce que ça fait" },
+  { href: "#etapes", label: "Comment ça marche" },
+  { href: "#programme", label: "Programme" },
+  { href: "#questions", label: "Questions" },
+];
 
-/** Pointer-following highlight on a card, written straight to CSS custom
- *  properties - the same trick AuthShell uses, for the same reason: this fires
- *  on every mouse move, and re-rendering a section for a glow is wasteful. */
-function handleCardPointer(event) {
-  if (event.pointerType !== "mouse") return;
-  const card = event.currentTarget;
-  const box = card.getBoundingClientRect();
-  card.style.setProperty("--mx", `${event.clientX - box.left}px`);
-  card.style.setProperty("--my", `${event.clientY - box.top}px`);
-}
+const rise = {
+  hidden: { opacity: 0, y: 24 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring", visualDuration: 0.6, bounce: 0.2 },
+  },
+};
+const inView = {
+  initial: "hidden",
+  whileInView: "show",
+  viewport: { once: true, amount: 0.2 },
+};
 
-function prefersReducedMotion() {
-  try {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return false;
-  }
-}
-
-/** A heading's words as separate boxes, so CSS can bring them in one after
- *  another. The spaces stay outside the inline-blocks, or lines could not
- *  break between words. */
-function Words({ text }) {
-  return text.split(" ").flatMap((word, i) => [
-    i > 0 ? " " : null,
-    <span className="lp-word" key={i} style={{ "--w": i }}>
-      {word}
-    </span>,
-  ]);
-}
-
-/*
- * The notation correction, as a small card: the line a generic model writes,
- * struck out, over the line the course writes - Fahem's whole argument in
- * eight characters. The resting markup is the finished correction;
- * landingMotion.js replays the strike and the arrow when it scrolls in.
- */
-function SyntaxFix({ className = "" }) {
+/** A section title block, always the same rhythm: kicker, title, lead. */
+function Head({ kicker, title, lead }) {
   return (
-    <figure
-      className={`lp-fix ${className}`}
-      role="img"
-      aria-label="Correction : x = x + 1, la notation d'une IA généraliste, devient x ← x + 1, la notation de ton cours."
-    >
-      <div className="lp-fix-line lp-fix-wrong" aria-hidden="true">
-        <span className="lp-fix-icon">✕</span>
-        <code className="lp-fix-code">
-          x = x + 1
-          <span className="lp-fix-strike" />
-        </code>
-        <span className="lp-fix-tag">IA généraliste</span>
-      </div>
-      <div className="lp-fix-line lp-fix-right" aria-hidden="true">
-        <span className="lp-fix-icon lp-fix-check">✓</span>
-        <code className="lp-fix-code">
-          x <span className="lp-fix-arrow">←</span> x + 1
-        </code>
-        <span className="lp-fix-tag">ton cours</span>
-      </div>
-    </figure>
+    <m.header className="fx-head" variants={rise} {...inView}>
+      <p className="fx-kicker">{kicker}</p>
+      <h2 className="fx-h2">{title}</h2>
+      {lead && <p className="fx-lead">{lead}</p>}
+    </m.header>
   );
 }
 
 export default function Landing() {
-  const pageRef = useRef(null);
-  // The bar is transparent over the hero and becomes a solid strip once the
-  // page has moved, so the headline is not sitting behind a band.
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuButtonRef = useRef(null);
-  // What is published right now (null until known, or if it cannot be read).
   const [overview, setOverview] = useState(null);
-  const [settled, setSettled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const menuButton = useRef(null);
+  const { scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, {
+    stiffness: 140,
+    damping: 30,
+    mass: 0.3,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    fetchOverview().then((data) => {
-      if (cancelled) return;
-      setOverview(data);
-      setSettled(true);
-    });
+    fetchOverview()
+      .then((data) => !cancelled && setOverview(data))
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
-
-  // Motion is loaded here rather than imported at the top: a static import
-  // would put it in the main bundle the student app and the console share.
-  // Reduced motion never downloads it, and if the import fails the page is
-  // simply static - nothing waits on it to become visible.
-  //
-  // It starts once the overview has settled (fetchOverview gives up after
-  // 2.5s): landingMotion reads the page once - which elements to reveal, what
-  // each counter counts to - so it must see the real chapters and numbers.
-  useEffect(() => {
-    const root = pageRef.current;
-    if (!settled || !root || prefersReducedMotion()) return undefined;
-    let cleanup;
-    let cancelled = false;
-    import("./landingMotion.js")
-      .then(({ enhanceLanding }) => {
-        if (!cancelled) cleanup = enhanceLanding(root);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, [settled]);
-
-  const facts = factsFrom(overview);
-  const scope = scopeLabel(overview);
-  const faq = faqFrom(overview);
-  const photos = Boolean(overview?.features.photo_attachments);
-  const features = FEATURES.filter(
-    (f) => !f.requires || overview?.features[f.requires]
-  );
-  const programme = overview?.chapters ?? [];
-  const readyCount = programme.filter(isReady).length;
-  const comingCount = programme.length - readyCount;
-  const syntax = [
-    ...SYNTAX,
-    ...programme.filter(isReady).flatMap((c) => CHAPTER_SYNTAX[c.id] ?? []),
-  ];
-
-  // The phone menu closes on Escape (focus goes back to its button, where the
-  // student was) and whenever the window grows past the breakpoint that hides
-  // its button - otherwise it could stay open with no way to close it.
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onKey = (event) => {
-      if (event.key !== "Escape") return;
-      setMenuOpen(false);
-      menuButtonRef.current?.focus();
-    };
-    const wide = window.matchMedia("(min-width: 981px)");
-    const onWide = () => wide.matches && setMenuOpen(false);
-    document.addEventListener("keydown", onKey);
-    wide.addEventListener("change", onWide);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      wide.removeEventListener("change", onWide);
-    };
-  }, [menuOpen]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -427,464 +204,366 @@ export default function Landing() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuButton.current?.focus();
+      }
+    };
+    const onResize = () => window.innerWidth > 860 && setMenuOpen(false);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [menuOpen]);
+
+  const faq = faqFrom(overview);
+  const programme = overview?.chapters ?? [];
+  const ready = programme.filter(isReady);
+  const exercises = overview?.totals.exercises ?? 0;
+  const photos = Boolean(overview?.features.photo_attachments);
+  const syntax = [...SYNTAX, ...ready.flatMap((c) => CHAPTER_SYNTAX[c.id] ?? [])];
+
   return (
-    <div className="landing" ref={pageRef}>
-      <div className="aurora" aria-hidden="true">
-        <span className="aurora-blob aurora-blob-1" />
-        <span className="aurora-blob aurora-blob-2" />
-        <span className="aurora-blob aurora-blob-3" />
-        <span className="aurora-grid" />
-        <div className="aurora-glyphs">
-          {GLYPHS.map((g, i) => (
-            <span
-              key={i}
-              style={{
-                "--x": g.x,
-                "--y": g.y,
-                "--s": g.s,
-                "--d": g.d,
-                "--b": g.b,
-                "--o": g.o,
-                "--delay": `${-i * 1.7}s`,
-              }}
-            >
-              {g.t}
-            </span>
-          ))}
-        </div>
-      </div>
+    <LazyMotion features={domAnimation} strict>
+      <MotionConfig reducedMotion="user">
+        <div className="fx" id="top">
+          <m.span
+            className="fx-progress"
+            style={{ scaleX: progress }}
+            aria-hidden="true"
+          />
 
-      <header className="lp-bar" data-scrolled={scrolled ? "" : undefined}>
-        <div className="lp-bar-inner">
-          <a className="lp-brand" href="#top">
-            <span className="auth-mark" aria-hidden="true">
-              <span className="auth-mark-arrow">←</span>
-            </span>
-            Fahem
-          </a>
-
-          <nav className="lp-nav" aria-label="Sections de la page">
-            {/* Slides under the current section's link (landingMotion.js). */}
-            <span className="lp-nav-pill" aria-hidden="true" />
-            <a href="#fonctionnalites">Ce que ça fait</a>
-            <a href="#etapes">Comment ça marche</a>
-            <a href="#programme">Programme</a>
-            <a href="#questions">Questions</a>
-          </nav>
-
-          <div className="lp-bar-actions">
-            <ThemeToggle className="lp-theme" />
-            <Link className="lp-textlink" to="/connexion">
-              Se connecter
-            </Link>
-            {/* A Link with the button classes, not a <Button> inside a Link:
-                a button nested in an anchor is invalid, and this is a
-                navigation, not an action. */}
-            <Link
-              className="btn btn-primary btn-sm lp-btn"
-              to="/connexion"
-              state={{ authMode: "signup" }}
-            >
-              Créer un compte
-            </Link>
-            {/* Only below 980px, where the section links above are hidden. */}
-            <button
-              ref={menuButtonRef}
-              type="button"
-              className="lp-menu-btn"
-              aria-expanded={menuOpen}
-              aria-controls="lp-menu"
-              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
-              onClick={() => setMenuOpen((open) => !open)}
-            >
-              <span className="lp-menu-icon" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-
-        {/* The phone menu. Always in the DOM so it can animate open and shut;
-            `inert` while closed keeps its links out of the tab order and away
-            from screen readers. */}
-        <nav
-          id="lp-menu"
-          className="lp-menu"
-          aria-label="Menu"
-          data-open={menuOpen ? "" : undefined}
-          inert={!menuOpen}
-        >
-          <div className="lp-menu-inner">
-            {MENU.map((item, i) => (
-              <a
-                key={item.href}
-                href={item.href}
-                style={{ "--i": i }}
-                onClick={() => setMenuOpen(false)}
-              >
-                {item.label}
-                <span aria-hidden="true">→</span>
-              </a>
-            ))}
-            <Link
-              className="lp-menu-signin"
-              to="/connexion"
-              style={{ "--i": MENU.length }}
-            >
-              Se connecter
-            </Link>
-          </div>
-        </nav>
-        {/* Reading progress, bound to scroll by landingMotion.js. */}
-        <span className="lp-progress" aria-hidden="true" />
-      </header>
-
-      <main id="top">
-        {/* --- hero ------------------------------------------------------- */}
-        <section className="lp-hero">
-          <div className="lp-hero-copy">
-            <Badge className="lp-eyebrow">{scope}</Badge>
-
-            {/* Word by word: the plain words rise, then the gradient phrase
-                fades in as one inline run - split into boxes it could not wrap
-                on a phone, and each box would restart the gradient. */}
-            <h1 className="lp-title">
-              <Words text="L'algorithmique, corrigée" />{" "}
-              <span className="auth-gradient-text lp-title-accent">
-                dans la syntaxe de ton cours.
+          {/* --- bar ------------------------------------------------------ */}
+          <header className={`fx-bar${scrolled ? " is-scrolled" : ""}`}>
+            <a className="fx-brand" href="#top">
+              <span className="fx-brand-mark" aria-hidden="true">
+                ←
               </span>
-              <span className="type-caret lp-title-caret" aria-hidden="true" />
-            </h1>
-
-            <p className="lp-lead">
-              Colle l'énoncé d'un exercice{photos ? ", ou envoie-en une photo" : ""}.
-              Fahem le résout en Algorithme et en Python — avec <code>←</code>,{" "}
-              <code>Lire</code>, <code>Ecrire</code> et <code>mod</code> comme ton
-              manuel — et te montre les parties du cours sur lesquelles il s'appuie.
-            </p>
-
-            <div className="lp-cta-row">
+              Fahem
+            </a>
+            <nav className="fx-nav" aria-label="Sections de la page">
+              {MENU.map((item) => (
+                <a key={item.href} href={item.href}>
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+            <div className="fx-bar-end">
+              <ThemeToggle className="fx-theme" />
+              <Link className="fx-textlink" to="/connexion">
+                Se connecter
+              </Link>
               <Link
-                className="btn btn-primary btn-md lp-btn lp-btn-lg"
+                className="fx-btn fx-btn-primary fx-btn-sm"
                 to="/connexion"
                 state={{ authMode: "signup" }}
               >
-                Commencer — c'est gratuit
+                Créer un compte
               </Link>
-              <Link className="lp-textlink lp-textlink-strong" to="/connexion">
-                J'ai déjà un compte →
-              </Link>
-            </div>
-
-            <p className="lp-fineprint">
-              Pas de carte bancaire, rien à installer. Une adresse e-mail suffit.
-            </p>
-          </div>
-
-          {/* A wrapper for the scroll parallax, so it never competes with the
-              demo window's own CSS entrance over `transform`. */}
-          <div className="lp-hero-visual">
-            {/* The same demo the sign-in panel runs: the product, typing. */}
-            <div
-              className="lp-hero-demo"
-              onPointerMove={handleDemoPointer}
-              onPointerLeave={(event) => {
-                event.currentTarget.style.setProperty("--tilt-x", "0deg");
-                event.currentTarget.style.setProperty("--tilt-y", "0deg");
-              }}
-            >
-              <AuthDemo paused={false} />
-            </div>
-            {/* Phones do not get the demo (its code columns are unreadable
-                there), so the hero shows the one-line version of the pitch. */}
-            <SyntaxFix className="lp-hero-fix" />
-          </div>
-        </section>
-
-        {/* --- syntax strip ----------------------------------------------- */}
-        {/* Decorative: every pair is also said in words on the page. Listed
-            twice so the loop wraps without a seam. */}
-        <div className="lp-marquee" aria-hidden="true">
-          <div className="lp-marquee-track">
-            {[...syntax, ...syntax].map(([algo, py], i) => (
-              <span className="lp-marquee-item" key={i}>
-                <code className="lp-marquee-algo">{algo}</code>
-                <span className="lp-marquee-sep">⇄</span>
-                <code className="lp-marquee-py">{py}</code>
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* --- the three numbers ------------------------------------------ */}
-        <section className="lp-facts" aria-label="Fahem en chiffres">
-          {facts.map((f, i) => (
-            <div className="lp-fact" key={f.unit} data-reveal="" style={{ "--i": i }}>
-              {/* Counts up on arrival; the moving digits are hidden from
-                  screen readers, the real number beside them is not. */}
-              <span className="lp-fact-n" aria-hidden="true" data-count={f.n}>
-                {f.n}
-              </span>
-              <span className="sr-only">{f.n}</span>
-              <span className="lp-fact-unit">{f.unit}</span>
-              <span className="lp-fact-label">{f.label}</span>
-            </div>
-          ))}
-        </section>
-
-        {/* --- features --------------------------------------------------- */}
-        <section className="lp-section" id="fonctionnalites">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Ce que ça fait</p>
-            <h2 className="lp-h2">
-              Un tuteur qui a lu <span className="auth-gradient-text">ton</span> cours.
-            </h2>
-            <p className="lp-section-lead">
-              Pas le programme d'un autre pays, ni la syntaxe d'un forum : le chapitre
-              que tu as en classe cette semaine.
-            </p>
-          </header>
-
-          <div className="lp-grid">
-            {features.map((f, i) => (
-              <article
-                className="lp-card"
-                key={f.title}
-                data-reveal=""
-                style={{ "--i": i }}
-                onPointerMove={handleCardPointer}
+              <button
+                type="button"
+                ref={menuButton}
+                className="fx-burger"
+                aria-expanded={menuOpen}
+                aria-controls="fx-menu"
+                onClick={() => setMenuOpen((v) => !v)}
               >
-                <span className="lp-card-glyph" aria-hidden="true">
-                  {f.glyph}
-                </span>
-                <h3 className="lp-card-title">{f.title}</h3>
-                <p className="lp-card-body">{f.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        {/* --- line by line (interactive) --------------------------------- */}
-        <section className="lp-section" id="ligne-a-ligne">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Essaie</p>
-            <h2 className="lp-h2">
-              Ligne à ligne,{" "}
-              <span className="auth-gradient-text">sans rien retraduire</span>.
-            </h2>
-            <p className="lp-section-lead">
-              Choisis un exercice, puis passe sur une ligne : tu vois sa version Python
-              et ce qui change entre les deux.
-            </p>
+                <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span>
+                <span className="sr-only">Menu</span>
+              </button>
+            </div>
           </header>
-          <div data-reveal="">
-            <LineByLine />
-          </div>
-        </section>
-
-        {/* --- how it works ----------------------------------------------- */}
-        <section className="lp-section" id="etapes">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Comment ça marche</p>
-            <h2 className="lp-h2">Trois minutes, trois étapes.</h2>
-          </header>
-
-          <div className="lp-steps-wrap">
-            {/* Fills with scroll between the numbers (landingMotion.js). */}
-            <span className="lp-steps-track" aria-hidden="true">
-              <span className="lp-steps-fill" />
-            </span>
-            <ol className="lp-steps">
-              {STEPS.map((s, i) => (
-                <li
-                  className="lp-step"
-                  key={s.title}
-                  data-reveal=""
-                  style={{ "--i": i }}
-                >
-                  <span className="lp-step-n" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  <h3 className="lp-step-title">{s.title}</h3>
-                  <p className="lp-step-body">{s.body}</p>
-                </li>
+          {menuOpen && (
+            <div className="fx-menu" id="fx-menu">
+              {MENU.map((item) => (
+                <a key={item.href} href={item.href} onClick={() => setMenuOpen(false)}>
+                  {item.label}
+                </a>
               ))}
-            </ol>
-          </div>
-        </section>
-
-        {/* --- versus a generic chatbot ----------------------------------- */}
-        <section className="lp-section lp-section-narrow">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">La différence</p>
-            <h2 className="lp-h2">
-              Pourquoi pas{" "}
-              <span className="auth-gradient-text">n'importe quelle IA</span> ?
-            </h2>
-            <p className="lp-section-lead">
-              Une réponse juste dans la mauvaise notation reste fausse sur une copie.
-            </p>
-          </header>
-
-          <div className="lp-fix-row" data-reveal="">
-            <SyntaxFix />
-          </div>
-
-          <div className="lp-versus">
-            <div className="lp-versus-col lp-versus-them" data-reveal="">
-              <h3 className="lp-versus-title">Une IA généraliste</h3>
-              <ul>
-                {VERSUS.them.map((line) => (
-                  <li key={line}>
-                    <span className="lp-versus-icon" aria-hidden="true">
-                      ✕
-                    </span>
-                    {line}
-                  </li>
-                ))}
-              </ul>
+              <Link to="/connexion" onClick={() => setMenuOpen(false)}>
+                Se connecter
+              </Link>
             </div>
+          )}
 
-            <div
-              className="lp-versus-col lp-versus-us"
-              data-reveal=""
-              style={{ "--i": 1 }}
-            >
-              <h3 className="lp-versus-title">
-                Fahem <Badge tone="success">ton chapitre</Badge>
-              </h3>
-              <ul>
-                {VERSUS.us.map((line) => (
-                  <li key={line}>
-                    <span className="lp-versus-icon" aria-hidden="true">
-                      ✓
-                    </span>
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
+          <main>
+            <Hero exercises={exercises} />
 
-        {/* --- programme -------------------------------------------------- */}
-        <section className="lp-section" id="programme">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Programme</p>
-            <h2 className="lp-h2">Ce qui est prêt, et ce qui arrive.</h2>
-            <p className="lp-section-lead">
-              {overview
-                ? `${plural(readyCount, "chapitre")} prêt${readyCount > 1 ? "s" : ""}${
-                    comingCount ? `, ${comingCount} à venir` : ""
-                  }. La liste est courte parce qu'elle est vraie : elle se met à jour dès qu'un chapitre est publié.`
-                : "La liste est courte parce qu'elle est vraie : un chapitre entièrement couvert vaut mieux que trois à moitié."}
-            </p>
-          </header>
-
-          {/* One card per chapter in the catalogue, published or announced,
-              straight from /public/overview. */}
-          <div className="lp-chapters">
-            {programme.map((c, i) => (
-              <article
-                className={`lp-chapter${isReady(c) ? " is-ready" : ""}`}
-                key={`${c.niveau}-${c.id}`}
-                data-reveal=""
-                style={{ "--i": i }}
-              >
-                <div className="lp-chapter-top">
-                  <span className="lp-chapter-n">
-                    {shortNiveau(c.niveau_label)} · Chapitre {c.id}
+            {/* --- syntax strip ------------------------------------------- */}
+            <div className="fx-marquee" aria-hidden="true">
+              <div className="fx-marquee-track">
+                {[...syntax, ...syntax].map(([algo, py], i) => (
+                  <span className="fx-marquee-item" key={i}>
+                    <code className="is-algo">{algo}</code>
+                    <span>⇄</span>
+                    <code className="is-py">{py}</code>
                   </span>
-                  {isReady(c) ? (
-                    <Badge tone="success">Disponible</Badge>
-                  ) : (
-                    <Badge>À venir</Badge>
-                  )}
+                ))}
+              </div>
+            </div>
+
+            {/* --- try it ------------------------------------------------- */}
+            <section className="fx-section fx-tint" id="essayer">
+              <Head
+                kicker="Essaie tout de suite"
+                title={
+                  <>
+                    Un exercice, <em>trois façons</em> de s'en sortir.
+                  </>
+                }
+                lead="Choisis un exercice : la solution complète, le mode guidé, ou la correction de ta propre réponse. Sans compte, sans rien installer."
+              />
+              <m.div variants={rise} {...inView}>
+                <LandingDemo />
+              </m.div>
+            </section>
+
+            {/* --- features ----------------------------------------------- */}
+            <section className="fx-section" id="fonctionnalites">
+              <Head
+                kicker="Ce que tu peux faire"
+                title={
+                  <>
+                    Plus qu'une réponse : <em>apprendre</em> à la trouver.
+                  </>
+                }
+                lead="Fahem connaît le chapitre que tu as en classe cette semaine — pas le programme d'un autre pays, ni la syntaxe d'un forum."
+              />
+              <Bento photos={photos} />
+            </section>
+
+            {/* --- numbers ------------------------------------------------ */}
+            <section className="fx-band">
+              <m.div className="fx-stats" variants={rise} {...inView}>
+                <div className="fx-stat">
+                  <CountUp className="fx-stat-n" value={4} />
+                  <span className="fx-stat-unit">étapes</span>
+                  <span className="fx-stat-label">
+                    pour comprendre, avant la solution
+                  </span>
                 </div>
-                <h3 className="lp-chapter-title">{c.title}</h3>
-                {c.topics.length > 0 && (
-                  <p className="lp-chapter-body">{c.topics.join(" · ")}</p>
-                )}
-                {isReady(c) && (
-                  <p className="lp-chapter-meta">
-                    {c.exercises > 0
-                      ? `${plural(c.exercises, "exercice")} corrigé${c.exercises > 1 ? "s" : ""} à la demande`
-                      : "Pose tes propres exercices"}
-                    {c.excerpts ? ` · ${c.excerpts} extraits du cours` : ""}
-                  </p>
-                )}
-              </article>
-            ))}
-            {settled && !overview && (
-              <p className="lp-chapter-body">
-                Le programme n'a pas pu être chargé. Connecte-toi pour voir les
-                chapitres de ton année.
-              </p>
-            )}
-          </div>
-        </section>
+                <div className="fx-stat">
+                  <CountUp className="fx-stat-n" value={exercises} />
+                  <span className="fx-stat-unit">exercices corrigés</span>
+                  <span className="fx-stat-label">
+                    de {plural(ready.length || 1, "chapitre")}, prêts à essayer
+                  </span>
+                </div>
+                <div className="fx-stat">
+                  <span className="fx-stat-n">0</span>
+                  <span className="fx-stat-unit">dinar</span>
+                  <span className="fx-stat-label">gratuit pour les élèves</span>
+                </div>
+              </m.div>
+            </section>
 
-        {/* --- FAQ -------------------------------------------------------- */}
-        <section className="lp-section lp-section-narrow" id="questions">
-          <header className="lp-section-head" data-reveal="">
-            <p className="lp-kicker">Questions</p>
-            <h2 className="lp-h2">Ce que les élèves demandent.</h2>
-          </header>
-
-          <div className="lp-faq">
-            {faq.map((item, i) => (
-              <details
-                className="lp-faq-item"
-                key={item.q}
-                data-reveal=""
-                style={{ "--i": i }}
+            {/* --- steps -------------------------------------------------- */}
+            <section className="fx-section" id="etapes">
+              <Head kicker="Comment ça marche" title="Trois minutes, trois étapes." />
+              <m.ol
+                className="fx-steps"
+                variants={{ show: { transition: { staggerChildren: 0.1 } } }}
+                {...inView}
               >
-                <summary>
-                  {item.q}
-                  <span className="lp-faq-sign" aria-hidden="true" />
-                </summary>
-                <p>{item.a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
+                {STEPS.map((step, i) => (
+                  <m.li className="fx-step" key={step.title} variants={rise}>
+                    <span className="fx-step-n" aria-hidden="true">
+                      {i + 1}
+                    </span>
+                    <h3>{step.title}</h3>
+                    <p>{step.body}</p>
+                  </m.li>
+                ))}
+              </m.ol>
+            </section>
 
-        {/* --- closing CTA ------------------------------------------------ */}
-        <section className="lp-final" data-reveal="">
-          <h2 className="lp-final-title">
-            Ton prochain exercice, <span className="auth-gradient-text">compris</span>.
-          </h2>
-          <p className="lp-final-lead">
-            Crée ton compte et pose la question que tu gardes depuis ce matin.
-          </p>
-          <div className="lp-cta-row lp-cta-center">
+            {/* --- versus ------------------------------------------------- */}
+            <section className="fx-section fx-section-narrow fx-tint">
+              <Head
+                kicker="La différence"
+                title={
+                  <>
+                    Pourquoi pas <em>n'importe quelle IA</em> ?
+                  </>
+                }
+                lead="Une réponse juste dans la mauvaise notation reste fausse sur une copie."
+              />
+              <m.div
+                className="fx-versus"
+                variants={{ show: { transition: { staggerChildren: 0.12 } } }}
+                {...inView}
+              >
+                <m.div className="fx-versus-col is-them" variants={rise}>
+                  <h3>Une IA généraliste</h3>
+                  <ul>
+                    {VERSUS.them.map((line) => (
+                      <li key={line}>
+                        <span aria-hidden="true">✕</span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </m.div>
+                <m.div className="fx-versus-col is-us" variants={rise}>
+                  <h3>
+                    Fahem <span className="fx-tag is-ready">ton chapitre</span>
+                  </h3>
+                  <ul>
+                    {VERSUS.us.map((line) => (
+                      <li key={line}>
+                        <span aria-hidden="true">✓</span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </m.div>
+              </m.div>
+            </section>
+
+            {/* --- programme ---------------------------------------------- */}
+            <section className="fx-section" id="programme">
+              <Head
+                kicker="Programme"
+                title="Ce qui est prêt, et ce qui arrive."
+                lead="La liste est courte parce qu'elle est vraie : elle se met à jour dès qu'un chapitre est publié."
+              />
+              <m.div
+                className="fx-chapters"
+                variants={{ show: { transition: { staggerChildren: 0.06 } } }}
+                {...inView}
+              >
+                {programme.map((c) => (
+                  <m.article
+                    className={`fx-chapter${isReady(c) ? " is-ready" : ""}`}
+                    key={`${c.niveau}-${c.id}`}
+                    variants={rise}
+                  >
+                    <p className="fx-chapter-top">
+                      <span>
+                        {shortNiveau(c.niveau_label)} · Chapitre {c.id}
+                      </span>
+                      <span className={`fx-tag${isReady(c) ? " is-ready" : ""}`}>
+                        {isReady(c) ? "Disponible" : "À venir"}
+                      </span>
+                    </p>
+                    <h3>{c.title}</h3>
+                    {c.topics.length > 0 && (
+                      <p className="fx-chapter-topics">{c.topics.join(" · ")}</p>
+                    )}
+                    {isReady(c) && c.exercises > 0 && (
+                      <p className="fx-chapter-meta">
+                        {plural(c.exercises, "exercice")} corrigé
+                        {c.exercises > 1 ? "s" : ""}
+                      </p>
+                    )}
+                  </m.article>
+                ))}
+              </m.div>
+            </section>
+
+            {/* --- parents and teachers ----------------------------------- */}
+            <section className="fx-section fx-section-narrow fx-tint" id="parents">
+              <m.div className="fx-parents" variants={rise} {...inView}>
+                <h2>Tu es parent ou professeur ?</h2>
+                <ul>
+                  <li>
+                    <b>Gratuit</b>, sans publicité et sans carte bancaire.
+                  </li>
+                  <li>
+                    <b>Le programme tunisien</b> : la notation du manuel, et rien que le
+                    chapitre en cours.
+                  </li>
+                  <li>
+                    <b>L'élève cherche d'abord</b> : indices étape par étape, puis
+                    correction de ce qu'il a écrit lui-même.
+                  </li>
+                  <li>
+                    <b>Chaque réponse est sourcée</b> : le passage du cours utilisé est
+                    affiché.
+                  </li>
+                </ul>
+              </m.div>
+            </section>
+
+            {/* --- FAQ ---------------------------------------------------- */}
+            <section className="fx-section fx-section-narrow" id="questions">
+              <Head kicker="Questions" title="Ce que les élèves demandent." />
+              <m.div
+                className="fx-faq"
+                variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+                {...inView}
+              >
+                {faq.map((item) => (
+                  <m.details className="fx-faq-item" key={item.q} variants={rise}>
+                    <summary>
+                      {item.q}
+                      <span aria-hidden="true" className="fx-faq-sign" />
+                    </summary>
+                    <p>{item.a}</p>
+                  </m.details>
+                ))}
+              </m.div>
+            </section>
+
+            {/* --- final --------------------------------------------------- */}
+            <section className="fx-final">
+              <div className="fx-hero-sky" aria-hidden="true">
+                <span className="fx-aurora fx-aurora-1" />
+                <span className="fx-aurora fx-aurora-3" />
+              </div>
+              <m.div className="fx-final-inner" variants={rise} {...inView}>
+                <h2>
+                  Ton prochain exercice, <em>compris</em>.
+                </h2>
+                <p>Deux minutes pour créer ton compte. Ton devoir n'attend pas.</p>
+                <div className="fx-hero-cta">
+                  <Link
+                    className="fx-btn fx-btn-primary"
+                    to="/connexion"
+                    state={{ authMode: "signup" }}
+                  >
+                    Créer mon compte gratuit
+                  </Link>
+                  <Link className="fx-btn fx-btn-ghost" to="/connexion">
+                    J'ai déjà un compte →
+                  </Link>
+                </div>
+              </m.div>
+            </section>
+          </main>
+
+          {/* The bar the visitor keeps on a phone. */}
+          <aside className="fx-sticky" aria-label="Créer un compte">
             <Link
-              className="btn btn-primary btn-md lp-btn lp-btn-lg"
+              className="fx-btn fx-btn-primary"
               to="/connexion"
               state={{ authMode: "signup" }}
             >
-              Créer mon compte
+              Commencer — c'est gratuit
             </Link>
-            <Link className="lp-textlink lp-textlink-strong" to="/connexion">
-              Se connecter →
-            </Link>
-          </div>
-        </section>
-      </main>
+          </aside>
 
-      <footer className="lp-foot">
-        <p className="lp-foot-brand">
-          <span className="auth-mark" aria-hidden="true">
-            <span>←</span>
-          </span>
-          Fahem
-        </p>
-        <p className="lp-foot-scope">{scope}</p>
-        <nav className="lp-foot-nav" aria-label="Pied de page">
-          <a href="#fonctionnalites">Ce que ça fait</a>
-          <a href="#programme">Programme</a>
-          <a href="#questions">Questions</a>
-          <Link to="/connexion">Se connecter</Link>
-        </nav>
-      </footer>
-    </div>
+          <footer className="fx-foot">
+            <p className="fx-foot-brand">
+              <span className="fx-brand-mark" aria-hidden="true">
+                ←
+              </span>
+              Fahem
+            </p>
+            <nav aria-label="Pied de page">
+              <a href="#essayer">Essayer</a>
+              <a href="#fonctionnalites">Ce que ça fait</a>
+              <a href="#parents">Parents et profs</a>
+              <Link to="/connexion">Se connecter</Link>
+            </nav>
+          </footer>
+        </div>
+      </MotionConfig>
+    </LazyMotion>
   );
 }

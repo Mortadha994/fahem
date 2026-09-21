@@ -1,7 +1,7 @@
 /**
  * Mode guidé and Vérifier ma réponse, on the chat's side.
  *
- * The server decides the prompt (api.py learning_route); the chat keeps where
+ * The server decides the prompt (app/main.py learning_route); the chat keeps where
  * a discussion is: the step of the guided exercise under way and the student
  * message it started from - read back from the answers themselves, so a
  * reloaded discussion resumes at the right step.

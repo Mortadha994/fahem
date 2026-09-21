@@ -36,6 +36,23 @@ const IS_MAC =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
 /**
+ * What Fahem keeps of this discussion, in one sentence, for the line beside
+ * the composer. The backend carries the last three exchanges forward
+ * (app/grading/session_memory.py), and saying so is the point: a student whose fourth
+ * question gets answered without the first one's context should know why.
+ * Nothing to say on an empty or still-loading thread.
+ */
+function memoryNote(messages, quiet) {
+  if (quiet) return undefined;
+  const asked = messages.filter((msg) => msg.role === "user").length;
+  if (!asked) return undefined;
+  const kept = Math.min(3, asked);
+  return kept === 1
+    ? "Fahem se souvient de l'échange précédent."
+    : `Fahem se souvient des ${kept} derniers échanges.`;
+}
+
+/**
  * The chat screen.
  *
  * Lifted out of App.jsx in Phase 3b so App can be the auth + router shell.
@@ -172,12 +189,17 @@ export default function Chat() {
     ensureLoaded(activeId).catch(() => setFailedId(activeId));
   }, [activeId, activeLoading, ensureLoaded]);
 
-  // Mode guidé / Vérifier ma réponse, as the admin set them. Off until known:
-  // a failed fetch leaves the chat as it was before these modes existed.
+  // Mode guidé / Vérifier ma réponse, as the admin set them. The starting
+  // values are what the server ships (app/core/runtime_settings.py), not the quietest
+  // possible chat: /chat/features takes a moment, and while it was answering
+  // the composer opened in Solution complète and then flipped to Mode guidé,
+  // which is the mode the student actually wanted. A send in that window went
+  // as "full" too. A failed fetch now leaves the shipped defaults standing
+  // rather than silently turning guided mode off.
   const [features, setFeatures] = useState({
-    guided: false,
-    check: false,
-    defaultMode: "full",
+    guided: true,
+    check: true,
+    defaultMode: "guided",
   });
   useEffect(() => {
     let cancelled = false;
@@ -533,7 +555,7 @@ export default function Chat() {
               ...msg,
               // "none" when there's no real Algorithme solution to have
               // checked - e.g. the model asked for the problem statement
-              // instead of answering (see prompts.py). Zero violations on
+              // instead of answering (see app/llm/prompts.py). Zero violations on
               // that isn't "verified", it's "nothing to verify" - see
               // hasRealAlgorithmeSolution's comment. Checked ahead of
               // warned/clean so an empty warnings list doesn't read as a
@@ -552,7 +574,13 @@ export default function Chat() {
               ...(done.check ? { check: done.check } : {}),
               ...(done.practice ? { practice: done.practice } : {}),
             }));
+            // Cleared once the celebration has played, so coming back to
+            // this discussion later does not replay it.
             setFreshId(assistantId);
+            setTimeout(
+              () => setFreshId((id) => (id === assistantId ? null : id)),
+              3000
+            );
             // The server saved the exchange; the next save builds on its version.
             setVersion(sessionId, done.session_version);
           },
@@ -928,7 +956,7 @@ export default function Chat() {
   }, [location.state, navigate, send, createSession]);
 
   return (
-    <div className="chat">
+    <main className="chat">
       {/* The discussion's own bar: what this thread is, and the two ways out
           of it - the history and a new question. It replaces the discussions
           list that used to sit in the app sidebar; the sidebar is navigation
@@ -1014,7 +1042,7 @@ export default function Chat() {
               {/* h2, not h1: the page-level h1 above is persistent, and this
                 prompt only exists while the thread is empty. */}
               <m.div variants={rise}>
-                {/* The three kinds of message the backend routes (gatekeeper.py):
+                {/* The three kinds of message the backend routes (app/llm/gatekeeper.py):
                     an exercise, a question on the course, the student's own
                     program - said up front so a first-time student knows all
                     three are welcome. */}
@@ -1048,9 +1076,9 @@ export default function Chat() {
 
               {suggestions.length > 0 && (
                 <section className="chat-suggest" aria-labelledby="chat-suggest-title">
-                  <h3 id="chat-suggest-title" className="chat-suggest-title">
+                  <h2 id="chat-suggest-title" className="chat-suggest-title">
                     Ou commence par un exercice de la série
-                  </h3>
+                  </h2>
                   {/* The suggestions arrive after the prompt (they are fetched),
                     so they run their own stagger when they land. */}
                   <m.ul
@@ -1218,20 +1246,6 @@ export default function Chat() {
         </AnimatePresence>
       </div>
 
-      {/* Session memory, said out loud: what Fahem keeps of this discussion,
-          and how to start without it. */}
-      {!isEmpty && !activeLoading && (
-        <p className="chat-memory">
-          <span aria-hidden="true">◎</span>{" "}
-          {Math.min(3, messages.filter((msg) => msg.role === "user").length) === 1
-            ? "Fahem se souvient de l'échange précédent de cette discussion."
-            : `Fahem se souvient des ${Math.min(3, messages.filter((msg) => msg.role === "user").length)} derniers échanges de cette discussion.`}
-          <button type="button" className="chat-memory-new" onClick={newDiscussion}>
-            Repartir de zéro
-          </button>
-        </p>
-      )}
-
       <Composer
         value={draft}
         onChange={setDraft}
@@ -1247,7 +1261,11 @@ export default function Chat() {
         maxLength={attachment ? 190 : 2000}
         inputRef={composerRef}
         followUp={!isEmpty}
-        chapterLabel={`Chapitre ${currentChapter}`}
+        // Session memory, said out loud - but beside the box rather than as a
+        // band of its own above it. The chapter is not repeated here: the
+        // header names it, and "Repartir de zéro" was the header's "Nouvelle"
+        // button under a second name.
+        note={memoryNote(messages, isEmpty || activeLoading)}
         attachment={attachment}
         attachError={attachError}
         onAttach={acceptFile}
@@ -1257,6 +1275,6 @@ export default function Chat() {
           composerRef.current?.focus();
         }}
       />
-    </div>
+    </main>
   );
 }

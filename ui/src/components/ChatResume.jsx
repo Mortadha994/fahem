@@ -33,9 +33,9 @@ export default function ChatResume() {
 
   return (
     <section className="chat-resume" aria-labelledby="chat-resume-title">
-      <h3 id="chat-resume-title" className="chat-suggest-title">
+      <h2 id="chat-resume-title" className="chat-suggest-title">
         Reprends où tu t'es arrêté
-      </h3>
+      </h2>
       <m.ul
         className="chat-resume-list"
         variants={stagger(0.06)}

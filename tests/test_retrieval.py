@@ -1,0 +1,166 @@
+"""Manual-inspection harness for the retrieval step. No LLM involved.
+
+Runs each sample problem through retrieve() and prints the chunks that come
+back, with their metadata, so the scoping and the chunk quality can be eyeballed
+before we wire up generation.
+
+    python -m tests.test_retrieval
+    python -m tests.test_retrieval --problems sample_problems.json -k 5
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+from app.rag.rag_store import QDRANT_URL, count, scroll_scope
+from app.rag.retrieval import format_hit, retrieve
+
+DEFAULT_PROBLEMS = Path("sample_problems.json")
+
+
+def load_problems(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise SystemExit(f"{path} not found - add your problems there (see the file in the repo).")
+    problems = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(problems, list) or not problems:
+        raise SystemExit(f"{path}: expected a non-empty list of problems.")
+    return problems
+
+
+def known_scopes(url: str) -> set[tuple[str, str]]:
+    """Every (niveau, chapitre) pair actually present in the store.
+
+    An empty store yields an empty set on its own now - scroll_scope()
+    returns nothing when the collection is missing, so the explicit
+    count()-guard Chroma needed is gone rather than reimplemented.
+    """
+    return {
+        (str((r.payload or {}).get("niveau")), str((r.payload or {}).get("chapitre")))
+        for r in scroll_scope(url=url)
+    }
+
+
+def run_problem(problem: dict[str, Any], k: int, url: str, max_chars: int) -> int:
+    """Print retrieval results for one problem. Returns the number of hits."""
+    pid = problem.get("id", "?")
+    question = problem.get("question") or problem.get("enonce") or ""
+    niveau = str(problem.get("niveau", "")).strip().lower()
+    chapitre = str(problem.get("chapitre", "")).strip().lower()
+
+    print("=" * 78)
+    print(f"[{pid}] niveau={niveau} chapitre={chapitre}")
+    print(f"Q: {question}")
+    print("-" * 78)
+
+    if not question or not niveau or not chapitre:
+        print("  SKIPPED - problem needs question + niveau + chapitre")
+        print()
+        return 0
+
+    hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, url=url)
+    if not hits:
+        print("  no chunks retrieved in this scope")
+    for i, hit in enumerate(hits, 1):
+        print(format_hit(hit, i, max_chars=max_chars))
+        print()
+    if hits:
+        types = {}
+        for hit in hits:
+            types[hit.type] = types.get(hit.type, 0) + 1
+        breakdown = ", ".join(f"{t}={n}" for t, n in sorted(types.items()))
+        print(
+            f"  {len(hits)} hit(s) | types: {breakdown} | "
+            f"score range {hits[-1].score:.3f}-{hits[0].score:.3f}"
+        )
+    print()
+    return len(hits)
+
+
+def scope_leak_check(problems: list[dict[str, Any]], url: str, k: int) -> None:
+    """Sanity check that the where clause really is a hard filter.
+
+    Re-runs the first problem against every *other* scope in the store: anything
+    that comes back must carry that other scope's metadata, never the original's.
+    """
+    print("=" * 78)
+    print("SCOPE FILTER CHECK")
+    print("-" * 78)
+
+    scopes = known_scopes(url)
+    if len(scopes) < 2:
+        print(
+            f"  only {len(scopes)} scope(s) ingested - "
+            "ingest a second niveau/chapitre to make this check meaningful"
+        )
+        print()
+        return
+
+    probe = problems[0]
+    question = probe.get("question") or probe.get("enonce") or ""
+    own = (
+        str(probe.get("niveau", "")).strip().lower(),
+        str(probe.get("chapitre", "")).strip().lower(),
+    )
+
+    leaks = 0
+    for niveau, chapitre in sorted(scopes):
+        hits = retrieve(question, niveau=niveau, chapitre=chapitre, k=k, url=url)
+        bad = [h for h in hits if (h.niveau, h.chapitre) != (niveau, chapitre)]
+        leaks += len(bad)
+        marker = "OK " if not bad else "LEAK"
+        tag = " (problem's own scope)" if (niveau, chapitre) == own else ""
+        print(f"  {marker} niveau={niveau} chapitre={chapitre}: {len(hits)} hit(s){tag}")
+    print()
+    print(
+        "  result: "
+        + (
+            "no cross-scope leakage"
+            if leaks == 0
+            else f"{leaks} LEAKED hit(s) - investigate before generation"
+        )
+    )
+    print()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Inspect retrieval output. No LLM.")
+    parser.add_argument("--problems", type=Path, default=DEFAULT_PROBLEMS)
+    parser.add_argument("-k", type=int, default=5)
+    parser.add_argument("--url", default=QDRANT_URL, help="Qdrant base URL")
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=700,
+        help="truncate each printed chunk (use a big number to see tables whole)",
+    )
+    parser.add_argument("--no-leak-check", action="store_true")
+    args = parser.parse_args()
+
+    total_points = count(args.url)
+    if total_points == 0:
+        raise SystemExit(
+            f"Qdrant collection at {args.url} is empty. Ingest first:\n"
+            "  python -m app.rag.rag_store --chunks chunks.json"
+        )
+    print(f"Store: {total_points} chunk(s) at {args.url}")
+    scopes = sorted(known_scopes(args.url))
+    print("Scopes present: " + ", ".join(f"{n}/ch{c}" for n, c in scopes))
+    print()
+
+    problems = load_problems(args.problems)
+    total = 0
+    for problem in problems:
+        total += run_problem(problem, args.k, args.url, args.max_chars)
+
+    if not args.no_leak_check:
+        scope_leak_check(problems, args.url, args.k)
+
+    print("=" * 78)
+    print(f"{len(problems)} problem(s), {total} chunk(s) retrieved in total.")
+
+
+if __name__ == "__main__":
+    main()

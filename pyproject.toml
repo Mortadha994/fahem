@@ -27,8 +27,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # generate.py and rag_store.py re-export config names purely so existing
 # imports elsewhere keep working - F401 "imported but unused" is the point.
-"generate.py" = ["F401"]
-"rag_store.py" = ["F401"]
+"app/llm/generate.py" = ["F401"]
+"app/rag/rag_store.py" = ["F401"]
 
 [tool.ruff.format]
 quote-style = "double"

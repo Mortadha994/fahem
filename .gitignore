@@ -1,5 +1,7 @@
 # --- Secrets -------------------------------------------------------------
-# Never commit. .env.example is the committed template.
+# Never commit. env/.env.example is the committed template. These patterns
+# carry no slash, so they match at any depth - env/.env is covered, and the
+# negation keeps env/.env.example tracked.
 .env
 .env.*
 !.env.example

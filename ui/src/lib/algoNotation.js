@@ -1,6 +1,6 @@
 /**
  * Tunisian algorithm notation for one Algorithme-column line - the browser
- * twin of algo_notation.py (same rules, same tests' cases).
+ * twin of app/grading/algo_notation.py (same rules, same tests' cases).
  *
  * The course writes `div`, `mod`, `=`, `≠`, `≤`, `≥`, `←`, `ET`, `OU`, `NON`,
  * `Vrai`, `Faux`; Python writes `//`, `%`, `==`, `!=`, `<=`, `>=`, `<-`-style

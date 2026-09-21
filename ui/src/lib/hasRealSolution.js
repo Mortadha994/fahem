@@ -7,7 +7,7 @@ import { visit } from "unist-util-visit";
  * Decides whether a completed answer has an actual Algorithme-column
  * solution worth showing the constraint-checker badge for.
  *
- * Why this exists: prompts.py now has the model reply with a short question
+ * Why this exists: app/llm/prompts.py now has the model reply with a short question
  * instead of the 5-section template when the student's message isn't a real
  * problem ("hi", empty, off-topic) - see its "pas de problème réel" branch.
  * check_constraints() still runs on whatever text comes back and, having

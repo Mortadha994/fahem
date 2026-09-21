@@ -5,7 +5,7 @@
  * Seen in real output: every Python line packed into the first rows, so
  * "Algorithme Somme_Produit" sat beside `a = int(input(...))` and
  * "somme ← a + b" beside nothing - which defeats a table whose whole point is
- * reading each instruction next to its translation. prompts.py now asks for
+ * reading each instruction next to its translation. app/llm/prompts.py now asks for
  * row-by-row pairing; this is the safety net for answers that still drift,
  * and for answers already saved in a student's history.
  *

@@ -49,6 +49,15 @@ export default function AppLayout() {
     <ChatSessionsProvider key={user?.id ?? "anon"}>
       <MotionProvider>
         <div className={`shell${navOpen ? " shell-nav-open" : ""}`}>
+          {/* First thing Tab reaches, on every page. Without it a keyboard or
+              switch user crosses the whole sidebar - brand, five nav links,
+              the profile block, Déconnexion, the theme toggle - before
+              reaching the chat, on every single navigation. Off-screen until
+              it takes focus, which is the only time it has anything to say. */}
+          <a className="skip-link" href="#contenu">
+            Aller au contenu
+          </a>
+
           {/* Narrow screens only. Nothing here duplicates the sidebar: it is a
             toggle and the brand, so there is something to tap and something
             to recognise. */}
@@ -86,7 +95,9 @@ export default function AppLayout() {
 
           <div className="shell-main">
             <VerifyEmailBanner />
-            <div className="shell-body">
+            {/* tabIndex -1 so the skip link can actually land focus here;
+                it stays out of the tab order itself. */}
+            <div className="shell-body" id="contenu" tabIndex={-1}>
               <Outlet />
             </div>
           </div>

@@ -22,7 +22,7 @@ import PythonRunner from "./PythonRunner.jsx";
 const REHYPE_PLUGINS = [[rehypeHighlight, { detect: false, ignoreMissing: true }]];
 
 // remarkAlgoTable runs before rendering and marks the Algorithme column of
-// the Algorithme|Python solution table (prompts.py §6); AlgoHeaderCell/
+// the Algorithme|Python solution table (app/llm/prompts.py §6); AlgoHeaderCell/
 // AlgoBodyCell read those markers and are the only th/td instances that
 // render any differently - every other table (declaration table,
 // GroundingStrip) is untouched. See remarkAlgoTable.js and AlgoCode.jsx.

@@ -14,7 +14,7 @@ Ma progression, the redesigned IA controls, and their animations.
   `/admin/ia?onglet=controles`, `/admin/ia?onglet=journal`, `/chapitre/1`.
 - Responsive: Playwright at 1280 px and 390 px — no horizontal scroll.
 - Performance: timing of `/progress`, `/chat/sessions`, `/chat/features`.
-- Code review of the new server paths (`api.py`, `progress.py`).
+- Code review of the new server paths (`app/main.py`, `app/routes/progress.py`).
 
 ---
 
@@ -22,10 +22,10 @@ Ma progression, the redesigned IA controls, and their animations.
 
 ### 1. The gatekeeper can be bypassed through the new modes
 
-- `skips_classifier` (`api.py:516`) skips the topic classifier for
+- `skips_classifier` (`app/main.py:516`) skips the topic classifier for
   `mode: "check"`, `mode: "practice"` and the guided buttons.
-- The `exercise` field (up to 2000 characters, `api.py:272`) is never part of
-  `gate_text` (`api.py:281`), so it goes through neither the length check nor
+- The `exercise` field (up to 2000 characters, `app/main.py:272`) is never part of
+  `gate_text` (`app/main.py:281`), so it goes through neither the length check nor
   the classifier.
 - Someone calling the API directly can put any text in `exercise` and get
   model output, including a prompt injection, without the off-topic filter.
@@ -74,7 +74,7 @@ Shiki on first visit. Lazy-loading the admin routes and the heavy libraries
 
 ### 6. A practice slot is used before generating
 
-`take_practice_slot` (`api.py:586`) counts the request before Groq answers. If
+`take_practice_slot` (`app/main.py:586`) counts the request before Groq answers. If
 the call fails or the student stops, the daily slot is still gone.
 
 **Fix:** give the slot back on error or on stop.

@@ -155,6 +155,21 @@
 * {
   box-sizing: border-box;
 }
+/* Every tappable thing responds on the first tap. Without this a mobile
+   browser may hold the tap back ~300ms waiting to see whether a second one
+   turns it into a double-tap zoom, which reads as the app being slow.
+   manipulation keeps panning and pinch-zoom, and only gives up double-tap
+   zoom on the controls themselves - never on the text. */
+button,
+a,
+label,
+select,
+summary,
+[role="button"],
+[role="tab"],
+[role="radio"] {
+  touch-action: manipulation;
+}
 html,
 body,
 #root {
@@ -597,6 +612,9 @@ h3 {
   border-left: 1px solid var(--line);
   background: var(--bg);
   box-shadow: -24px 0 60px -30px rgb(0 0 0 / 0.5);
+  /* Full-width sheet on a phone, so its last discussion must clear the
+     gesture bar. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 /* A brand edge down the panel's inner side, like the active nav link's. */
 .history-panel::before {
@@ -934,6 +952,38 @@ h3 {
 .chat-welcome .empty-state {
   padding-block: 0;
 }
+/* The chapter picker on an empty thread. It had no rules at all, so it landed
+   as a bare browser <select> stretched across the column - the one raw control
+   left in the app. Centred, and sized to itself. */
+.chat-chapter-pick {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: var(--space-2);
+  padding: 4px 4px 4px var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.chat-chapter-pick select {
+  min-height: 2rem;
+  max-width: min(22rem, 60vw);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.chat-chapter-pick select:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
 .chat-suggest {
   display: flex;
   flex-direction: column;
@@ -1052,6 +1102,12 @@ h3 {
   display: flex;
   justify-content: flex-end;
 }
+/* No bubble on this side: an answer is a document - a wide Algorithme|Python
+   table, headings, lists - and a bubble around it only narrows the column.
+   The name above it says who is speaking instead. */
+.msg-assistant {
+  display: flow-root;
+}
 /* The student's side: a violet-tinted bubble, squared off at the corner that
    points to them, so "who said this" reads at a glance without a label. */
 .msg-user .bubble {
@@ -1100,19 +1156,87 @@ h3 {
   opacity: 0.35;
 }
 
-/* ---------- checker verdict ----------
-   The pill itself is the Badge primitive; this only spaces it off the
-   answer above. */
-.msg-verdict {
-  margin-top: 0.6rem;
+/* ---------- the one strip under an answer (Message.jsx MessageFooter) ----------
+   Left: what the answer is (checker verdict, chapter sources). Right: what you
+   can do with it. One row, wrapping, and anything that opens lands on its own
+   line because it is 100% wide. */
+.msg-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0.7rem;
+  min-height: 2.25rem;
 }
-/* Motion's wrapper for the verdict's pop (Message.jsx): scales from its left
-   edge, where the badge sits, rather than from the middle of the column. */
-.msg-verdict-wrap {
+/* A chip states a fact in the smallest type the page uses: it must be
+   readable, and must not look like a button unless it opens something. */
+.msg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
   transform-origin: 0 50%;
 }
+.msg-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+/* Colour carries the verdict, the dot makes it legible without relying on
+   colour alone next to the word it qualifies. */
+.msg-chip.is-ok {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--line));
+  background: color-mix(in srgb, var(--ok) 10%, var(--bg));
+  color: var(--ok);
+}
+.msg-chip.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  background: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  color: var(--warn);
+}
+.msg-chip.is-checking {
+  font-style: italic;
+  font-weight: 500;
+}
+/* The grounding chip is the one that opens, so it is a button. */
+.msg-chip-btn {
+  min-height: 1.9rem;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.msg-chip-btn:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+.msg-chip-btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.msg-chip-caret {
+  display: inline-block;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.msg-chip-btn.is-open .msg-chip-caret {
+  transform: rotate(90deg);
+}
 .warn-list {
-  margin: 0.4rem 0 0;
+  flex: 0 0 100%;
+  order: 3;
+  margin: 0.2rem 0 0;
   padding-left: 1.1rem;
   font-size: 0.8rem;
   color: var(--warn);
@@ -1123,28 +1247,9 @@ h3 {
   margin: var(--space-4) 0;
 }
 
-/* ---------- grounding strip ---------- */
-.grounding {
-  margin-top: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg-alt);
-}
-.grounding-toggle {
-  min-height: var(--tap);
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  padding: 0.55rem var(--space-3);
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--fg-dim);
-}
-.grounding-toggle:hover {
-  color: var(--fg);
-}
+/* ---------- grounding strip ----------
+   No box of its own any more: its chip lives in the footer row, and this is
+   what that chip opens, on the line below. */
 .ground-caret {
   display: inline-block;
   width: 1em;
@@ -1154,8 +1259,18 @@ h3 {
    padding would still show at height 0, so the bottom space is the last
    list's margin instead. */
 .grounding-body {
+  flex: 0 0 100%;
+  order: 2;
   overflow: hidden;
+  margin-top: 0.3rem;
   padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+  /* An inset shadow, not a border: this box animates from height 0, and a
+     border would paint its top and bottom edges as a 2px line while it is
+     still shut. An inset shadow is clipped to the padding box, so at height 0
+     there is nothing to see. */
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .grounding-body > :last-child {
   margin-bottom: 0.7rem;
@@ -1365,9 +1480,14 @@ h3 {
 /* ---------- composer ---------- */
 /* The thread's bottom edge fades into the composer instead of meeting it at a
    hard border line, so the card reads as floating over the conversation. */
+/* The composer sits at the end of the shell's column, flush with the bottom
+   of the screen, so on a phone with a gesture bar its send button lands in the
+   home indicator's strip. The inset is added to the padding rather than
+   replacing it, so a device without one is unchanged. */
 .composer {
   position: relative;
-  padding: var(--space-2) var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-4)
+    calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   background: var(--canvas);
 }
 .composer::before {
@@ -1406,7 +1526,9 @@ h3 {
 .composer textarea {
   width: 100%;
   min-height: 2.25rem;
-  max-height: 220px;
+  /* rem, not px: at 200% text zoom a 220px cap is half the lines it is meant
+     to be, and the box stops growing while the text keeps coming. */
+  max-height: 13.75rem;
   padding: var(--space-1) 0;
   border: 0;
   outline: 0;
@@ -1434,14 +1556,9 @@ h3 {
   font-size: var(--text-xs);
   color: var(--fg-dim);
 }
-.composer-chip {
-  flex: none;
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-full);
-  background: rgb(106 79 224 / 0.12);
-  color: var(--fg);
-  font-weight: 600;
-}
+/* One line, whatever it is saying: the memory note at rest, the keyboard
+   legend while the box has focus, the drop target while a file is over it.
+   It never wraps, so the composer's height never jumps as it changes. */
 .composer-hint {
   overflow: hidden;
   white-space: nowrap;
@@ -1481,12 +1598,16 @@ h3 {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* One stroke weight for every line icon in the app, whatever its size - the
+   way Lucide and Feather draw them. It used to run 1.8 / 2 / 2.2 with no
+   rule behind it, and backwards at that: the 14px icons carried the heaviest
+   relative stroke and the 20px ones the lightest. */
 .composer-attach svg {
   width: 1.15rem;
   height: 1.15rem;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1617,9 +1738,11 @@ h3 {
   padding-bottom: 0;
   border-bottom: 0;
 }
-/* The shortcut line means nothing without a keyboard. */
+/* The shortcut line means nothing without a keyboard - but the same element
+   also carries the memory note, which matters on a phone as much as anywhere,
+   so only the keyboard variant goes. */
 @media (hover: none), (pointer: coarse) {
-  .composer-hint {
+  .composer-hint.is-keys {
     display: none;
   }
 }
@@ -1642,7 +1765,7 @@ h3 {
   height: 20px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1724,12 +1847,19 @@ h3 {
   box-shadow: var(--shadow-md);
   cursor: pointer;
 }
+/* The button is round while it says nothing; the label only appears while an
+   answer is still being written, so it has to read as part of the pill rather
+   than as text that turned up inside an icon button. */
+.chat-jump-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
 .chat-jump svg {
   width: 18px;
   height: 18px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1766,12 +1896,57 @@ h3 {
   font-style: italic;
   color: var(--fg-dim);
 }
-/* Quiet until wanted: muted text buttons under the answer. */
-.msg-actions {
-  margin-top: var(--space-2);
+/* Quiet until wanted: muted text buttons under the answer.
+   They are always in the DOM and always focusable - only their opacity
+   changes, and only where a pointer can hover. On a touch screen, and for
+   anyone arriving by keyboard (:focus-within), they are simply there. */
+.msg-foot-tools {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
+  margin-left: auto;
+  /* Stay on the row with the chips: the grounding panel is a full-width flex
+     item, so without this it would come between them and push the tools onto
+     a third line whenever the panel is open. */
+  order: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .msg-foot-tools {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .msg-assistant:hover .msg-foot-tools,
+  .msg-foot-tools:focus-within {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg-foot-tools {
+    transition: none;
+  }
+}
+/* On a phone there is no hover, so every tool is on screen all the time. Four
+   wrapped rows of labelled buttons under each answer is the clutter this whole
+   footer exists to remove, so below this width each tool is its icon alone.
+   The label is hidden the sr-only way, not with display:none: for Copier and
+   Régénérer the label IS the button's accessible name, and removing it would
+   leave a screen reader with an unnamed button. */
+@media (max-width: 560px) {
+  .msg-foot-tools .msg-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .msg-foot-tools .msg-action {
+    padding: 0 var(--space-1);
+  }
 }
 .msg-action {
   min-height: 2.25rem;
@@ -1897,6 +2072,44 @@ h3 {
   }
 }
 
+/* Off-screen until focused, then a real button at the top-left corner. Not
+   display:none and not sr-only: it has to be reachable by Tab, and visible
+   once it is, or it helps nobody. */
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+  transform: translateY(calc(-100% - var(--space-4)));
+}
+/* :focus, not :focus-visible. This link exists only for people arriving by
+   keyboard, and it must show for every way focus can land on it - including
+   a programmatic focus() - not only the ones the browser judges to deserve a
+   focus ring. */
+.skip-link:focus {
+  transform: none;
+  outline: 2px solid var(--bg);
+  outline-offset: 2px;
+}
+/* The target must not draw a focus ring of its own when the link lands on
+   it - the reader asked to go there, they do not need telling. */
+.shell-body:focus {
+  outline: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skip-link {
+    transition: transform var(--dur-fast) var(--ease);
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1991,8 +2204,16 @@ h3 {
 
 /* A row since Phase 6: the sidebar beside the content, with no horizontal bar
    above either of them on a wide screen. */
+/* 100dvh, not 100vh. On a phone browser 100vh is the *largest* viewport - the
+   one with the URL bar hidden - so while the bar is showing the layout is
+   taller than the screen, and this box's overflow:hidden clips whatever sits
+   at the end of the column. That is the composer. The note below records the
+   same failure arriving by another route; dvh tracks the viewport as the bar
+   collapses and expands, which is what this needs. vh stays as the fallback
+   for anything without dvh. */
 .shell {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   overflow: hidden;
 }
@@ -2045,12 +2266,16 @@ h3 {
   display: flex;
   min-height: 0;
 }
+/* Below 900px this is a full-height drawer, and Déconnexion and the theme
+   toggle are pinned to its bottom edge - inside the gesture bar's strip
+   without the inset. */
 .appnav {
   width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  padding: var(--space-3) var(--space-3)
+    calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
   background: var(--side);
   border-right: 1px solid var(--line);
   overflow-y: auto;
@@ -2137,6 +2362,12 @@ h3 {
 }
 .appnav-logout {
   width: 100%;
+}
+/* The theme toggle sits under Déconnexion in a stacked column, so left on its
+   own it stretched to the full width of the sidebar - a switch pretending to
+   be a button. It keeps its own size. */
+.appnav-theme {
+  align-self: start;
 }
 /* "Ma classe": the student's niveau and section, and the way to change it. */
 .appnav-profile {
@@ -2323,7 +2554,7 @@ h3 {
   height: 20px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition:
@@ -4131,178 +4362,14 @@ h3 {
   }
 }
 
-/* --- the live demo (AuthDemo) --------------------------------------------------
-   question -> Algorithme + Python -> verdict and grounding chips -> next.
-   Tilts a few degrees toward the cursor (AuthShell sets --tilt-x/--tilt-y on
-   the panel; custom properties inherit down to here). */
+/* --- sign-in decoration: the colour of the drifting syntax glyphs ---------- */
 
 .signin,
 .landing {
-  /* Highlight colours, AA on both code backgrounds (--bg and --bg-alt). */
-  --tk-kw: #2f5fb3;
-  --tk-op: #6a4fe0;
-  --tk-str: #0f766e;
-  --tk-fn: #b45309;
-  --tk-num: #be185d;
   --glyph-rgb: 100 110 210;
 }
 :root[data-theme="dark"] :is(.signin, .landing) {
-  --tk-kw: #8fb4ff;
-  --tk-op: #c4b5fd;
-  --tk-str: #5eead4;
-  --tk-fn: #fbbf24;
-  --tk-num: #f9a8d4;
   --glyph-rgb: 150 170 255;
-}
-
-.auth-demo {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-/* The tilt lives on the code window, not on .auth-demo: the panel-body
-   entrance animation (auth-rise, fill both) ends on `transform: none`, and a
-   filled animation outranks a declaration - so a tilt set on the demo itself
-   could never show. .auth-sample is not a direct child of .auth-panel-body,
-   so nothing animates it. */
-.auth-demo .auth-sample {
-  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg))
-    rotateY(var(--tilt-y, 0deg));
-  transition:
-    opacity 420ms var(--ease),
-    transform 260ms var(--ease);
-}
-.demo-question,
-.auth-demo .auth-sample,
-.demo-verdict {
-  transition:
-    opacity 420ms var(--ease),
-    transform 420ms var(--ease);
-}
-/* Between exercises everything lifts away together. */
-.auth-demo.phase-out .demo-question,
-.auth-demo.phase-out .auth-sample,
-.auth-demo.phase-out .demo-verdict {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-
-.demo-question {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-height: 2.6rem;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  box-shadow: 0 10px 28px -18px rgb(40 40 100 / 0.5);
-  font-size: var(--text-sm);
-}
-/* White on the blue-violet gradient: 5.1:1 at its lightest end. */
-.demo-question-label {
-  flex: none;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
-  color: #fff;
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-/* Room for the longest answer (four lines), so the verdict below never
-   jumps when a shorter exercise plays. */
-.auth-demo .auth-sample pre {
-  min-height: 7.6em;
-}
-
-.tk-kw {
-  color: var(--tk-kw);
-  font-weight: 700;
-}
-.tk-op {
-  color: var(--tk-op);
-  font-weight: 700;
-}
-.tk-str {
-  color: var(--tk-str);
-}
-.tk-fn {
-  color: var(--tk-fn);
-}
-.tk-num {
-  color: var(--tk-num);
-}
-
-/* The verdict waits for the code, then springs in with one pulse of green -
-   the checker's verdict arriving, as it does in the chat - and the parts of
-   the course it relied on follow one by one. */
-.demo-verdict {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-height: 4.4rem;
-  opacity: 0;
-  transform: translateY(8px);
-}
-.auth-demo.phase-verdict .demo-verdict {
-  opacity: 1;
-  transform: none;
-  transition:
-    opacity 400ms var(--ease),
-    transform 560ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.auth-demo.phase-verdict .demo-verdict .badge {
-  animation: badge-pulse 1.4s ease-out 1;
-}
-.demo-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-}
-.demo-chip {
-  padding: 3px var(--space-2);
-  border: 1px solid var(--field-line);
-  border-radius: var(--radius-full);
-  background: var(--field-fill);
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
-  opacity: 0;
-  transform: translateY(6px);
-}
-.auth-demo.phase-verdict .demo-chip {
-  animation: chip-in 460ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  animation-delay: calc(260ms + var(--i) * 110ms);
-}
-/* Chips stay put while the whole verdict fades out. */
-.auth-demo.phase-out .demo-chip {
-  opacity: 1;
-  transform: none;
-}
-@keyframes chip-in {
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.demo-dots {
-  display: flex;
-  gap: 6px;
-}
-.demo-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--field-line);
-  transition:
-    width 320ms var(--ease),
-    background-color 320ms var(--ease);
-}
-.demo-dots span.is-on {
-  width: 20px;
-  background: var(--brand-violet);
 }
 
 /* --- brand mark, syntax glyphs, grain, cursor glow ------------------------ */
@@ -4658,1566 +4725,6 @@ h3 {
 }
 
 /* =========================================================================
-   The landing page (components/Landing.jsx).
-
-   The public page a visitor sees before the sign-in form. It shares the
-   showcase treatment above rather than restating it: the aurora background,
-   the glass, --grad-text, .auth-mark, .auth-demo and the gradient primary
-   button are all defined once for `.signin, .landing`. Only the page's own
-   furniture - bar, hero, cards, steps, FAQ, footer - is below.
-
-   Same three rules as the showcase, and they are the reason this can be as
-   loud as it is:
-   - every loop, entrance and reveal stops under prefers-reduced-motion, and
-     the scroll reveal fails *shown* rather than hidden (see Landing.jsx);
-   - text stays at AA on the glass, in light and dark;
-   - one library, Motion, and only on this page: Landing.jsx imports
-     landingMotion.js on demand, so it is its own chunk. CSS below never hides
-     anything waiting for that script - the scroll reveals, counters and
-     scroll-linked effects are all set up (and undone) from JS. What is here
-     is the finished page plus the effects that must start at first paint.
-   ========================================================================= */
-
-.landing {
-  min-height: 100%;
-}
-
-/* Anchor links glide instead of jumping, and land below the sticky bar
-   rather than under it. Scoped with :has() so the app's own scrolling is
-   untouched. */
-@media (prefers-reduced-motion: no-preference) {
-  html:has(.landing) {
-    scroll-behavior: smooth;
-  }
-}
-.landing section[id] {
-  scroll-margin-top: 4.5rem;
-}
-
-/* --- top bar --------------------------------------------------------------- */
-
-.lp-bar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  /* Transparent over the hero, a glass strip once the page has moved - so the
-     headline is never behind a band it does not need. */
-  background: transparent;
-  border-bottom: 1px solid transparent;
-  transition:
-    background-color var(--dur-base) var(--ease),
-    border-color var(--dur-base) var(--ease),
-    backdrop-filter var(--dur-base) var(--ease);
-}
-/* Reading progress along the bar's bottom edge. Motion binds scaleX to the
-   page scroll; without it the bar stays at zero width, which is simply no
-   bar. */
-.lp-progress {
-  position: absolute;
-  inset: auto 0 -1px;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    var(--brand-blue),
-    var(--brand-violet) 55%,
-    var(--brand-teal)
-  );
-  transform: scaleX(0);
-  transform-origin: 0 50%;
-  pointer-events: none;
-}
-.lp-bar[data-scrolled] {
-  background: var(--glass);
-  border-bottom-color: var(--glass-line);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-}
-.lp-bar-inner {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-4);
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-}
-.lp-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-right: auto;
-  color: var(--fg);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  text-decoration: none;
-}
-.lp-nav {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  gap: var(--space-5);
-}
-/* The "you are here" pill. Position, width and opacity are set by
-   landingMotion.js on a spring; it starts invisible. */
-.lp-nav-pill {
-  position: absolute;
-  z-index: -1;
-  top: -6px;
-  bottom: -6px;
-  left: 0;
-  width: 0;
-  opacity: 0;
-  border-radius: var(--radius-full);
-  background: rgb(106 79 224 / 0.12);
-  box-shadow: inset 0 0 0 1px rgb(106 79 224 / 0.22);
-  pointer-events: none;
-}
-.lp-nav a[data-active] {
-  color: var(--fg);
-}
-.lp-nav a {
-  position: relative;
-  padding-block: var(--space-1);
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-decoration: none;
-  transition: color var(--dur-fast) var(--ease);
-}
-/* An underline that grows from the left instead of appearing all at once. */
-.lp-nav a::after {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--brand-blue), var(--brand-violet));
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 260ms var(--ease);
-}
-.lp-nav a:hover,
-.lp-nav a:focus-visible {
-  color: var(--fg);
-}
-.lp-nav a:hover::after,
-.lp-nav a:focus-visible::after {
-  transform: scaleX(1);
-}
-/* --- phone menu ---------------------------------------------------------------
-   Button and panel exist only below 980px (see that block), where the section
-   links are hidden. The panel opens by animating grid rows 0fr -> 1fr, which
-   reaches the content's real height without measuring it. */
-.lp-menu-btn {
-  display: none;
-  place-items: center;
-  width: var(--tap);
-  height: var(--tap);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-md);
-  background: var(--glass-panel);
-  color: var(--fg);
-  cursor: pointer;
-}
-.lp-menu-btn:focus-visible {
-  outline: 2px solid transparent;
-  box-shadow: var(--focus-ring);
-}
-/* Three bars; on open the middle one fades and the outer two cross. */
-.lp-menu-icon,
-.lp-menu-icon::before,
-.lp-menu-icon::after {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: currentColor;
-  transition:
-    transform 300ms cubic-bezier(0.34, 1.4, 0.64, 1),
-    background-color 200ms var(--ease);
-}
-.lp-menu-icon {
-  position: relative;
-}
-.lp-menu-icon::before,
-.lp-menu-icon::after {
-  content: "";
-  position: absolute;
-  left: 0;
-}
-.lp-menu-icon::before {
-  transform: translateY(-6px);
-}
-.lp-menu-icon::after {
-  transform: translateY(6px);
-}
-.lp-menu-btn[aria-expanded="true"] .lp-menu-icon {
-  background-color: transparent;
-}
-.lp-menu-btn[aria-expanded="true"] .lp-menu-icon::before {
-  transform: rotate(45deg);
-}
-.lp-menu-btn[aria-expanded="true"] .lp-menu-icon::after {
-  transform: rotate(-45deg);
-}
-
-/* Absolutely placed under the bar: opening it overlays the page instead of
-   pushing the whole page down under the student's thumb. */
-.lp-menu {
-  position: absolute;
-  top: 100%;
-  inset-inline: 0;
-  display: none;
-  grid-template-rows: 0fr;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-  transition: grid-template-rows 360ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.lp-menu[data-open] {
-  grid-template-rows: 1fr;
-  border-bottom: 1px solid var(--glass-line);
-  box-shadow: var(--card-shadow);
-}
-.lp-menu-inner {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding-inline: var(--space-4);
-}
-.lp-menu[data-open] .lp-menu-inner {
-  padding-block: var(--space-2) var(--space-4);
-}
-.lp-menu a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--tap);
-  border-bottom: 1px solid var(--glass-line);
-  color: var(--fg);
-  font-weight: 600;
-  text-decoration: none;
-  opacity: 0;
-  transform: translateY(-6px);
-  transition:
-    opacity 260ms var(--ease),
-    transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.lp-menu a span {
-  color: var(--tk-op);
-}
-.lp-menu a.lp-menu-signin {
-  justify-content: center;
-  margin-top: var(--space-3);
-  border: 1px solid var(--field-line);
-  border-radius: var(--radius-md);
-}
-/* Links drop in one after another as the panel opens. */
-.lp-menu[data-open] a {
-  opacity: 1;
-  transform: none;
-  transition-delay: calc(60ms + var(--i) * 35ms);
-}
-/* The bar turns solid while the menu is open, even at the top of the page,
-   so the links never sit on the bare aurora. */
-.lp-bar:has(.lp-menu[data-open]) {
-  background: var(--glass);
-  border-bottom-color: var(--glass-line);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-}
-
-.lp-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-/* A Link wearing .btn: the primitive assumes a <button>, so only the bits an
-   anchor does not get for free are restated here. */
-.lp-btn {
-  text-decoration: none;
-}
-.lp-btn-lg {
-  padding: var(--space-3) var(--space-5);
-  font-size: var(--text-lg);
-}
-.lp-textlink {
-  color: var(--fg);
-  font-weight: 600;
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--dur-fast) var(--ease);
-}
-.lp-textlink:hover,
-.lp-textlink:focus-visible {
-  border-bottom-color: currentColor;
-}
-.lp-textlink-strong {
-  font-size: var(--text-lg);
-}
-
-/* --- hero ------------------------------------------------------------------ */
-
-.lp-hero {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-4) var(--space-7);
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  align-items: center;
-  gap: var(--space-7);
-}
-/* The hero does not wait for a scroll: it is already on screen. Staggered by
-   hand rather than with --i, because these are five different elements rather
-   than a repeated list. */
-.lp-hero-copy > * {
-  animation: lp-rise 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.lp-hero-copy > :nth-child(1) {
-  animation-delay: 60ms;
-}
-.lp-hero-copy > :nth-child(2) {
-  animation-delay: 140ms;
-}
-.lp-hero-copy > :nth-child(3) {
-  animation-delay: 220ms;
-}
-.lp-hero-copy > :nth-child(4) {
-  animation-delay: 300ms;
-}
-.lp-hero-copy > :nth-child(5) {
-  animation-delay: 380ms;
-}
-/* On the children, not on .lp-hero-visual itself: the wrapper's transform
-   belongs to the scroll parallax, and a filled CSS animation would pin it. */
-.lp-hero-visual > * {
-  animation: lp-rise 760ms cubic-bezier(0.16, 1, 0.3, 1) 260ms both;
-}
-/* The title animates word by word instead of as one block. */
-.lp-hero-copy > .lp-title {
-  animation: none;
-}
-.lp-word {
-  display: inline-block;
-  animation: lp-word-in 700ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
-  animation-delay: calc(120ms + var(--w) * 90ms);
-}
-@keyframes lp-word-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.45em) rotate(4deg);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: none;
-  }
-}
-/* Inline, so it can wrap: opacity and blur only (transforms do not apply to
-   inline boxes). The shimmer keeps running underneath. */
-.lp-title-accent {
-  animation:
-    lp-accent-in 800ms var(--ease) 420ms both,
-    auth-shimmer 9s linear infinite;
-}
-@keyframes lp-accent-in {
-  from {
-    opacity: 0;
-    filter: blur(8px);
-  }
-  to {
-    opacity: 1;
-    filter: none;
-  }
-}
-/* The same caret the demo types with: the headline reads as just written. */
-.lp-title-caret {
-  height: 0.8em;
-  width: 0.14em;
-  margin-left: 0.08em;
-  vertical-align: -0.04em;
-}
-@keyframes lp-rise {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.lp-eyebrow {
-  background: var(--glass-panel);
-  border: 1px solid var(--glass-line);
-  color: var(--fg-dim);
-}
-.lp-title {
-  margin: var(--space-4) 0 0;
-  font-size: clamp(2.1rem, 5.2vw, 3.5rem);
-  line-height: 1.06;
-  letter-spacing: -0.02em;
-  /* The gradient span is an inline box inside a tight-leading heading; without
-     this its descenders clip on the second line. */
-  padding-bottom: 0.1em;
-}
-.lp-lead {
-  margin: var(--space-4) 0 0;
-  max-width: 34rem;
-  font-size: var(--text-lg);
-  color: var(--fg-dim);
-}
-/* The syntax the copy is talking about, shown rather than described. */
-.lp-lead code,
-.lp-chapter-body code {
-  padding: 0.1em 0.4em;
-  border-radius: var(--radius-sm);
-  background: var(--field-fill);
-  box-shadow: inset 0 0 0 1px var(--field-line);
-  font-family: var(--font-mono);
-  font-size: 0.92em;
-  color: var(--fg);
-}
-.lp-cta-row {
-  margin-top: var(--space-6);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-5);
-}
-.lp-cta-center {
-  justify-content: center;
-}
-.lp-fineprint {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-
-/* The demo in its own glass window. It tilts toward the cursor exactly as the
-   sign-in panel's copy does (Landing.jsx sets --tilt-x/--tilt-y; .auth-sample
-   reads them). */
-.lp-hero-demo {
-  padding: var(--space-5);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(
-      160deg,
-      rgb(63 111 181 / 0.16),
-      rgb(106 79 224 / 0.1) 55%,
-      rgb(15 159 143 / 0.08)
-    ),
-    var(--glass-panel);
-  box-shadow: var(--card-shadow);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-}
-
-.lp-hero-visual {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-/* The phone stand-in for the demo; see the 720px block. */
-.lp-hero-fix {
-  display: none;
-}
-
-/* --- the notation correction (SyntaxFix) ------------------------------------
-   Resting state is the finished correction. landingMotion.js replays it:
-   strike, arrow, check. */
-
-.lp-fix {
-  margin: 0;
-  padding: var(--space-4);
-  display: grid;
-  gap: var(--space-2);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-  box-shadow: var(--card-shadow);
-}
-.lp-fix-row {
-  max-width: 30rem;
-  margin: 0 auto var(--space-6);
-}
-.lp-fix-line {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-}
-.lp-fix-wrong {
-  background: var(--err-bg);
-}
-.lp-fix-right {
-  background: var(--ok-bg);
-}
-.lp-fix-icon {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 700;
-}
-/* The status colours as ink on the page ground: the same pairing the
-   versus columns use, AA in both themes. */
-.lp-fix-wrong .lp-fix-icon {
-  background: var(--bg);
-  color: var(--err);
-}
-.lp-fix-right .lp-fix-icon {
-  background: var(--bg);
-  color: var(--ok);
-}
-.lp-fix-code {
-  position: relative;
-  font-family: var(--font-mono);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--fg);
-  white-space: nowrap;
-}
-.lp-fix-wrong .lp-fix-code {
-  color: var(--err);
-}
-.lp-fix-strike {
-  position: absolute;
-  top: 52%;
-  left: -0.2em;
-  right: -0.2em;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--err);
-  transform-origin: 0 50%;
-}
-.lp-fix-arrow {
-  display: inline-block;
-  color: var(--tk-op);
-}
-.lp-fix-tag {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--fg-dim);
-  text-align: right;
-}
-
-/* --- syntax strip ---------------------------------------------------------- */
-
-.lp-marquee {
-  overflow: hidden;
-  padding-block: var(--space-3);
-  border-block: 1px solid var(--glass-line);
-  background: var(--glass-panel);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  /* Items fade in and out at the edges rather than being cut. */
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-}
-.lp-marquee-track {
-  display: flex;
-  gap: var(--space-4);
-  width: max-content;
-  animation: lp-marquee 48s linear infinite;
-}
-/* Hovering holds it still, so a pair can actually be read. */
-.lp-marquee:hover .lp-marquee-track {
-  animation-play-state: paused;
-}
-@keyframes lp-marquee {
-  to {
-    /* The list is rendered twice: half the track is exactly one copy plus
-       one gap. */
-    transform: translateX(calc(-50% - var(--space-4) / 2));
-  }
-}
-.lp-marquee-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--field-line);
-  border-radius: var(--radius-full);
-  background: var(--bg);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-.lp-marquee-item code {
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-.lp-marquee-algo {
-  color: var(--tk-kw);
-}
-.lp-marquee-py {
-  color: var(--tk-str);
-}
-.lp-marquee-sep {
-  color: var(--fg-dim);
-}
-
-/* --- the three numbers ----------------------------------------------------- */
-
-.lp-facts {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-4);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
-}
-.lp-fact {
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background: var(--glass-panel);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-.lp-fact-n {
-  font-size: clamp(2.2rem, 4vw, 3rem);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  /* Fixed-width digits, so the count-up does not jitter sideways. */
-  font-variant-numeric: tabular-nums;
-  background: var(--grad-text);
-  background-size: 300% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.lp-fact-unit {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg);
-}
-.lp-fact-label {
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-@media (forced-colors: active) {
-  .lp-fact-n {
-    background: none;
-    color: CanvasText;
-  }
-}
-
-/* --- sections -------------------------------------------------------------- */
-
-.lp-section {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-4);
-}
-.lp-section-narrow {
-  max-width: 54rem;
-}
-.lp-section-head {
-  max-width: 44rem;
-  margin-bottom: var(--space-6);
-}
-/* A small tinted pill. --tk-op rather than --brand-violet: the brand violet
-   is about 3:1 on the dark ground, under AA for text this size; --tk-op is
-   the same violet in light and a lighter one in dark. */
-.lp-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 2px var(--space-3);
-  border-radius: var(--radius-full);
-  background: rgb(106 79 224 / 0.1);
-  box-shadow: inset 0 0 0 1px rgb(106 79 224 / 0.2);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--tk-op);
-}
-/* Light mode: --tk-op (#6a4fe0) on the kicker's violet tint over the page
-   measured 4.28:1, under AA for this 12px label. A deeper violet from the
-   same family gives ~6.5:1; dark mode's own --tk-op already passes. */
-:root[data-theme="light"] .lp-kicker {
-  color: #5536c6;
-}
-.lp-kicker::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
-}
-.lp-h2 {
-  margin: var(--space-2) 0 0;
-  font-size: clamp(1.6rem, 3.4vw, 2.4rem);
-  line-height: var(--leading-tight);
-  letter-spacing: -0.015em;
-  padding-bottom: 0.08em;
-}
-.lp-section-lead {
-  margin: var(--space-3) 0 0;
-  color: var(--fg-dim);
-}
-
-/* --- feature cards --------------------------------------------------------- */
-
-/* 19rem, not 16: at 16 a 72rem page fits four columns and the six cards break
-   3+3 -> 4+2, which reads as a row that ran out. Three and three. */
-.lp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
-  gap: var(--space-4);
-}
-.lp-card {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  padding: var(--space-5);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background: var(--glass-panel);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  /* The reveal owns opacity and transform, so the hover lift has to be a
-     different property or the two would fight over transform. box-shadow and
-     border-color lift it instead, and translate (not transform) composes with
-     the reveal's transform rather than replacing it. */
-  transition:
-    box-shadow var(--dur-base) var(--ease),
-    border-color var(--dur-base) var(--ease),
-    translate var(--dur-base) var(--ease);
-}
-.lp-card:hover {
-  translate: 0 -4px;
-  border-color: var(--brand-violet);
-  box-shadow: 0 22px 50px -26px rgb(40 40 100 / 0.5);
-}
-/* Cursor spotlight: a soft light that follows the pointer inside the card
-   (Landing.jsx writes --mx/--my). Under the content, over the glass. */
-.lp-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  opacity: 0;
-  background: radial-gradient(
-    260px circle at var(--mx, 50%) var(--my, 50%),
-    rgb(106 79 224 / 0.16),
-    transparent 70%
-  );
-  transition: opacity var(--dur-base) var(--ease);
-}
-.lp-card:hover::before {
-  opacity: 1;
-}
-.lp-card-glyph {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
-  color: #fff;
-  font-family: var(--font-mono);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  box-shadow: 0 10px 22px -12px var(--brand-violet);
-}
-.lp-card-title {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-lg);
-  line-height: var(--leading-tight);
-}
-.lp-card-body {
-  margin: var(--space-2) 0 0;
-  color: var(--fg-dim);
-}
-
-/* --- ligne à ligne (LineByLine.jsx) -----------------------------------------
-   Pure CSS motion, no Motion: this section must be complete on the
-   reduced-motion path, where that chunk never loads. The tab indicator and
-   the row highlight are positioned from --tab and --row, which React sets;
-   rows share one fixed height (--row-h) so the highlight is index times
-   height. */
-
-.lbl {
-  --row-h: 2.9rem;
-  max-width: 50rem;
-  margin: 0 auto;
-}
-.lbl-tabs {
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: repeat(var(--tabs), 1fr);
-  max-width: 30rem;
-  margin: 0 auto var(--space-4);
-  padding: var(--space-1);
-  border-radius: var(--radius-full);
-  background: var(--field-fill);
-  box-shadow: inset 0 0 0 1px var(--field-line);
-}
-.lbl-tab-indicator {
-  position: absolute;
-  z-index: -1;
-  inset-block: var(--space-1);
-  left: var(--space-1);
-  width: calc((100% - 2 * var(--space-1)) / var(--tabs));
-  border-radius: var(--radius-full);
-  background: linear-gradient(120deg, var(--brand-blue), var(--brand-violet));
-  box-shadow: 0 10px 22px -12px var(--brand-violet);
-  transform: translateX(calc(var(--tab) * 100%));
-  transition: transform 420ms cubic-bezier(0.34, 1.3, 0.64, 1);
-}
-.lbl-tab {
-  min-height: var(--tap);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--dur-base) var(--ease);
-}
-.lbl-tab:hover {
-  color: var(--fg);
-}
-/* White on the blue-violet indicator: the primary button's pairing, 5.1:1 at
-   its lightest end. */
-.lbl-tab[aria-selected="true"] {
-  color: #fff;
-}
-.lbl-tab:focus-visible {
-  outline: 2px solid transparent;
-  box-shadow: var(--focus-ring);
-}
-
-.lbl-panel {
-  padding: var(--space-5);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(160deg, rgb(63 111 181 / 0.12), rgb(106 79 224 / 0.08) 60%),
-    var(--glass);
-  box-shadow: var(--card-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-}
-.lbl-question {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  font-weight: 600;
-}
-.lbl-scroll {
-  overflow-x: auto;
-}
-.lbl-table {
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  box-shadow: 0 0 0 1px var(--field-line);
-  padding: var(--space-2);
-}
-.lbl-head,
-.lbl-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: var(--space-4);
-}
-.lbl-head {
-  padding: var(--space-1) var(--space-3) var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-dim);
-}
-.lbl-rows {
-  position: relative;
-  isolation: isolate;
-}
-.lbl-highlight {
-  position: absolute;
-  z-index: -1;
-  inset-inline: 0;
-  top: 0;
-  height: var(--row-h);
-  border-radius: var(--radius-md);
-  background: rgb(106 79 224 / 0.12);
-  box-shadow: inset 3px 0 0 var(--brand-violet);
-  transform: translateY(calc(var(--row) * var(--row-h)));
-  transition: transform 380ms cubic-bezier(0.34, 1.3, 0.64, 1);
-}
-.lbl-row {
-  width: 100%;
-  height: var(--row-h);
-  align-items: center;
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  /* Each line arrives a little after the one above when a tab is picked. */
-  animation: lbl-row-in 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--r) * 60ms);
-}
-@keyframes lbl-row-in {
-  from {
-    opacity: 0;
-    transform: translateX(-10px);
-  }
-}
-.lbl-row:focus-visible {
-  outline: 2px solid transparent;
-  box-shadow: var(--focus-ring);
-}
-.lbl-row code {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.lbl-note {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  min-height: 3.2em;
-  margin: var(--space-4) 0 0;
-  color: var(--fg);
-}
-.lbl-note-n {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
-  color: #fff;
-  font-size: var(--text-sm);
-  font-weight: 800;
-}
-/* Keyed on the line in React, so each new note fades in rather than the
-   text swapping under the reader's eyes. */
-.lbl-note-text {
-  animation: lbl-note-in 320ms var(--ease) both;
-}
-@keyframes lbl-note-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
-/* --- steps ----------------------------------------------------------------- */
-
-/* The solid line that fills over the dashed one as the steps scroll by.
-   From the centre of the first number to the centre of the last: three equal
-   columns, so that is two columns and two gaps. */
-.lp-steps-wrap {
-  position: relative;
-}
-.lp-steps-track {
-  position: absolute;
-  top: calc(1.375rem - 1px);
-  left: 1.375rem;
-  width: calc((100% - 2 * var(--space-6)) * 2 / 3 + 2 * var(--space-6));
-  height: 2px;
-  pointer-events: none;
-}
-.lp-steps-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--brand-blue), var(--brand-violet));
-  transform: scaleX(0);
-  transform-origin: 0 50%;
-}
-.lp-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-6);
-}
-.lp-step {
-  position: relative;
-}
-/* The dashed run between one number and the next. Drawn from the step rather
-   than as a line under the row, so it disappears with the step when the grid
-   collapses to one column. */
-.lp-step:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  top: 1.35rem;
-  left: 3.5rem;
-  right: calc(var(--space-6) * -1);
-  border-top: 2px dashed var(--field-line);
-}
-.lp-step-n {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-violet));
-  color: #fff;
-  font-size: var(--text-lg);
-  font-weight: 800;
-  box-shadow: 0 12px 26px -12px var(--brand-violet);
-}
-.lp-step-title {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-lg);
-}
-.lp-step-body {
-  margin: var(--space-2) 0 0;
-  color: var(--fg-dim);
-}
-
-/* --- versus a generic model ------------------------------------------------ */
-
-.lp-versus {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-}
-.lp-versus-col {
-  padding: var(--space-5);
-  border-radius: var(--radius-lg);
-}
-.lp-versus-col ul {
-  margin: var(--space-4) 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.lp-versus-col li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  color: var(--fg-dim);
-}
-.lp-versus-title {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-lg);
-}
-.lp-versus-icon {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 700;
-}
-/* The other option is stated plainly, not sneered at: a dashed, unfilled card
-   beside a lit one says "this is the alternative" without shouting. */
-.lp-versus-them {
-  border: 1px dashed var(--field-line);
-  background: var(--field-fill);
-}
-.lp-versus-them .lp-versus-icon {
-  background: var(--err-bg);
-  color: var(--err);
-}
-.lp-versus-us {
-  border: 1px solid var(--glass-line);
-  background:
-    linear-gradient(160deg, rgb(63 111 181 / 0.14), rgb(106 79 224 / 0.1) 60%),
-    var(--glass-panel);
-  box-shadow: var(--card-shadow);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-}
-.lp-versus-us .lp-versus-icon {
-  background: var(--ok-bg);
-  color: var(--ok);
-}
-.lp-versus-us li {
-  color: var(--fg);
-}
-
-/* --- chapters -------------------------------------------------------------- */
-
-.lp-chapters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: var(--space-4);
-}
-.lp-chapter {
-  position: relative;
-  overflow: hidden;
-  padding: var(--space-5);
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background: var(--glass-panel);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-/* A lit top edge on the chapter that actually exists. The two that do not are
-   deliberately quieter - the page should not promise them as loudly. */
-.lp-chapter.is-ready {
-  background:
-    linear-gradient(160deg, rgb(63 111 181 / 0.14), rgb(15 159 143 / 0.08) 70%),
-    var(--glass-panel);
-  box-shadow: var(--card-shadow);
-}
-.lp-chapter.is-ready::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(
-    90deg,
-    var(--brand-blue),
-    var(--brand-violet) 55%,
-    var(--brand-teal)
-  );
-}
-.lp-chapter:not(.is-ready) {
-  opacity: 0.72;
-}
-.lp-chapter-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.lp-chapter-n {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-dim);
-}
-.lp-chapter-title {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-lg);
-  line-height: var(--leading-tight);
-}
-.lp-chapter-body {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-/* The counts under a published chapter (from /public/overview). */
-.lp-chapter-meta {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--accent);
-}
-
-/* --- FAQ ------------------------------------------------------------------- */
-
-.lp-faq {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.lp-faq-item {
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background: var(--glass-panel);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  transition: border-color var(--dur-base) var(--ease);
-}
-.lp-faq-item[open],
-.lp-faq-item:hover {
-  border-color: var(--brand-violet);
-}
-.lp-faq-item summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  /* The 44px floor applies to a summary too: it is the hit target. */
-  min-height: var(--tap);
-  padding: var(--space-3) var(--space-5);
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-}
-.lp-faq-item summary::-webkit-details-marker {
-  display: none;
-}
-.lp-faq-item summary:focus-visible {
-  outline: 2px solid transparent;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--focus-ring);
-}
-/* A + that becomes a - : two bars, the vertical one rotating away on open. */
-.lp-faq-sign {
-  position: relative;
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-}
-.lp-faq-sign::before,
-.lp-faq-sign::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: var(--radius-full);
-  background: var(--brand-violet);
-  transition: transform 280ms var(--ease);
-}
-.lp-faq-sign::after {
-  transform: rotate(90deg);
-}
-.lp-faq-item[open] .lp-faq-sign::after {
-  transform: rotate(0deg);
-}
-/* Open and close with a height animation where the browser can animate to
-   `auto` (::details-content + interpolate-size). Elsewhere it opens at once,
-   as before. */
-@supports (interpolate-size: allow-keywords) {
-  @media (prefers-reduced-motion: no-preference) {
-    .lp-faq-item {
-      interpolate-size: allow-keywords;
-    }
-    .lp-faq-item::details-content {
-      block-size: 0;
-      overflow: hidden;
-      transition:
-        block-size 320ms var(--ease),
-        content-visibility 320ms allow-discrete;
-    }
-    .lp-faq-item[open]::details-content {
-      block-size: auto;
-    }
-  }
-}
-.lp-faq-item p {
-  margin: 0;
-  padding: 0 var(--space-5) var(--space-5);
-  color: var(--fg-dim);
-  animation: lp-answer 280ms var(--ease) both;
-}
-@keyframes lp-answer {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-}
-
-/* --- closing CTA ----------------------------------------------------------- */
-
-.lp-final {
-  position: relative;
-  max-width: 54rem;
-  margin: var(--space-6) auto var(--space-8);
-  padding: var(--space-8) var(--space-5);
-  text-align: center;
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(
-      150deg,
-      rgb(63 111 181 / 0.2),
-      rgb(106 79 224 / 0.14) 55%,
-      rgb(15 159 143 / 0.1)
-    ),
-    var(--glass);
-  box-shadow: var(--card-shadow);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  backdrop-filter: blur(20px) saturate(150%);
-}
-/* The sign-in card's rotating gradient edge, on the one card that asks for
-   the account. Same technique and keyframes (auth-spin, --auth-angle). */
-.lp-final::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  padding: 1.5px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--auth-angle),
-    transparent 0deg,
-    var(--brand-blue) 70deg,
-    var(--brand-violet) 130deg,
-    var(--brand-teal) 190deg,
-    transparent 260deg
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  animation: auth-spin 8s linear infinite;
-}
-.lp-final-title {
-  margin: 0;
-  font-size: clamp(1.7rem, 3.6vw, 2.4rem);
-  line-height: var(--leading-tight);
-  padding-bottom: 0.08em;
-}
-.lp-final-lead {
-  margin: var(--space-3) auto 0;
-  max-width: 32rem;
-  color: var(--fg-dim);
-}
-
-/* --- footer ---------------------------------------------------------------- */
-
-.lp-foot {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  border-top: 1px solid var(--glass-line);
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-.lp-foot-brand {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-base);
-  font-weight: 700;
-  color: var(--fg);
-}
-.lp-foot-scope {
-  margin: 0;
-  flex: 1 1 16rem;
-}
-.lp-foot-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-.lp-foot-nav a {
-  color: var(--fg-dim);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-.lp-foot-nav a:hover,
-.lp-foot-nav a:focus-visible {
-  color: var(--fg);
-  border-bottom-color: currentColor;
-}
-
-/* --- narrower screens ------------------------------------------------------ */
-
-@media (max-width: 980px) {
-  .lp-hero {
-    padding-top: var(--space-7);
-    grid-template-columns: 1fr;
-    gap: var(--space-6);
-  }
-  .lp-nav {
-    display: none;
-  }
-  .lp-menu-btn {
-    display: inline-grid;
-  }
-  .lp-menu {
-    display: grid;
-  }
-  .lp-steps,
-  .lp-versus {
-    grid-template-columns: 1fr;
-  }
-  .lp-step:not(:last-child)::after,
-  .lp-steps-track {
-    display: none;
-  }
-}
-@media (max-width: 720px) {
-  .lp-facts {
-    grid-template-columns: 1fr;
-  }
-  /* .auth-demo is hidden below 820px by the showcase's own phone block - the
-     code columns are unreadable at that width. The window around it goes with
-     it rather than standing empty. */
-  .lp-hero-demo {
-    display: none;
-  }
-  .lp-hero-fix {
-    display: grid;
-  }
-  .lp-textlink-strong,
-  .lp-btn-lg {
-    font-size: var(--text-base);
-  }
-  .lp-final {
-    padding: var(--space-6) var(--space-4);
-  }
-  /* Ligne à ligne stacks each pair: the Algorithme line over its Python, each
-     with a short label, since the two columns no longer fit side by side. */
-  .lbl {
-    --row-h: 4.4rem;
-  }
-  .lbl-head {
-    display: none;
-  }
-  .lbl-row,
-  .lbl-head {
-    grid-template-columns: 1fr;
-    align-content: center;
-    row-gap: 2px;
-  }
-  .lbl-row code {
-    font-size: var(--text-sm);
-  }
-  .lbl-row code::before {
-    display: inline-block;
-    width: 3.2em;
-    font-family: var(--font-sans, inherit);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--fg-dim);
-  }
-  .lbl-row code:first-child::before {
-    content: "Algo";
-  }
-  .lbl-row code:last-child::before {
-    content: "Python";
-  }
-  .lbl-tab {
-    font-size: var(--text-sm);
-  }
-}
-@media (max-width: 480px) {
-  /* One action in the bar on a small phone. "Se connecter" is still on the
-     sign-in screen the button leads to, in the hero, and in the footer. */
-  .lp-bar-actions .lp-textlink {
-    display: none;
-  }
-  .lp-cta-row {
-    gap: var(--space-4);
-  }
-  /* The tag goes under the code rather than squeezing it. */
-  .lp-fix-line {
-    flex-wrap: wrap;
-    row-gap: 0;
-  }
-  .lp-fix-tag {
-    margin-left: calc(1.5rem + var(--space-3));
-    flex-basis: 100%;
-    text-align: left;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lp-hero-copy > *,
-  .lp-hero-visual > *,
-  .lp-word,
-  .lp-title-accent,
-  .lp-marquee-track,
-  .lp-final::before,
-  .lp-faq-item p {
-    animation: none;
-  }
-  /* A still strip: it scrolls sideways by hand instead. */
-  .lp-marquee {
-    overflow-x: auto;
-  }
-  .lp-bar,
-  .lp-nav a,
-  .lp-nav a::after,
-  .lp-card,
-  .lp-card::before,
-  .lp-faq-item,
-  .lp-faq-sign::before,
-  .lp-faq-sign::after,
-  .lp-textlink {
-    transition: none;
-  }
-  .lp-card:hover {
-    translate: none;
-  }
-  .lp-menu,
-  .lp-menu a,
-  .lp-menu-signin,
-  .lp-menu-icon,
-  .lp-menu-icon::before,
-  .lp-menu-icon::after,
-  .lbl-tab-indicator,
-  .lbl-highlight {
-    transition: none;
-  }
-  .lbl-row,
-  .lbl-note-text {
-    animation: none;
-  }
-}
-
-/* --- chat chapter picker (Phase 9) ------------------------------------------
-   Shown only in an empty discussion, and only when more than one chapter is
-   published: with one chapter there is nothing to choose. Once a message is
-   sent the thread's chapter is fixed and shown in the chat header instead. */
-.chat-chapter-pick {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  /* Spacing comes from .chat-welcome's gap. */
-  margin: 0;
-  max-width: 100%;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-.chat-chapter-pick select {
-  min-height: var(--tap);
-  max-width: min(28rem, 100%);
-  padding-inline: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-
-/* =========================================================================
    Signed-out screens, simplified: one quiet card, no showcase.
    The landing page keeps the aurora, the demo and the glass; these screens
    come after it and only have to let the student in. Declared last so it
@@ -6391,30 +4898,6 @@ h3 {
   margin: var(--space-4) auto;
   color: var(--fg-dim);
   text-align: center;
-}
-.chat-memory {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px var(--space-2);
-  margin: 0 auto;
-  padding: 2px var(--space-3, 0.75rem);
-  max-width: 48rem;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-}
-.chat-memory-new {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.chat-memory-new:hover {
-  text-decoration: underline;
 }
 .composer-count {
   margin: 0;
@@ -7449,6 +5932,12 @@ h3 {
   align-items: center;
   gap: 6px;
 }
+/* An emoji renders at whatever size the font gives it and sits on the text
+   baseline, which left it larger than the title and slightly low. */
+.py-run-logo {
+  font-size: 1em;
+  line-height: 1;
+}
 .py-run-btn {
   display: inline-flex;
   align-items: center;
@@ -7727,4 +6216,253 @@ h3 {
 }
 .prog-legend .prog-dot {
   flex: none;
+}
+
+/* 12px at 600 weight over the tinted home panel: darkened to keep AA
+   (axe: color-contrast). */
+.section-meta {
+  color: color-mix(in srgb, var(--fg-dim) 78%, #000);
+}
+:root[data-theme="dark"] .section-meta {
+  color: var(--fg-dim);
+}
+
+/* --- landing: try it without an account (LandingDemo.jsx) ------------------------------------- */
+.lp-try {
+  scroll-margin-top: 80px;
+}
+.lpd {
+  display: grid;
+  gap: var(--space-3);
+}
+/* The exercise is picked from cards rather than a row of tabs: the choice
+   itself says what the exercise is, so nothing has to be read twice. */
+.lpd-choose {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+.lpd-choice {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 160ms,
+    box-shadow 160ms;
+}
+.lpd-choice.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.lpd-choice:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.lpd-choice-tab {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+.lpd-choice-text {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.lpd-modes {
+  display: inline-flex;
+  justify-self: start;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lpd-mode {
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 160ms,
+    color 160ms;
+}
+.lpd-mode.is-on {
+  background: linear-gradient(135deg, #7c3aed, #6b26d9);
+  color: #fff;
+}
+.lpd-mode:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.lpd-hint {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+/* No max-height and no overflow here on purpose: a box that scrolls inside a
+   page that scrolls is a trap on a phone. The panel is as tall as its answer,
+   and the one long part (the trace) opens on demand. */
+.lpd-window {
+  display: grid;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: 0 18px 40px rgb(15 23 42 / 0.08);
+}
+.lpd-body {
+  display: grid;
+  gap: var(--space-3);
+}
+.lpd-bubble {
+  justify-self: end;
+  max-width: min(32rem, 100%);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--bg-alt);
+  font-size: var(--text-sm);
+}
+.lpd-bubble-tag {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.lpd-attempt {
+  margin: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+.lpd-answer {
+  min-width: 0;
+}
+.lpd-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--space-2);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+/* The execution trace: the part that used to make the panel too tall. */
+.lpd-more {
+  margin-top: var(--space-3);
+}
+.lpd-more-btn {
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 160ms,
+    color 160ms;
+}
+.lpd-more-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.lpd-more-btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.lpd-trace {
+  overflow: hidden;
+}
+.lpd-note {
+  margin: var(--space-2) 0 0;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.lpd-cta {
+  margin: 0;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+/* --- landing: parents and teachers ------------------------------------------------------------- */
+.lp-parents {
+  padding: var(--space-5);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.lp-parents-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xl);
+}
+.lp-parents-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--fg-dim);
+}
+.lp-parents-list b {
+  color: var(--fg);
+}
+
+/* --- landing: the button that follows on a phone ------------------------------------------------ */
+.lp-sticky-cta {
+  display: none;
+}
+@media (max-width: 720px) {
+  .lp-sticky-cta {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2) var(--space-3)
+      calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--line);
+  }
+  .lp-sticky-cta .lp-btn {
+    width: 100%;
+    max-width: 24rem;
+  }
+  .lp-foot {
+    padding-bottom: 5rem;
+  }
+  .lpd-window {
+    padding: var(--space-3);
+  }
+  .lpd-choose {
+    grid-template-columns: 1fr;
+  }
+  .lpd-modes {
+    justify-content: center;
+  }
+  .lp-parents {
+    padding: var(--space-4);
+  }
 }

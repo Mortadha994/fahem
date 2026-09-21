@@ -29,7 +29,7 @@ export async function streamSolve(
     assistant_message_id,
     title,
     attachment,
-    // Mode guidé / Vérifier ma réponse (see api.py learning_route).
+    // Mode guidé / Vérifier ma réponse (see app/main.py learning_route).
     mode,
     step,
     action,
@@ -60,7 +60,7 @@ export async function streamSolve(
       // `note`: the student's own words sent with an attached exercise, kept
       // apart from the exercise text so the question in it gets answered.
       // `history`: the discussion's earlier messages - the tutor's session
-      // memory (session_memory.py compacts and caps it on the server).
+      // memory (app/grading/session_memory.py compacts and caps it on the server).
       body: JSON.stringify({
         problem,
         niveau,
@@ -177,7 +177,7 @@ export async function streamSolve(
 
 /**
  * The sentence an admin control sent with its 503 ({detail: {code, message}},
- * ai_control.py), or the busy message if there is none.
+ * app/llm/ai_control.py), or the busy message if there is none.
  */
 async function controlMessage(response) {
   try {
@@ -189,7 +189,7 @@ async function controlMessage(response) {
   }
 }
 
-/** The file types /solve/extract reads, and its size cap (config.py). */
+/** The file types /solve/extract reads, and its size cap (app/core/config.py). */
 export const ATTACHMENT_TYPES = [
   "image/jpeg",
   "image/png",
@@ -212,7 +212,7 @@ export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
  *   { ok: false, error }        - a sentence the student can act on
  *   { aborted: true }           - the stop button
  * The backend's own 413/415/422 details are written for the student (see
- * attachments.py), so they are shown as they are; anything else is generic.
+ * app/routes/attachments.py), so they are shown as they are; anything else is generic.
  */
 export async function extractAttachment(file, { signal } = {}) {
   let response;

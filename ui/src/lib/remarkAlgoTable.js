@@ -3,7 +3,7 @@ import { realignPairs } from "./alignAlgoTable.js";
 import { algoText } from "./algoNotation.js";
 
 /**
- * Locates the "Algorithme | Python" solution table (prompts.py §6) in the
+ * Locates the "Algorithme | Python" solution table (app/llm/prompts.py §6) in the
  * parsed markdown tree and marks its Algorithme-column cells so the
  * Markdown component's th/td overrides can render them as a highlighted,
  * copyable code panel instead of an ordinary table cell.
@@ -150,7 +150,7 @@ function realignPythonColumn(table, algoIndex, pythonIndex) {
 
 /**
  * Plain text of a table cell's phrasing content, preserving a literal <br>
- * as a newline. generate.py's own comment notes the model sometimes packs
+ * as a newline. app/llm/generate.py's own comment notes the model sometimes packs
  * several instructions into one cell separated by <br> - without this, all
  * of them would run together into one unreadable tokenizer line.
  *

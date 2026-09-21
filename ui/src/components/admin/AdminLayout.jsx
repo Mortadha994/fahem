@@ -30,6 +30,9 @@ import {
   IconX,
 } from "./icons.jsx";
 import "./admin.css";
+// The "Industry" dressing (industry.css) is deliberately NOT imported: it
+// was tried and rejected. The file stays for reference - re-adding the
+// import is all it takes - but the console keeps Fahem's own look.
 
 /**
  * Fahem Console: the admin shell.

@@ -1,7 +1,7 @@
 import { API_URL } from "../config.js";
 
 // Chat history, per account. Discussions are saved on the server
-// (/chat/sessions, chat_history.py), scoped to whoever is signed in, so they
+// (/chat/sessions, app/routes/chat_history.py), scoped to whoever is signed in, so they
 // follow a student to any device and nobody sees anyone else's. The in-memory
 // list and the save timing live in ChatSessionsProvider.
 
