@@ -97,14 +97,22 @@ def budget_status(*, fresh: bool = False) -> dict[str, Any]:
         except Exception:
             log.warning("could not count today's tokens", exc_info=True)
             used = 0
+        # Where the ceiling comes from matters enough to travel with it. Groq
+        # publishes the daily limit only inside a 429 body, so until one has
+        # been met this is config.GROQ_TPD_LIMIT - a compiled-in default that
+        # may be nothing like the account's real tier. A gauge that cannot say
+        # which of the two it is drawn against invites reading a guess as a
+        # measurement, which is exactly what it was doing.
         limit = GROQ_TPD_LIMIT
+        limit_source = "default"
         reported = llm_usage.daily_limits(GROQ_MODEL)
         if reported.get("tpd_limit"):
             limit = reported["tpd_limit"]
+            limit_source = "groq"
         at = reported.get("tpd_at")
         if reported.get("tpd_used") is not None and at and time.time() - at < 3600:
             used = max(used, reported["tpd_used"])
-        base = {"used": used, "limit": limit}
+        base = {"used": used, "limit": limit, "limit_source": limit_source}
         with _budget_lock:
             _budget_cache = (now, base)
 
@@ -113,6 +121,9 @@ def budget_status(*, fresh: bool = False) -> dict[str, Any]:
     return {
         "used": base["used"],
         "limit": base["limit"],
+        # "groq" when a 429 body stated it, "default" when it is the
+        # compiled-in GROQ_TPD_LIMIT and therefore a guess.
+        "limit_source": base.get("limit_source", "default"),
         "guard_pct": pct,
         "threshold": threshold,
         "blocking": threshold is not None and base["used"] >= threshold,

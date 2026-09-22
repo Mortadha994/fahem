@@ -52,6 +52,10 @@ class SettingOut(BaseModel):
 class BudgetOut(BaseModel):
     used: int
     limit: int
+    # "groq" when a 429 body stated the ceiling, "default" when it is the
+    # compiled-in GROQ_TPD_LIMIT. The console says which, so a guess is not
+    # read as a measurement.
+    limit_source: str = "default"
     guard_pct: int
     threshold: int | None
     blocking: bool

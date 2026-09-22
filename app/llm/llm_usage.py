@@ -36,11 +36,21 @@ STATUS_ERROR = "error"
 STATUS_CANCELLED = "cancelled"
 
 _DAILY = re.compile(r"per day \((TPD|RPD)\): Limit (\d+), Used (\d+)")
+# How much of today Groq says we have spent: about today, worthless tomorrow.
 _LIMITS_TTL_SECONDS = 24 * 3600
+# The ceiling itself: a property of the account's tier, not of the day, and
+# only ever learned from a 429 - which can be a week apart. Kept long enough
+# that the console shows a figure Groq actually stated rather than the
+# compiled-in default, which it silently reverted to a day after the last one.
+_CEILING_TTL_SECONDS = 30 * 24 * 3600
 
 
 def limits_key(model: str) -> str:
     return f"groq:limits:{model}"
+
+
+def ceiling_key(model: str) -> str:
+    return f"groq:ceiling:{model}"
 
 
 @dataclass
@@ -152,26 +162,48 @@ def note_429(record: CallRecord | None, model: str, exc) -> None:
 
 
 def note_daily_limit(model: str, which: str, limit: int, used: int) -> None:
+    """Keep what a 429 body revealed: the ceiling, and where we were against it.
+
+    Two different lifetimes, in two keys, because the two facts age
+    differently. `used` describes one particular day and is worthless
+    tomorrow. The *limit* is a property of the Groq account's tier: it does
+    not change because a day passed, and it is only ever learned from a 429,
+    which may not happen again for a week.
+
+    Keeping both for a day - as this did - meant the console quietly fell back
+    to config.GROQ_TPD_LIMIT 24 hours after the last daily 429, and went on
+    presenting a compiled-in guess as a measurement. Observed doing exactly
+    that: the last daily 429 was five days old and the figure had been a
+    default for four of them.
+    """
+    now = int(time.time())
+    name = which.lower()
     try:
         client = _redis()
-        key = limits_key(model)
         client.hset(
-            key,
-            mapping={
-                f"{which.lower()}_limit": limit,
-                f"{which.lower()}_used": used,
-                f"{which.lower()}_at": int(time.time()),
-            },
+            limits_key(model),
+            mapping={f"{name}_used": used, f"{name}_at": now},
         )
-        client.expire(key, _LIMITS_TTL_SECONDS)
+        client.expire(limits_key(model), _LIMITS_TTL_SECONDS)
+        client.hset(
+            ceiling_key(model),
+            mapping={f"{name}_limit": limit, f"{name}_limit_at": now},
+        )
+        client.expire(ceiling_key(model), _CEILING_TTL_SECONDS)
     except Exception:
         log.warning("could not store Groq's daily %s figures for %s", which, model, exc_info=True)
 
 
 def daily_limits(model: str) -> dict[str, int]:
-    """What the last 429 said about the daily limits, if one did today."""
+    """What Groq's 429s have revealed: today's usage, and the ceiling.
+
+    The two come from different keys with different lifetimes (see
+    note_daily_limit) and are merged here, so callers still read one mapping.
+    """
     try:
-        raw = _redis().hgetall(limits_key(model))
+        client = _redis()
+        raw = dict(client.hgetall(limits_key(model)))
+        raw.update(client.hgetall(ceiling_key(model)))
     except Exception:
         return {}
     out: dict[str, int] = {}

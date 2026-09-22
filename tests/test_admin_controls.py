@@ -180,6 +180,14 @@ def main() -> None:
                 budget["blocking"] and budget["threshold"] == int(budget["limit"] * 0.9),
                 budget,
             )
+            # The gauge says whether its denominator is a figure Groq stated
+            # or the compiled-in default, so a guess is not read as a
+            # measurement - it spent four days being exactly that.
+            check(
+                "budget: the ceiling names its source",
+                budget.get("limit_source") in ("groq", "default"),
+                budget.get("limit_source"),
+            )
             as_user(student_id)
             r = solve()
             check(

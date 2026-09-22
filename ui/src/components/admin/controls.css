@@ -236,6 +236,13 @@
 .cx-budget-sub b {
   color: var(--adm-fg);
 }
+/* The ceiling is a guess until a 429 states it. Quieter than the numbers it
+   qualifies, but not hidden: it is the difference between a measurement and
+   an assumption. */
+.cx-budget-guess {
+  font-style: italic;
+  opacity: 0.85;
+}
 
 /* --- cards ------------------------------------------------------------------------------------- */
 .cx-columns {

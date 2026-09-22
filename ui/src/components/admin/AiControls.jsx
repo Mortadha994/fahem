@@ -800,6 +800,13 @@ function BudgetCard({ budget, guard, onGuard, busy, settings }) {
         <p className="cx-budget-title">Budget du jour</p>
         <p className="cx-budget-sub">
           <b>{nf.format(budget.used)}</b> / {nf.format(budget.limit)} tokens sur 24 h
+          {/* Groq states its daily ceiling only inside a 429 body. Until one
+              has been met, the denominator is the compiled-in default and
+              says so - a gauge drawn against a guess should not look like a
+              gauge drawn against a measurement. */}
+          {budget.limit_source !== "groq" && (
+            <span className="cx-budget-guess"> (plafond estimé)</span>
+          )}
           {budget.threshold !== null && (
             <>
               {" "}

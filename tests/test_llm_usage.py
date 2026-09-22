@@ -118,6 +118,33 @@ def main() -> None:
             limits.get("tpd_limit") == 200000 and limits.get("tpd_used") == 199009,
             limits,
         )
+        # The ceiling and today's usage age differently, so they live in two
+        # keys with two lifetimes. Kept together for a day, the console fell
+        # back to the compiled-in default 24 hours after the last daily 429
+        # and presented it as a measurement - observed doing that for four
+        # days straight.
+        client = llm_usage._redis()
+        usage_ttl = client.ttl(llm_usage.limits_key(model))
+        ceiling_ttl = client.ttl(llm_usage.ceiling_key(model))
+        check(
+            "TPD 429: today's usage expires within the day",
+            0 < usage_ttl <= 24 * 3600,
+            usage_ttl,
+        )
+        check(
+            "TPD 429: the ceiling outlives it by a long way",
+            ceiling_ttl > 7 * 24 * 3600,
+            ceiling_ttl,
+        )
+        # Losing the day's usage must not take the ceiling with it: that is
+        # the exact sequence that turned the gauge back into a guess.
+        client.delete(llm_usage.limits_key(model))
+        survived = llm_usage.daily_limits(model)
+        check(
+            "TPD 429: the ceiling survives the day's usage expiring",
+            survived.get("tpd_limit") == 200000 and "tpd_used" not in survived,
+            survived,
+        )
 
         # --- a queue timeout ---------------------------------------------------
         key = llm_queue.groq_queue_key(model)
@@ -231,7 +258,7 @@ def main() -> None:
         llm_usage.flush()
         with session_scope() as s:
             s.execute(delete(LlmCall).where(LlmCall.model == model))
-        llm_usage._redis().delete(llm_usage.limits_key(model))
+        llm_usage._redis().delete(llm_usage.limits_key(model), llm_usage.ceiling_key(model))
         llm_queue._sync_client().delete(*llm_queue.all_keys(llm_queue.groq_queue_key(model)))
 
     print("\nALL PASSED" if all(results) else f"\n{results.count(False)} FAILED")
