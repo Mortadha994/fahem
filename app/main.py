@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 import urllib.error
 import uuid
@@ -40,7 +39,7 @@ from app.core import models, ratelimit, runtime_settings
 from app.core.config import CORS_ORIGINS
 from app.grading import algo_notation, answer_check, session_memory
 from app.grading.checker import check_constraints
-from app.llm import ai_control, gatekeeper, llm_queue
+from app.llm import ai_control, answer_cache, gatekeeper, llm_queue
 from app.llm.generate import GROQ_MODEL, generate, pick_backend
 from app.llm.llm_stream import stream_groq
 from app.llm.prompts import CHECK_CORRECTION_HEADING, build_messages
@@ -196,23 +195,6 @@ def _meta_scope(payload) -> tuple[str, str]:
     return chapitre, gatekeeper.CHAPTER_1_TOPICS
 
 
-# Store keys are normalised and unaccented ("2eme"); a student should not see
-# that. Ordinal suffixes are the only difference in practice.
-NIVEAU_LABELS = {"1ere": "1ère", "2eme": "2ème", "3eme": "3ème", "4eme": "4ème"}
-
-
-def niveau_label(niveau: str) -> str:
-    """Display form of a niveau, for text the student reads."""
-    key = niveau.strip().lower()
-    if key in NIVEAU_LABELS:
-        return NIVEAU_LABELS[key]
-    if key == "bac":
-        return "Bac"
-    # Generic fallback so an unlisted niveau still reads correctly.
-    label = re.sub(r"(\d+)\s*eme\b", r"\1ème", key)
-    return re.sub(r"(\d+)\s*ere\b", r"\1ère", label)
-
-
 def student_profile(user: models.User) -> str | None:
     """The account's niveau and section as the prompt reads them, or None if
     the student has not answered the question yet."""
@@ -231,7 +213,7 @@ def meta_niveau(user: models.User, payload: "SolveRequest") -> str:
     discussion is scoped to, in its display form: the request's niveau is the
     corpus scope (2ème by default), not necessarily the student's class, so it
     is only the fallback."""
-    return student_profile(user) or niveau_label(payload.niveau)
+    return student_profile(user) or models.niveau_label(payload.niveau)
 
 
 class SolveRequest(BaseModel):
@@ -462,7 +444,7 @@ def solve(
         # The prompt shows the niveau to the student, so it gets the accented
         # display form; build_context above got the raw value the store keys
         # on. Keeping the two separate is deliberate.
-        niveau=niveau_label(payload.niveau),
+        niveau=models.niveau_label(payload.niveau),
         chapitre=payload.chapitre,
         # A short follow-up gets the FOLLOW_UP prompt (see /solve/stream).
         kind=(
@@ -704,13 +686,25 @@ def _gatekeeper_stream(
     payload: SolveRequest,
     started: float,
     extra: dict | None = None,
+    *,
+    pinned: list | None = None,
+    retrieved: list | None = None,
+    warnings: list | None = None,
 ):
-    """The meta/done/delta shape for a gatekeeper-produced reply (DoS cap,
-    OFF_TOPIC, or META), reusing the exact SSE contract /solve/stream already
-    emits for a real answer - empty pinned/retrieved, one delta, a clean
-    done - so the frontend needs no changes to render either kind of reply,
-    and the existing hasRealAlgorithmeSolution check already hides the
-    constraint badge correctly (no Algorithme|Python table in this text).
+    """The meta/done/delta shape for a reply that is already written, rather
+    than streamed out of the model.
+
+    Two callers: the gatekeeper (DoS cap, OFF_TOPIC, META), which has no
+    grounding to show and passes nothing; and a cache hit
+    (app/llm/answer_cache.py), which has stored grounding and checker findings
+    and passes them, so the citation strip and the syntax verdict render
+    exactly as they do for a live answer.
+
+    It reuses the exact SSE contract /solve/stream already emits, so the
+    frontend needs no changes to render either kind of reply - and for the
+    gatekeeper's own replies the existing hasRealAlgorithmeSolution check
+    still hides the constraint badge correctly (no Algorithme|Python table in
+    that text).
     """
     yield _sse(
         "meta",
@@ -718,15 +712,15 @@ def _gatekeeper_stream(
             "model": model_label,
             "niveau": payload.niveau,
             "chapitre": payload.chapitre,
-            "pinned": [],
-            "retrieved": [],
+            "pinned": pinned or [],
+            "retrieved": retrieved or [],
         },
     )
     yield _sse("delta", {"t": text})
     yield _sse(
         "done",
         {
-            "warnings": [],
+            "warnings": warnings or [],
             "notes": [],
             "chars": len(text),
             "elapsed_ms": int((time.monotonic() - started) * 1000),
@@ -886,7 +880,98 @@ def solve_stream(
             **(learning or {}),
         }
 
+    def cached_target() -> tuple[str, int] | None:
+        """(mode, step) this request could be answered from the cache with, or
+        None to take the live path.
+
+        Three conditions, all necessary:
+
+        - the request names a catalogue exercise (`exercise_id`), which is
+          what the stored answer is keyed on;
+        - it is the first message of the discussion (`history` is empty), so
+          the stored answer - generated with no session memory - is exactly
+          what the live pipeline would have produced here. A later message
+          carries memory the cached answer never saw;
+        - the mode is one whose whole input is the statement: « La solution »,
+          or « Mode guidé » at its first step, which is a new statement rather
+          than a button (`step`/`action` unset).
+
+        Note what is deliberately *not* required: exercise_trusted. That flag
+        stops a hand-made request using the learning modes to get past the
+        gatekeeper, and it cannot be satisfied on a discussion's first message
+        anyway (nothing is saved yet to vouch for the statement). It is not
+        needed here because a hit requires the statement to hash equal to a
+        published catalogue exercise: the worst a forged request can obtain is
+        the answer to an exercise the student could have clicked.
+        """
+        if not payload.exercise_id or payload.history:
+            return None
+        if payload.mode == "full":
+            return (models.ANSWER_MODE_FULL, 0)
+        if (
+            payload.mode == "guided"
+            and not payload.step
+            and not payload.action
+            and runtime_settings.get("guided_mode_enabled")
+        ):
+            return (models.ANSWER_MODE_GUIDED, 1)
+        return None
+
+    def cache_hit():
+        """The stored answer for this request, or None. Never raises: a cache
+        that cannot be read has to slow Fahem down, not break it."""
+        target = cached_target()
+        if target is None:
+            return None
+        mode, step = target
+        return answer_cache.lookup(
+            payload.chapitre, payload.exercise_id, mode, step, payload.problem
+        )
+
     def events():
+        # A precomputed answer, if this exercise has one (app/llm/answer_cache.py).
+        # Before the gatekeeper on purpose: a hit must cost no Groq call at
+        # all, and classification is a Groq call. The student gets the answer
+        # with no queue, no 429 and nothing against the daily token budget.
+        hit = cache_hit()
+        if hit is not None:
+            guided = (
+                {"step": 1, "exerciseId": payload.exercise_id}
+                if payload.mode == "guided"
+                else None
+            )
+            route_label = "GUIDED" if payload.mode == "guided" else "PROBLEM"
+            # The same verdict a live answer of this shape would carry. Not a
+            # status of its own ("cached"): the chat renders the syntax badge
+            # off these three values, and a fourth would simply not draw.
+            # A guided hint vouches for nothing, exactly as at line ~1190.
+            has_solution = _has_solution_table(hit.answer) and route_label != "GUIDED"
+            status_value = (
+                "warned"
+                if hit.warnings and has_solution
+                else ("clean" if has_solution else "none")
+            )
+            version = persist(
+                hit.answer,
+                status_value,
+                route_label,
+                warnings=hit.warnings if has_solution else [],
+                pinned=hit.pinned,
+                retrieved=hit.retrieved,
+                learning=guided,
+            )
+            yield from _gatekeeper_stream(
+                hit.answer,
+                hit.model,
+                payload,
+                started,
+                done_extra(route_label, version, guided),
+                pinned=hit.pinned,
+                retrieved=hit.retrieved,
+                warnings=hit.warnings,
+            )
+            return
+
         # The gatekeeper runs inside the stream rather than before it: under
         # load its Groq call waits in the same queue as the solves, and only an
         # open stream can tell the student so. The order of decisions is
@@ -985,7 +1070,7 @@ def solve_stream(
         messages = build_messages(
             context=rendered,
             query=payload.problem,
-            niveau=niveau_label(payload.niveau),
+            niveau=models.niveau_label(payload.niveau),
             chapitre=payload.chapitre,
             kind=prompt_route,
             profile=student_profile(user),

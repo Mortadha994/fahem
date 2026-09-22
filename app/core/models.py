@@ -22,6 +22,7 @@ Alembic keeps its own directory because it insists on one.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
@@ -80,6 +81,32 @@ PLANS = (PLAN_FREE, PLAN_PAID)
 # Math, no Technique - those open in 3ème); 3ème and the bac year share all six.
 
 NIVEAUX = {"2eme": "2ème année", "3eme": "3ème année", "bac": "Bac"}
+
+# The same years, in the short form the prompts put in front of the student
+# ("2ème", not "2ème année"). Two maps rather than one because the two readings
+# are genuinely different: NIVEAUX names a class on a profile screen, this
+# names a year inside a sentence.
+#
+# Here rather than beside the request that uses it, because the answer cache
+# generates for a chapter with no request in sight (app/llm/answer_cache.py)
+# and would otherwise have to import app.main, which imports it back.
+NIVEAU_LABELS = {"1ere": "1ère", "2eme": "2ème", "3eme": "3ème", "4eme": "4ème"}
+
+
+def niveau_label(niveau: str) -> str:
+    """Display form of a niveau, for text the student reads.
+
+    Store keys are normalised and unaccented ("2eme"); a student should not
+    see that. Ordinal suffixes are the only difference in practice.
+    """
+    key = niveau.strip().lower()
+    if key in NIVEAU_LABELS:
+        return NIVEAU_LABELS[key]
+    if key == "bac":
+        return "Bac"
+    # Generic fallback so an unlisted niveau still reads correctly.
+    label = re.sub(r"(\d+)\s*eme\b", r"\1ème", key)
+    return re.sub(r"(\d+)\s*ere\b", r"\1ère", label)
 SECTIONS = {
     "informatique": "Informatique",
     "math": "Mathématiques",
@@ -681,4 +708,76 @@ class AnswerFeedback(Base):
             unique=True,
         ),
         Index("ix_answer_feedback_created_at", "created_at"),
+    )
+
+
+# --- precomputed answers ----------------------------------------------------------
+#
+# The catalogue exercises are a finite, known list, and the answer to one does
+# not depend on who is asking: the same statement, the same chapter and the
+# same prompt produce the same solution. Generating them once and serving them
+# from here is what lets a student who clicks an exercise get an answer with no
+# queue, no 429 and no Groq call at all - see app/llm/answer_cache.py.
+#
+# Only the modes whose input is the statement alone live here. "Vérifier ma
+# réponse" depends on what the student wrote, and a guided step past the first
+# depends on the steps before it, so neither is cached.
+
+ANSWER_MODE_FULL = "full"  # « La solution »
+ANSWER_MODE_GUIDED = "guided"  # « Mode guidé », first step only
+ANSWER_MODES = (ANSWER_MODE_FULL, ANSWER_MODE_GUIDED)
+
+
+class ExerciseAnswer(Base):
+    """One precomputed answer, for one catalogue exercise, in one mode.
+
+    Keyed on (chapter, exercise, mode, step) because that is how a request
+    arrives - the student clicks exercise 3 of chapter 2 - rather than on a
+    hash of the statement. The statement's hash sits beside the key instead,
+    as a guard; see question_hash.
+    """
+
+    __tablename__ = "exercise_answers"
+
+    chapter_id: Mapped[str] = mapped_column(String(8), primary_key=True)
+    # Not a foreign key, on purpose. Exercises come from two places - chapter 1
+    # from sample_problems.json, an uploaded chapter from its publish snapshot
+    # - and only the second has a row anything could point at.
+    exercise_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16), primary_key=True)
+    # 1-4 for a guided step, 0 for a mode that has none. Part of the key rather
+    # than nullable: a NULL does not compare equal inside a primary key.
+    step: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
+
+    # What the student sees. `answer` is the markdown one delta would have
+    # streamed; the other three are what the rest of the screen needs, so a hit
+    # can draw the grounding strip and the syntax verdict without rebuilding
+    # the context or running retrieval again.
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    pinned: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    retrieved: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # The two staleness guards. A miss on either falls through to the live
+    # pipeline, which is the safe direction: a stale answer is worse than a
+    # slow one, because it is confidently wrong about a question nobody asked.
+    #
+    # question_hash: sha256 of the normalised statement it was built from.
+    # Chapter 1's statements live in sample_problems.json, which is gitignored
+    # and bind-mounted, so it can change with no publish event to react to.
+    question_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # prompt_version: bumped when prompts.py changes what an answer looks like,
+    # so old answers stop being served instead of becoming a second voice.
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("mode IN ('full', 'guided')", name="ck_exercise_answers_mode"),
+        CheckConstraint("step >= 0 AND step <= 4", name="ck_exercise_answers_step"),
+        # The console counts what is ready per chapter on every page load.
+        Index("ix_exercise_answers_chapter", "chapter_id"),
     )
