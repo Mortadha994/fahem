@@ -261,6 +261,7 @@ past work counts and it can never drift from the history.
 | **Relational store** | PostgreSQL via SQLAlchemy, schema managed by Alembic: users (with role, niveau, section), chat sessions, chat messages, emailed auth tokens, and uploaded chapters. |
 | **Auth** | Two ways in. Google Identity Services on the frontend, verified server-side against Google's keys; and email + password (Argon2id), with emailed verification and reset links. Either way the backend issues its own signed session in an `httpOnly` cookie (PyJWT); the Google token is never treated as a session. A closed `role` (`student` / `admin`) gates the console; the admin role is granted only out of band by `scripts/promote_admin.py`. |
 | **Rate limiting** | slowapi over Redis. Solving and attachment reading are limited **per user** (`10/minute;100/hour` by default, a shared budget); sign-in is limited **per IP** (`30/minute`). A 429 carries `Retry-After`, which the UI turns into *"Réessaie dans 47 secondes."* |
+| **Precomputed answers** | `app/llm/answer_cache.py` + `exercise_answers`: the catalogue exercises are a finite list whose answers do not depend on who is asking, so *La solution* and *Mode guidé*'s first step are generated once (below every student's queue priority) and served straight from Postgres. A hit makes **no Groq call at all** — not even the classification — so there is no queue, no 429 and nothing against the daily budget. Two guards decide a hit: the statement's hash and a prompt version, and a miss on either falls through to the live pipeline. |
 | **Groq queue** | `app/llm/llm_queue.py`: a Redis priority queue per model in front of every Groq call. Classifications rank ahead of solves, a solve waiting 20 s can no longer be jumped, a 429 is retried in the slot with `Retry-After`, and one request never waits more than 120 s in total. The UI gets `waiting` SSE events with the position. |
 | **AI monitoring** | `app/llm/llm_usage.py` records each Groq call (tokens, latency, queue wait, 429s, outcome) to `llm_calls` from a background writer; `app/routes/admin/admin_monitoring.py` serves `/admin/monitoring` — per-model temperature (tokens/min, tokens/day, queue), 24 h KPIs, per-kind p50/p95, recent failures. Each row also carries the `user_id` that caused it, so spend can be read per account. |
 | **Per-account activity** | `app/routes/admin/admin_user_activity.py` serves `GET /admin/users/{id}/activity`: weekly buckets (1–52, 12 by default) of questions by mode, discussions, tokens and calls, plus the exercise mix. Weeks with nothing are still emitted, so a gap reads as a gap rather than closing up. Spend only goes back to the migration that added `llm_calls.user_id`, and the response says when the meter starts instead of implying the whole history is there. |
@@ -321,6 +322,15 @@ erDiagram
     ADMIN_AUDIT {
         string action
         jsonb detail "before / after"
+    }
+    EXERCISE_ANSWERS {
+        string chapter_id "PK, with the three below"
+        string exercise_id "from either exercise source"
+        string mode "full | guided"
+        int step "1-4 guided, 0 otherwise"
+        text answer "what a delta would have streamed"
+        string question_hash "the statement it was built from"
+        string prompt_version "bumped when prompts.py changes"
     }
 ```
 
@@ -623,6 +633,7 @@ docker compose --env-file env/.env --project-directory . -f docker/docker-compos
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_llm_usage  # per-call recording and /admin/monitoring
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_public_overview  # what the landing page is told
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_admin_controls   # live controls, audit log, revert
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_answer_cache   # precomputed answers: guards, the hit, and that it costs no model call
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_algo_notation    # div / mod in the Algorithme column
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_session_memory   # compaction, prompts, follow-ups (--live calls the model)
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_chat_flow        # light list, versioned saves, server save, feedback
@@ -816,6 +827,8 @@ scripts/                   offline tools, run as `python -m scripts.<name>`
   promote_admin.py         grant/revoke the admin role
   seed_demo_activity.py    a demo account with twelve weeks of activity, for the
                            charts (--tokens, --remove)
+  warm_answers.py          precompute the catalogue answers (--chapitre,
+                           --status, --reset)
 
 tests/                     the suite, run as `python -m tests.<name>`
 alembic/                   migrations
@@ -923,8 +936,10 @@ Next, roughly in order (details and more ideas in
   decision they were built for is still made by hand. `users.plan` and the
   per-student solve limit are the levers already wired for it, so the missing
   piece is the policy, not the plumbing.
-- **Ready-made answers for catalogue exercises** — generate hints, skeletons
-  and solutions once, serve them instantly, and spare the daily Groq budget.
+- **Ready-made answers for catalogue exercises** — partly in. *La solution*
+  and *Mode guidé*'s first step are precomputed and served with no model call
+  at all; what is left is the rest of the guided chain, which needs the steps
+  before it to be faithful, and *Exercice similaire*.
 - **Make practice a game** — an animated execution trace, Parsons puzzles, a bug
   hunt, XP and badges.
 
