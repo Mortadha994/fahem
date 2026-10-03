@@ -267,7 +267,7 @@ def discover(root: Path, niveau: str | None, chapter: int | None) -> list[Chapte
 # --- the database --------------------------------------------------------------------------
 
 
-def apply(ch: Chapter, publish: bool) -> str:
+def apply(ch: Chapter, publish: bool, force: bool = False) -> str:
     """Write one chapter as a draft (and publish it). Returns a one-line outcome."""
     # Imported here: they need the backend's environment, the check mode does not.
     from app.core.db import session_scope
@@ -295,6 +295,13 @@ def apply(ch: Chapter, publish: bool) -> str:
                 return "busy (traitement en cours), ignoré"
             if row.niveau != ch.niveau:
                 return f"id {pid} déjà pris par un chapitre de {row.niveau}, ignoré"
+            # A chapter someone uploaded or reviewed by hand is theirs: only
+            # what this script created (same source name) is replaced silently.
+            if row.source_filename != filename and not force:
+                return (
+                    f"existe déjà (source « {row.source_filename} »), ignoré ; "
+                    "--force pour le remplacer par les fichiers de courses/"
+                )
             row.source_filename = filename
             row.source_kind = "markdown"
             row.status = CHAPTER_PROCESSING
@@ -329,9 +336,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write-merged", type=Path, metavar="DIR", help="write the merged files here")
     ap.add_argument("--apply", action="store_true", help="write to the database (drafts)")
     ap.add_argument("--publish", action="store_true", help="with --apply: publish after import")
+    ap.add_argument(
+        "--force", action="store_true",
+        help="with --apply: also replace a chapter that was not created by this script",
+    )
     args = ap.parse_args(argv)
     if args.publish and not args.apply:
         ap.error("--publish needs --apply")
+    if args.force and not args.apply:
+        ap.error("--force needs --apply")
     if not args.root.is_dir():
         print(f"dossier introuvable : {args.root}")
         return 2
@@ -362,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         if ch.skip:
             print(f"    → valide, non importé : {ch.skip}")
         elif args.apply:
-            print(f"    → {apply(ch, args.publish)}")
+            print(f"    → {apply(ch, args.publish, args.force)}")
     return 1 if bad else 0
 
 

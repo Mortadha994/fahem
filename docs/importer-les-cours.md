@@ -50,8 +50,9 @@ docker compose --env-file env/.env --project-directory . -f docker/docker-compos
   -v "<dossier>/app:/app/app:ro" backend python -m scripts.import_courses --root /app/courses --apply --publish
 ```
 
-Relancer la commande réimporte : un chapitre existant repart à zéro depuis ses fichiers (même chemin
-que « envoyer un fichier corrigé » dans la console). La publication ne lance pas le calcul des
+Relancer la commande réimporte les chapitres que ce script a créés : ils repartent à zéro depuis leurs
+fichiers (même chemin que « envoyer un fichier corrigé » dans la console). Un chapitre qui existe déjà
+avec une autre source (envoyé ou relu à la main dans la console) est ignoré ; `--force` le remplace. La publication ne lance pas le calcul des
 réponses préparées ; il se fait depuis la console, chapitre par chapitre.
 
 ## Envoi à la main
