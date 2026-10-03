@@ -125,13 +125,11 @@ En fin, en tenant compte du contenu de TC, en reconstruit le tableau T, en insé
 
 **Exemple :**
 
-```
-N=1211
-Min =1112 Max=2111
-Différence =N=999
-Min =999 Max=999
-Différence = N=0
-```
+> N=1211
+> Min =1112 Max=2111
+> Différence =N=999
+> Min =999 Max=999
+> Différence = N=0
 
 ### Exercice 17
 
