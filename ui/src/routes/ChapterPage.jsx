@@ -17,6 +17,7 @@ import {
 } from "../lib/exercises.js";
 import Skeleton from "../components/ui/Skeleton.jsx";
 import Badge from "../components/ui/Badge.jsx";
+import { chapterNumber } from "../lib/chapterNumber.js";
 import { EXERCISE_STATUS, fetchProgress } from "../lib/progressApi.js";
 
 const DOC = "doc";
@@ -196,9 +197,9 @@ function ChapterView({ id }) {
           <Link to="/" className="page-back">
             ← Chapitres
           </Link>
-          <span className="chapter-head-id">Chapitre {id}</span>
+          <span className="chapter-head-id">Chapitre {chapterNumber(id)}</span>
         </div>
-        <h1>{chapter?.title ?? `Chapitre ${id}`}</h1>
+        <h1>{chapter?.title ?? `Chapitre ${chapterNumber(id)}`}</h1>
       </header>
 
       <div className="tabs" role="tablist" aria-label="Contenu du chapitre">
@@ -264,7 +265,7 @@ function ChapterView({ id }) {
             type="application/pdf"
             // Named, so a screen reader announces the embedded document
             // rather than an unlabelled frame (axe: object-alt).
-            aria-label={`Cours du chapitre ${id}${chapter?.title ? ` : ${chapter.title}` : ""}`}
+            aria-label={`Cours du chapitre ${chapterNumber(id)}${chapter?.title ? ` : ${chapter.title}` : ""}`}
           >
             {/* Shown only if the browser has no built-in PDF viewer. */}
             <p className="page-muted">

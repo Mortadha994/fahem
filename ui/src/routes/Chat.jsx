@@ -30,6 +30,7 @@ import { useAuth } from "../lib/authContext.js";
 import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
 import { rateLimitMessage } from "../lib/rateLimit.js";
+import { chapterNumber, niveauOfChapter } from "../lib/chapterNumber.js";
 
 // For the shortcut hint only; the handler accepts both Ctrl and Cmd anyway.
 const IS_MAC =
@@ -235,10 +236,18 @@ export default function Chat() {
   useEffect(() => {
     let cancelled = false;
     fetchChapters()
-      .then(
-        (list) =>
-          !cancelled && setChapterList(list.filter((c) => c.status === "active"))
-      )
+      .then((list) => {
+        if (cancelled) return;
+        const active = list.filter((c) => c.status === "active");
+        setChapterList(active);
+        // A 3ème or Bac student has no chapter "1" of their own: start on the
+        // first chapter their year offers rather than on the 2ème default.
+        setChapterChoice((prev) =>
+          active.length === 0 || active.some((c) => String(c.id) === String(prev))
+            ? prev
+            : String(active[0].id)
+        );
+      })
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -253,7 +262,11 @@ export default function Chat() {
     setChapterChoice(id);
     if (active && active.messages.length === 0) {
       setSessions((prev) =>
-        prev.map((s) => (s.id === active.id ? { ...s, chapitre: id } : s))
+        prev.map((s) =>
+          s.id === active.id
+            ? { ...s, chapitre: id, niveau: niveauOfChapter(id) ?? s.niveau }
+            : s
+        )
       );
     }
   }
@@ -475,7 +488,7 @@ export default function Chat() {
         // answering in the chapter it was started in.
         {
           problem,
-          niveau: session.niveau ?? NIVEAU,
+          niveau: niveauOfChapter(session.chapitre) ?? session.niveau ?? NIVEAU,
           chapitre: session.chapitre ?? CHAPITRE,
           note,
           history,
@@ -968,7 +981,7 @@ export default function Chat() {
             {isEmpty ? "Nouvelle discussion" : active.title}
           </h1>
           <p className="chat-head-meta">
-            <span className="chat-head-chip">Chapitre {currentChapter}</span>
+            <span className="chat-head-chip">Chapitre {chapterNumber(currentChapter)}</span>
             <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
           </p>
         </div>

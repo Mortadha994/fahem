@@ -14,6 +14,7 @@ import LandingDemo from "./LandingDemo.jsx";
 import CountUp from "./CountUp.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { fetchOverview, listFr, plural } from "../lib/overview.js";
+import { chapterNumber } from "../lib/chapterNumber.js";
 import "./landing/landing.css";
 
 /*
@@ -45,14 +46,14 @@ function chaptersAnswer(overview) {
   if (!overview)
     return "La section Programme, plus bas, liste les chapitres disponibles.";
   const name = (c) =>
-    `le chapitre ${c.id} de ${shortNiveau(c.niveau_label)} (${lowerFirst(c.title)})`;
+    `le chapitre ${chapterNumber(c.id)} de ${shortNiveau(c.niveau_label)} (${lowerFirst(c.title)})`;
   const ready = overview.chapters.filter(isReady);
   const coming = overview.chapters.filter((c) => !isReady(c));
   let answer = ready.length
     ? `Aujourd'hui : ${listFr(ready.map(name))}, avec ${plural(overview.totals.exercises, "exercice")} à résoudre.`
     : "Aucun chapitre n'est encore publié.";
   if (coming.length) {
-    answer += ` ${listFr(coming.map((c, i) => `${i === 0 ? "Le" : "le"} chapitre ${c.id}`))} ${
+    answer += ` ${listFr(coming.map((c, i) => `${i === 0 ? "Le" : "le"} chapitre ${chapterNumber(c.id)}`))} ${
       coming.length > 1 ? "sont annoncés" : "est annoncé"
     } « à venir » — Fahem préfère le dire plutôt que répondre à côté.`;
   }
@@ -445,7 +446,7 @@ export default function Landing() {
                   >
                     <p className="fx-chapter-top">
                       <span>
-                        {shortNiveau(c.niveau_label)} · Chapitre {c.id}
+                        {shortNiveau(c.niveau_label)} · Chapitre {chapterNumber(c.id)}
                       </span>
                       <span className={`fx-tag${isReady(c) ? " is-ready" : ""}`}>
                         {isReady(c) ? "Disponible" : "À venir"}

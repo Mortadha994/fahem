@@ -4,6 +4,7 @@ import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { ago } from "../lib/relativeTime.js";
 import * as m from "motion/react-m";
 import { rise, stagger } from "../lib/motion.js";
+import { chapterNumber } from "../lib/chapterNumber.js";
 
 /**
  * The last few discussions, one tap from the home screen.
@@ -73,7 +74,7 @@ export default function RecentSessions() {
                 <span className="recent-body">
                   <span className="recent-title">{s.title}</span>
                   <span className="recent-meta">
-                    Chapitre {s.chapitre}
+                    Chapitre {chapterNumber(s.chapitre)}
                     {when && ` · ${when}`}
                   </span>
                 </span>

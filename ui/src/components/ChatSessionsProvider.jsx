@@ -15,6 +15,7 @@ import {
   sessionPayload,
 } from "../lib/sessions.js";
 import { CHAPITRE, NIVEAU } from "../config.js";
+import { niveauOfChapter } from "../lib/chapterNumber.js";
 
 // How long a discussion has to stay unchanged before it is saved. Short
 // enough that closing the tab rarely loses anything, long enough that a burst
@@ -212,7 +213,10 @@ export default function ChatSessionsProvider({ children }) {
   // Phase 9: a discussion belongs to one chapter, chosen when it starts (the
   // chapter page an exercise came from, or the picker in an empty chat).
   const createSession = useCallback((chapitre = CHAPITRE) => {
-    const session = newSession({ niveau: NIVEAU, chapitre: String(chapitre) });
+    const session = newSession({
+      niveau: niveauOfChapter(chapitre) ?? NIVEAU,
+      chapitre: String(chapitre),
+    });
     setSessions((prev) => [session, ...prev]);
     setActiveId(session.id);
     return session;

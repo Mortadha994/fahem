@@ -26,11 +26,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.auth import auth
+from app.core import chapter_ids
 from app.core.config import MAX_CHAPTER_PDF_BYTES
 from app.core.db import session_scope
 from app.core.models import (
     CHAPTER_PROCESSING,
     CHAPTER_PUBLISHING,
+    NIVEAUX,
     ChapterChunk,
     ChapterExercise,
     UploadedChapter,
@@ -201,11 +203,33 @@ async def _read_source(
     except UnicodeDecodeError:
         raise HTTPException(status_code=415, detail="Le fichier .md doit être encodé en UTF-8.")
     try:
-        course = course_markdown.parse(text, chapter_id)
+        course = course_markdown.parse(text)
     except course_markdown.ParseError as exc:
         raise HTTPException(
             status_code=422,
             detail={"message": "Le cours ne respecte pas le modèle.", "problems": exc.problems},
+        )
+    # The course carries its year and its number inside that year; the id is
+    # derived from the two (app/core/chapter_ids.py), so "chapitre: 1" of
+    # 3ème is chapter 31 here without the file saying so.
+    problem = None
+    if course.niveau not in NIVEAUX:
+        problem = f"En-tête : niveau {course.niveau!r} inconnu (attendu : {', '.join(NIVEAUX)})."
+    else:
+        try:
+            expected = chapter_ids.platform_id(course.niveau, course.chapitre)
+        except ValueError as exc:
+            problem = f"En-tête : {exc}."
+        else:
+            if expected != chapter_id:
+                problem = (
+                    f"En-tête : le chapitre {course.chapitre} de {course.niveau} porte le numéro "
+                    f"{expected} dans Fahem, mais le fichier est envoyé comme chapitre {chapter_id!r}."
+                )
+    if problem:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Le cours ne respecte pas le modèle.", "problems": [problem]},
         )
     return "markdown", data, course
 
@@ -299,14 +323,23 @@ async def upload_chapter(
     id: str = Query(..., description="chapter number, e.g. 2"),
     title: str | None = Query(None, max_length=200, description="required for a PDF"),
     filename: str = Query("chapitre.pdf", max_length=255),
+    niveau: str = Query("2eme", description="year of a PDF chapter; a Markdown course names its own"),
 ) -> ChapterSummary:
     """Create a chapter from a PDF or a Markdown course; import in the background."""
     chapter_id = _valid_id(id.strip())
     kind, data, course = await _read_source(request, filename, chapter_id)
-    # A Markdown course carries its own title in the header.
+    # A Markdown course carries its own title and year in the header.
     final_title = course.titre if course else (title or "").strip()
     if not final_title:
         raise HTTPException(status_code=422, detail="Le titre du chapitre est requis.")
+    final_niveau = course.niveau if course else niveau.strip().lower()
+    if final_niveau not in NIVEAUX:
+        raise HTTPException(status_code=422, detail=f"Niveau inconnu : {niveau!r}.")
+    if chapter_ids.niveau_of_id(chapter_id) != final_niveau:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Le numéro {chapter_id} n'appartient pas aux chapitres de {final_niveau}.",
+        )
 
     with session_scope() as s:
         if s.get(UploadedChapter, chapter_id) is not None:
@@ -316,7 +349,7 @@ async def upload_chapter(
             )
         row = UploadedChapter(
             id=chapter_id,
-            niveau="2eme",
+            niveau=final_niveau,
             title=final_title,
             topics=course.notions if course else "",
             status=CHAPTER_PROCESSING,

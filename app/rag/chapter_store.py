@@ -188,8 +188,10 @@ def process_upload(chapter_id: str) -> None:
         if kind == "markdown":
             # Validated at upload already; parsed again here so the stored
             # file, not the request, is the single source of what gets imported.
+            # No expected number here: the id is derived from (niveau, chapitre)
+            # and was checked against it at upload (app/core/chapter_ids.py).
             course = course_markdown.parse(
-                markdown_path(chapter_id).read_text(encoding="utf-8"), chapter_id
+                markdown_path(chapter_id).read_text(encoding="utf-8")
             )
             chunks, exercises = course.chunks, course.exercises
             header = course

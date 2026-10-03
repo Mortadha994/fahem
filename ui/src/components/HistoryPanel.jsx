@@ -6,6 +6,7 @@ import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { ago } from "../lib/relativeTime.js";
 import { groupByDay, hasQuestion, statusOf } from "../lib/sessionGroups.js";
 import { SPRING_ENTER, rise, stagger } from "../lib/motion.js";
+import { chapterNumber } from "../lib/chapterNumber.js";
 
 /**
  * The chat's history, as a panel that slides over from the right.
@@ -242,7 +243,7 @@ function HistoryDialog({ onClose }) {
                               <span className="history-row-body">
                                 <span className="history-row-title">{s.title}</span>
                                 <span className="history-row-meta">
-                                  Chapitre {s.chapitre}
+                                  Chapitre {chapterNumber(s.chapitre)}
                                   {hasQuestion(s) && s.updatedAt
                                     ? ` · ${ago(s.updatedAt)}`
                                     : ""}

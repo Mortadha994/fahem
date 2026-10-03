@@ -3,6 +3,7 @@ import * as m from "motion/react-m";
 import { HOVER_LIFT, PRESS, SPRING_ENTER, rise } from "../lib/motion.js";
 import Badge from "./ui/Badge.jsx";
 import Skeleton from "./ui/Skeleton.jsx";
+import { chapterNumber } from "../lib/chapterNumber.js";
 
 /**
  * One chapter on the home screen.
@@ -42,7 +43,7 @@ export default function ChapterCard({ chapter, progress }) {
         {/* The chapter's id as a large numeral. Decoration: the meta line
             below says "Chapitre 1" in words. */}
         <span className="chapter-num" aria-hidden="true">
-          {String(chapter.id).padStart(2, "0")}
+          {chapterNumber(chapter.id).padStart(2, "0")}
         </span>
         <Badge tone={active ? "success" : "neutral"}>
           {active ? "Disponible" : "À venir"}
@@ -51,7 +52,7 @@ export default function ChapterCard({ chapter, progress }) {
 
       <span className="chapter-card-body">
         <span className="chapter-meta">
-          Chapitre {chapter.id} · {niveauLabel(chapter.niveau)}
+          Chapitre {chapterNumber(chapter.id)} ·{niveauLabel(chapter.niveau)}
         </span>
         <span className="chapter-title">{chapter.title}</span>
       </span>
