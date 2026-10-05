@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from app.core import chapter_ids
-from app.rag.course_markdown import parse
+from app.rag.course_markdown import parse, student_text
 from scripts.import_courses import Chapter, check, discover, series_files, split_serie
 
 failures = 0
@@ -169,6 +169,31 @@ def main() -> None:
         check(builtin)
         check_("2ème chapter 1 is valid but marked not-imported",
                builtin.course is not None and builtin.skip and not builtin.problems, builtin.skip)
+
+    # --- what a student reads on the chapter page ------------------------------------------
+    sample = (
+        CHAPTER
+        + "\n![Schéma d'un tri](figures/tri.png)\n\n<!-- TODO vérifier: note de l'auteur -->\n"
+        + "```python\n# Série d'exercices dans un commentaire\nx = 1\n```\n"
+        + "\n## Série d'exercices\n\n### Exercice 1\n\nÉnoncé.\n"
+    )
+    shown = student_text(sample)
+    check_("the header is not shown", "niveau:" not in shown and "notions:" not in shown)
+    check_("the chapter H1 is not shown (the page has its own)", "# Chapitre 2" not in shown)
+    check_("TODO notes are not shown", "TODO" not in shown)
+    check_("a figure shows as its description", "*[Figure : Schéma d'un tri]*" in shown
+           and "figures/tri.png" not in shown)
+    check_("the exercises are cut (they have their own tab)", "Exercice 1" not in shown and "Énoncé" not in shown)
+    check_("a comment inside a code block is not mistaken for the série heading",
+           "# Série d'exercices dans un commentaire" in shown and "x = 1" in shown)
+    check_("the pin marker stays in the text (it is just a heading)", "## I. Le tri par sélection" in shown)
+
+    real = Path("courses/3eme/ch01-tris-et-recherches/chapitre.md")
+    if real.exists():
+        text = student_text(real.read_text(encoding="utf-8"))
+        check_("a real chapter reads as text", len(text) > 1000 and "TODO" not in text and "---" not in text.split("\n")[0])
+    else:
+        print("[SKIP] real chapter not found (run from the repository root)")
 
     print(f"\n{failures} failure(s)")
     raise SystemExit(1 if failures else 0)

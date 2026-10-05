@@ -39,7 +39,7 @@ from pydantic import BaseModel
 from app.auth import auth
 from app.core import models
 from app.core.config import DEFAULT_PROBLEMS, LESSON_PDF_PATH
-from app.rag import chapter_store
+from app.rag import chapter_store, course_markdown
 
 ACTIVE = "active"
 COMING_SOON = "coming_soon"
@@ -209,6 +209,34 @@ def _published_upload(chapter_id: str):
     if builtin is not None and builtin.status == ACTIVE:
         return None
     return chapter_store.published_chapter(chapter_id)
+
+
+class CourseText(BaseModel):
+    title: str
+    markdown: str
+
+
+@router.get("/{chapter_id}/course", response_model=CourseText)
+def chapter_course(
+    chapter_id: str,
+    user: models.User = Depends(auth.get_current_user),
+) -> CourseText:
+    """The course of a published Markdown chapter, as text.
+
+    A Markdown chapter has no PDF unless someone uploads one, so the chapter
+    page falls back to rendering this. 404 for anything else (built-in chapter,
+    PDF chapter, unpublished) - the page then has nothing to show and says so.
+    """
+    uploaded = _published_upload(chapter_id)
+    if uploaded is None or uploaded.source_kind != "markdown":
+        raise HTTPException(status_code=404, detail="no course text for this chapter")
+    path = chapter_store.markdown_path(chapter_id)
+    if not path.exists():
+        raise HTTPException(status_code=503, detail="lesson document is unavailable")
+    return CourseText(
+        title=uploaded.published_title or uploaded.title,
+        markdown=course_markdown.student_text(path.read_text(encoding="utf-8")),
+    )
 
 
 @router.get("/{chapter_id}/pdf")
