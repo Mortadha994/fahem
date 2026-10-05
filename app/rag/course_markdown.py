@@ -187,6 +187,9 @@ def student_text(text: str) -> str:
                     continue
                 if level == 2 and _SERIE.match(title):
                     break
+                # The pin is the author's marker for the reference sheet, not
+                # something a student should see in a heading.
+                line = line.replace(PIN + " ", "").replace(PIN, "")
             line = _IMAGE.sub(lambda m: f"*[Figure : {m.group(1)}]*" if m.group(1) else "", line)
         kept.append(line)
     cleaned = "\n".join(kept)

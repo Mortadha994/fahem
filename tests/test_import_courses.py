@@ -186,7 +186,8 @@ def main() -> None:
     check_("the exercises are cut (they have their own tab)", "Exercice 1" not in shown and "Énoncé" not in shown)
     check_("a comment inside a code block is not mistaken for the série heading",
            "# Série d'exercices dans un commentaire" in shown and "x = 1" in shown)
-    check_("the pin marker stays in the text (it is just a heading)", "## I. Le tri par sélection" in shown)
+    check_("the pin marker is removed from headings but the heading stays",
+           "📌" not in shown and "### 1. Syntaxe" in shown)
 
     real = Path("courses/3eme/ch01-tris-et-recherches/chapitre.md")
     if real.exists():

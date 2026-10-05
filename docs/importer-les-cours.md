@@ -59,3 +59,19 @@ réponses préparées ; il se fait depuis la console, chapitre par chapitre.
 
 Le fichier assemblé (`--write-merged`) peut aussi être envoyé depuis la console admin : l'identifiant
 demandé doit être celui du tableau ci-dessus, et le niveau est lu dans l'en-tête du fichier.
+
+## Le PDF du cours
+
+La page d'un chapitre montre un PDF ; sans PDF elle affiche le texte du cours (`/chapters/{id}/course`).
+`scripts/build_pdf.py` fabrique le PDF de chaque chapitre à partir des fichiers de `courses/`
+(le cours seulement, comme l'élève le lit : sans notes d'auteur ni exercices). Il utilise Edge ou
+Chrome en mode sans fenêtre ; aucune dépendance de plus.
+
+```
+.venv\Scripts\python -m scripts.build_pdf                      # build\pdf\<id>.pdf pour chaque chapitre
+.venv\Scripts\python -m scripts.build_pdf --niveau bac --chapter 4
+docker cp build\pdf\31.pdf fahem-backend-1:/app/uploads/chapters/31.pdf
+```
+
+Le fichier porte l'identifiant Fahem du chapitre. Ne copie pas un PDF sur un chapitre dont le PDF a
+été envoyé à la main (par exemple le chapitre 2 de 2ème) : il serait remplacé.
