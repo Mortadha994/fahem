@@ -34,7 +34,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from slowapi.errors import RateLimitExceeded
 
-from app.auth import auth, password_auth
+from app.auth import access, auth, password_auth
 from app.core import models, ratelimit, runtime_settings
 from app.core.config import CORS_ORIGINS
 from app.grading import algo_notation, answer_check, session_memory
@@ -347,6 +347,9 @@ def solve(
     budget. Separate buckets would let a caller double the spend by
     alternating between two endpoints that do identical work.
     """
+    # A student asks about their own niveau only: before the gatekeeper, so a
+    # request for another year costs no LLM call at all.
+    access.require_niveau(user, payload.niveau)
     started = time.monotonic()
 
     # Gatekeeper: classify before the real pipeline ever sees the message.
@@ -780,6 +783,8 @@ def solve_stream(
 
     /solve is unchanged and still serves the non-streaming path.
     """
+    # A plain 403 before the stream opens, same as the 401: see access.py.
+    access.require_niveau(user, payload.niveau)
     started = time.monotonic()
     # Does the discussion vouch for the exercise this request carries? Decided
     # here, before the cap below reads it (gate_text) and before any route is

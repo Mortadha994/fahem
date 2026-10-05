@@ -168,6 +168,13 @@ class User(Base):
         String(16), nullable=False, default=PLAN_FREE, server_default=PLAN_FREE
     )
 
+    # Which niveaux the account may open. A student sees their own niveau only
+    # (app/auth/access.py); this lifts that for test accounts, set from the
+    # admin console. Admins have it through their role and never need the flag.
+    full_access: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+
     # Set when the address owner clicks Fahem's verification link, or completes
     # a password reset (which proves the same thing). Tracked, deliberately not
     # enforced anywhere. Google accounts stay false: Fahem never sent them a link,

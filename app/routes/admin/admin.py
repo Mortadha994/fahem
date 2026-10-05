@@ -78,6 +78,7 @@ class AdminUser(BaseModel):
     niveau: str | None = None
     section: str | None = None
     plan: str = "free"
+    full_access: bool = False
     suspended_at: datetime | None = None
     suspended_reason: str | None = None
     solve_rate_limit: str | None = None
@@ -97,6 +98,7 @@ class AdminUser(BaseModel):
             niveau=user.niveau,
             section=user.section,
             plan=user.plan,
+            full_access=user.full_access,
             suspended_at=user.suspended_at,
             suspended_reason=user.suspended_reason,
             solve_rate_limit=user.solve_rate_limit,
@@ -162,6 +164,8 @@ class UpdateUser(BaseModel):
     niveau: str | None = None
     section: str | None = None
     plan: str | None = None
+    # True lifts the niveau limit (a test account sees every niveau).
+    full_access: bool | None = None
     solve_rate_limit: str | None = None
 
     @field_validator("display_name")
@@ -332,6 +336,8 @@ def update_user(
             user.section = payload.section
         if "plan" in sent:
             user.plan = payload.plan
+        if payload.full_access is not None:
+            user.full_access = payload.full_access
         if "solve_rate_limit" in sent:
             user.solve_rate_limit = personal_limit
         s.flush()
