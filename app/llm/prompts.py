@@ -70,6 +70,12 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    - pour chaque sous-programme (procédure ou fonction) que le contexte du
      chapitre couvre, son propre `T.D.O.L` (objets locaux), juste avant son
      corps.
+   Titre de chaque tableau : uniquement le sigle du cours (`T.D.N.T`,
+   `T.D.O`, `T.D.O.L`, ou le titre exact du contexte), sans développer le
+   sigle ni inventer d'intitulé. Un tableau dont la solution n'a pas besoin
+   n'est ni écrit ni mentionné (pas de phrase « pas de T.D.N.T nécessaire »).
+   Le T.D.O.L ne contient que les objets locaux du sous-programme, pas ses
+   paramètres déjà donnés dans son entête.
    Ces tableaux fixent le type de chaque objet — pas une annotation inline
    dans une instruction Lire. Si le contexte montre la forme d'un type ou
    d'un tableau de déclaration, suis exactement cette forme.
