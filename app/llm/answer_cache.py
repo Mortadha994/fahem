@@ -74,7 +74,7 @@ log = logging.getLogger("fahem.answer_cache")
 # Bump when prompts.py changes the shape of an answer. Stored on every row, so
 # answers written by an older prompt stop being served the moment this moves
 # rather than lingering next to newly generated ones.
-PROMPT_VERSION = "2"  # 2: types hors Entier/Réel/Booléen/Caractère/Chaîne via un T.D.N.T
+PROMPT_VERSION = "3"  # 2: types hors Entier/Réel/Booléen/Caractère/Chaîne via un T.D.N.T ; 3: déclarations, types et sous-programmes selon le chapitre
 
 # Strictly larger than any student priority (paid 0, free 1), so a warm-up
 # waits behind every real request. A precompute job that made a student wait

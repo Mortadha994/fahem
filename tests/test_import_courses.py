@@ -205,6 +205,20 @@ def main() -> None:
     check_("the solve prompt requires a T.D.N.T for types beyond the five simple ones",
            "T.D.N.T" in prompts.SYSTEM_PROMPT and "T.D.O.L" in prompts.SYSTEM_PROMPT)
     check_("the code-review prompt flags a student's missing T.D.N.T", "T.D.N.T" in prompts.CODE_SYSTEM_PROMPT)
+    solve = prompts.SYSTEM_PROMPT
+    check_("the declaration tables depend on the solution: T.D.N.T only for a new type, T.D.O.L per sous-programme",
+           "UNIQUEMENT si la solution" in solve and "pour chaque sous-programme" in solve
+           and "n'écris jamais un tableau vide" in solve)
+    check_("the solve prompt no longer forbids what later chapters teach (matrices, enregistrements, sous-programmes)",
+           "pas de structures/enregistrements" not in solve and "N'utilise aucune fonction ou procédure" not in solve
+           and "SEULEMENT si le contexte" in solve and "QUE si le contexte" in solve)
+    check_("every mode that shows a complete solution names the adapted tables",
+           all("T.D.O.L" in getattr(prompts, n) for n in
+               ("SYSTEM_PROMPT", "USER_PROMPT", "CODE_USER_PROMPT", "FOLLOW_UP_SYSTEM_PROMPT", "CHECK_USER_PROMPT")))
+    source = open("app/llm/prompts.py", encoding="utf-8").read()
+    check_("no prompt still asks for 'le tableau de déclaration (Objet | Nature/type)' as the one fixed table",
+           "Le tableau de déclaration (Objet | Nature/type)" not in source
+           and "le tableau de déclaration (Objet | Nature/type)" not in source)
     for rel in ("3eme/ch02-algorithmes-recurrents", "3eme/ch03-algorithmes-arithmetiques",
                 "bac/ch02-recursivite", "bac/ch05-algorithmes-arithmetiques"):
         path = Path("courses") / rel / "chapitre.md"

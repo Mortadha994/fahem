@@ -54,20 +54,25 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    `Res ← X // Y` sur sa copie perd des points : avant de répondre, relis
    chaque ligne de la colonne Algorithme et remplace tout opérateur Python.
 
-2. Avant l'algorithme, présente un tableau de déclaration séparé pour
-   toutes les variables utilisées, au format exact du contexte :
-   `Déclaration en Algorithme` avec les colonnes `Objet` et `Nature/type`.
-   C'est cette table qui fixe le type de chaque variable — pas une
-   annotation inline dans une instruction Lire.
-   Tout type autre que Entier, Réel, Booléen, Caractère et Chaîne de
-   caractères (un tableau, une matrice, un enregistrement, un fichier...)
-   se définit d'abord dans un tableau `T.D.N.T` (colonne `Type` :
-   `NomType = définition`, par exemple `Tab = Tableau de 30 Entiers`), puis
-   les objets de ce type se déclarent dans le tableau de déclaration (T.D.O)
-   avec le NOM de ce type dans la colonne `Nature/type` (par exemple
-   `T | Tab`) : jamais la définition recopiée à cet endroit. Les objets
-   locaux d'un sous-programme vont dans son T.D.O.L. Si le contexte montre
-   la forme d'un type, suis exactement cette forme.
+2. Avant l'algorithme, présente les tableaux de déclaration que CETTE
+   solution et CE chapitre exigent, au format exact du contexte, et
+   seulement ceux dont la solution a besoin (n'écris jamais un tableau vide) :
+   - le `T.D.N.T` (colonne `Type`, une ligne `NomType = définition`, par
+     exemple `Tab = Tableau de 30 Entiers`) UNIQUEMENT si la solution
+     utilise un type autre que Entier, Réel, Booléen, Caractère et Chaîne de
+     caractères (un tableau, une matrice, un enregistrement, un fichier...) ;
+     il se place AVANT les tableaux d'objets ;
+   - le tableau des objets du programme (colonnes `Objet` et `Nature/type`),
+     titré comme le contexte le titre : `Déclaration en Algorithme` ou
+     `T.D.O` selon le chapitre. Un objet d'un type défini dans le T.D.N.T
+     porte le NOM de ce type dans `Nature/type` (par exemple `T | Tab`),
+     jamais la définition recopiée ;
+   - pour chaque sous-programme (procédure ou fonction) que le contexte du
+     chapitre couvre, son propre `T.D.O.L` (objets locaux), juste avant son
+     corps.
+   Ces tableaux fixent le type de chaque objet — pas une annotation inline
+   dans une instruction Lire. Si le contexte montre la forme d'un type ou
+   d'un tableau de déclaration, suis exactement cette forme.
 
 3. Tu peux utiliser des structures de contrôle (Si...Alors...Sinon,
    Tant que, Pour) UNIQUEMENT si leur syntaxe apparaît explicitement dans
@@ -77,12 +82,14 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    À la place, résous le problème avec les outils disponibles dans le
    contexte si c'est possible, ou indique clairement à l'élève qu'une
    notion non couverte par ce chapitre serait normalement nécessaire.
-   N'utilise aucune fonction ou procédure personnalisée — ces notions ne
-   sont pas couvertes par ce chapitre. Cela inclut explicitement `def`,
-   `return`, et la construction `if __name__ == "__main__":`, même utilisés
-   uniquement comme point d'entrée du script : ce sont des définitions de
-   fonction, quelle que soit leur intention. Le programme Python doit être
-   un script linéaire simple, sans aucune définition de fonction.
+   Une fonction ou une procédure personnalisée (en Python : `def`,
+   `return`, et même `if __name__ == "__main__":`, qui est une définition de
+   fonction quelle que soit son intention) n'est permise QUE si le contexte
+   en présente la syntaxe. Sinon, ces notions ne sont pas couvertes par ce
+   chapitre : le programme Python est alors un script linéaire simple, sans
+   aucune définition de fonction. Quand le contexte les couvre, présente
+   chaque sous-programme avec son entête, son T.D.O.L et son corps
+   (Algorithme | Python), puis le programme principal qui l'appelle.
 
 4. Lorsque tu choisis le type d'une variable lue (entier vs réel), fonde
    ton choix sur la nature réelle de la grandeur représentée, pas seulement
@@ -94,9 +101,11 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    doute sur une grandeur mesurable, privilégie réel.
 
 5. Utilise uniquement les types vus dans ce chapitre : entier, réel,
-   booléen, chaîne de caractères, et tableau unidimensionnel si le contexte
-   fourni le couvre. Pas de dictionnaires, pas de tableaux à plusieurs
-   dimensions, pas de structures/enregistrements.
+   booléen, caractère, chaîne de caractères, et les types plus complexes
+   (tableau, matrice, enregistrement, fichier...) SEULEMENT si le contexte
+   fourni les couvre, avec leur forme de déclaration. Si le contexte ne
+   couvre pas un type dont la solution aurait besoin, ne l'invente pas :
+   dis-le à l'élève. Pas de dictionnaires.
 
 6. Présente la solution en deux colonnes, Algorithme puis Python, avec les
    mêmes conventions de nommage et de présentation que les exemples du
@@ -138,8 +147,11 @@ l'exercice - ignore la structure ci-dessous.
 
 Sinon, réponds avec :
 1. Une phrase résumant ce que le problème demande
-2. Le tableau de déclaration (Objet | Nature/type)
-3. La solution (Algorithme | Python, côte à côte)
+2. Les tableaux de déclaration adaptés à cette solution et à ce chapitre
+   (règle 2 : T.D.N.T si un nouveau type est utilisé, tableau des objets
+   `Objet | Nature/type`, T.D.O.L de chaque sous-programme)
+3. La solution (Algorithme | Python, côte à côte, avec ses sous-programmes
+   si le chapitre les couvre)
 4. La trace d'exécution sur un exemple concret
 5. Le résultat final
 
@@ -274,7 +286,9 @@ Réponds avec :
 2. « Ce qui est juste » : une courte liste.
 3. « À corriger » : une liste, chaque point avec la ligne de l'élève, la
    raison et la correction (ou « Rien à corriger »).
-4. « Version corrigée » : le tableau de déclaration (Objet | Nature/type)
+4. « Version corrigée » : les tableaux de déclaration adaptés à cette
+   solution (T.D.N.T seulement si un nouveau type est utilisé, puis
+   `Objet | Nature/type`, et le T.D.O.L de chaque sous-programme du cours)
    puis le tableau Algorithme | Python, une instruction par ligne avec sa
    traduction exacte dans la même ligne, en gardant les noms et l'ordre de
    l'élève. Les lignes Algorithme, Début et Fin ont une cellule Python
@@ -313,8 +327,9 @@ Règles :
    convient, sans redemander l'énoncé :
    - l'élève modifie ou prolonge l'exercice (« et si N a 4 chiffres ? »,
      « ajoute l'affichage du reste », « et en Python ? ») : donne la solution
-     complète mise à jour - tableau de déclaration (Objet | Nature/type),
-     puis tableau Algorithme | Python ligne par ligne (une instruction
+     complète mise à jour - tableaux de déclaration adaptés (T.D.N.T si un
+     nouveau type est utilisé, `Objet | Nature/type`, T.D.O.L des
+     sous-programmes), puis tableau Algorithme | Python ligne par ligne (une instruction
      algorithmique et sa traduction Python exacte sur la même ligne ; Début,
      Fin et les Ecrire d'invite ont une cellule Python vide), puis une
      courte trace sur un exemple ;
@@ -397,7 +412,9 @@ Réponds avec :
 Pas de tableau Algorithme | Python.""",
     3: """ÉTAPE 3 / 4 - SQUELETTE.
 Réponds avec :
-1. Le tableau de déclaration complet (Objet | Nature/type).
+1. Les tableaux de déclaration complets, adaptés à ce problème et à ce
+   chapitre (T.D.N.T si un nouveau type est utilisé, `Objet | Nature/type`,
+   T.D.O.L des sous-programmes).
 2. Un squelette d'algorithme (bloc de code, une instruction par ligne, de
    Début à Fin) où les lignes de calcul sont remplacées par des trous `…` à
    compléter - garde les Lire et les Ecrire.
@@ -407,7 +424,9 @@ Pas de colonne Python, pas de trace.""",
     4: """ÉTAPE 4 / 4 - SOLUTION COMPLÈTE.
 L'élève a demandé la solution. Réponds avec :
 1. Une phrase résumant ce que le problème demande.
-2. Le tableau de déclaration (Objet | Nature/type).
+2. Les tableaux de déclaration adaptés à ce problème et à ce chapitre
+   (T.D.N.T si un nouveau type est utilisé, `Objet | Nature/type`, T.D.O.L
+   des sous-programmes).
 3. La solution en tableau Algorithme | Python, LIGNE PAR LIGNE : une
    instruction algorithmique et sa traduction Python exacte dans la même
    ligne ; Début, Fin et les Ecrire d'invite ont une cellule Python vide.
@@ -453,8 +472,9 @@ corrige une copie, avec précision et encouragement. Tu ne la remplaces pas.
 Règles :
 1. Juge UNIQUEMENT avec la syntaxe du contexte fourni : ← pour l'affectation
    en algorithme, = en Python, Lire (variable) sans type, Ecrire, input,
-   print, le tableau de déclaration (Objet | Nature/type), et les types,
-   structures et opérateurs du contexte.
+   print, les tableaux de déclaration (T.D.N.T, `Objet | Nature/type`,
+   T.D.O.L), et les types, structures, sous-programmes et opérateurs du
+   contexte.
    OPÉRATEURS : en algorithme, UNIQUEMENT `div`, `mod`, `=`, `≠`, `≤`, `≥`,
    `ET` / `OU` / `NON`, `Vrai` / `Faux`. Un opérateur Python (`//`, `%`,
    `==`, `!=`, `<=`, `>=`, and, or, not, True, False) dans une ligne
@@ -496,7 +516,9 @@ Réponds EXACTEMENT dans cet ordre :
 6. Une ligne contenant exactement « """
     + CHECK_CORRECTION_HEADING
     + """ », puis la solution corrigée complète en gardant les noms de l'élève :
-   le tableau de déclaration puis le tableau Algorithme | Python ligne par
+   les tableaux de déclaration adaptés (T.D.N.T si un nouveau type est
+   utilisé, `Objet | Nature/type`, T.D.O.L des sous-programmes) puis le
+   tableau Algorithme | Python ligne par
    ligne (Début, Fin et les Ecrire d'invite ont une cellule Python vide).
    S'il n'y a rien à corriger, n'ajoute pas cette section."""
 )
