@@ -227,6 +227,31 @@ def main() -> None:
             check_(f"{rel}: the course shows a T.D.N.T for its structured types",
                    "T.D.N.T" in path.read_text(encoding="utf-8"))
 
+    # --- sentences announcing an unneeded declaration table are dropped -----------------
+    from app.grading.algo_notation import strip_absent_table_notes
+
+    seen = [
+        "*(Aucun type supplémentaire n’est nécessaire, donc pas de T.D.N.T.)*",
+        "*(Aucun type nouveau n’est nécessaire, donc pas de T.D.N.T.)*",
+        "*Tableau des objets locaux du sousprogramme (T.D.O.L)* – aucun objet local supplémentaire n’est nécessaire pour la fonction `SomTab`.",
+        "Pas de T.D.N.T nécessaire ici.",
+    ]
+    for sentence in seen:
+        text, n = strip_absent_table_notes(f"**T.D.O**\n\n| Objet | Nature/type |\n|---|---|\n| a | Entier |\n\n{sentence}\n\n**Solution**")
+        check_(f"dropped: {sentence[:48]}", n == 1 and sentence not in text and "| a | Entier |" in text and "**Solution**" in text, text)
+    keep = [
+        "**T.D.N.T** (type nouveau)",
+        "Tableau des nouveaux types (T.D.N.T)",
+        "| Aucun | pas de T.D.N.T |",
+        "Il n'y a aucune erreur dans ta boucle.",
+        "Un type nouveau se déclare dans le T.D.N.T.",
+    ]
+    for sentence in keep:
+        text, n = strip_absent_table_notes(sentence)
+        check_(f"kept: {sentence[:48]}", n == 0 and text == sentence, text)
+    fenced = "```python\n# pas de T.D.N.T\n```"
+    check_("a code block is never touched", strip_absent_table_notes(fenced) == (fenced, 0))
+
     # --- the request size budget (needs the app's dependencies: skipped on a bare host) ----
     try:
         from app.rag.context import MAX_CONTEXT_CHARS, PinnedChunk, _pin_cost, fit_prerequisites

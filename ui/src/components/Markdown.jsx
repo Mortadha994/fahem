@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import remarkAlgoTable from "../lib/remarkAlgoTable.js";
+import { stripAbsentTableNotes } from "../lib/algoNotation.js";
 import { AlgoHeaderCell, AlgoBodyCell } from "./AlgoCode.jsx";
 import PythonRunner from "./PythonRunner.jsx";
 
@@ -56,7 +57,7 @@ export default function Markdown({ children }) {
         rehypePlugins={REHYPE_PLUGINS}
         components={COMPONENTS}
       >
-        {children}
+        {typeof children === "string" ? stripAbsentTableNotes(children) : children}
       </ReactMarkdown>
     </div>
   );

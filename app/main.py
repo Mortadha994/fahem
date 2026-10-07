@@ -478,6 +478,7 @@ def solve(
 
     # Course notation in the Algorithme column (div, mod, ≠...), even if the
     # model slipped - the student reads and copies this answer as returned.
+    answer, _dropped = algo_notation.strip_absent_table_notes(answer)
     answer, fixed = algo_notation.normalize_answer(answer)
     if fixed:
         log.warning(
@@ -1175,6 +1176,7 @@ def solve_stream(
         # model wrote (ui/src/lib/algoNotation.js); check that version, so a
         # slip the student never sees is not reported as a violation - and
         # log it, so the model's slips stay visible.
+        answer, _dropped = algo_notation.strip_absent_table_notes(answer)
         checked, fixed = algo_notation.normalize_answer(answer)
         if fixed:
             log.warning(
