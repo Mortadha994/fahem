@@ -199,6 +199,19 @@ def main() -> None:
     else:
         print("[SKIP] real chapter not found (run from the repository root)")
 
+    # --- the T.D.N.T notion ----------------------------------------------------------------
+    from app.llm import prompts
+
+    check_("the solve prompt requires a T.D.N.T for types beyond the five simple ones",
+           "T.D.N.T" in prompts.SYSTEM_PROMPT and "T.D.O.L" in prompts.SYSTEM_PROMPT)
+    check_("the code-review prompt flags a student's missing T.D.N.T", "T.D.N.T" in prompts.CODE_SYSTEM_PROMPT)
+    for rel in ("3eme/ch02-algorithmes-recurrents", "3eme/ch03-algorithmes-arithmetiques",
+                "bac/ch02-recursivite", "bac/ch05-algorithmes-arithmetiques"):
+        path = Path("courses") / rel / "chapitre.md"
+        if path.exists():
+            check_(f"{rel}: the course shows a T.D.N.T for its structured types",
+                   "T.D.N.T" in path.read_text(encoding="utf-8"))
+
     print(f"\n{failures} failure(s)")
     raise SystemExit(1 if failures else 0)
 

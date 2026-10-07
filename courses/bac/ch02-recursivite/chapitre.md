@@ -92,6 +92,24 @@ X = NomFn(parm)
 
 ## II. Exemples des modules récursifs
 
+### 📌 Rappel : type tableau et T.D.N.T
+
+Un type autre que Entier, Réel, Booléen, Caractère et Chaîne de caractères (un tableau, une matrice, un enregistrement, un fichier) se définit d'abord dans le **T.D.N.T**. Les objets de ce type se déclarent ensuite dans le **T.D.O** (ou le **T.D.O.L** d'un sous-programme) avec le nom du type.
+
+T.D.N.T
+
+| Type |
+|---|
+| Tab = Tableau de 100 entiers |
+
+T.D.O
+
+| Objet | Nature/type |
+|---|---|
+| T | Tab |
+
+<!-- TODO vérifier: ajout (notion T.D.N.T absente du PDF de ce chapitre, dont la fonction SomTab utilise le type « Tab ») ; forme reprise du cours « Les algorithmes de tris et de recherches » -->
+
 ### 1. Afficher « TuTo » 5 fois
 
 ```algorithme

@@ -17,6 +17,24 @@ source: Classroom — Chapitre 4 - Les algorithmes arithmétiques
 
 Dans ce chapitre, on présentera les algorithmes arithmétiques les plus connus : calculs du PGCD et du PPCM, recherche des nombres premiers et décomposition en produits des facteurs premiers, la conversion d'un nombre en base 10 vers le binaire et en hexadécimal. A la fin, on développera le problème qui convertit un nombre en base b1 en son équivalent en base b2.
 
+### 📌 Rappel : type tableau et T.D.N.T
+
+Un type autre que Entier, Réel, Booléen, Caractère et Chaîne de caractères (un tableau, une matrice, un enregistrement, un fichier) se définit d'abord dans le **T.D.N.T**. Les objets de ce type se déclarent ensuite dans le **T.D.O** (ou le **T.D.O.L** d'un sous-programme) avec le nom du type.
+
+T.D.N.T
+
+| Type |
+|---|
+| Tab = Tableau de 100 entiers |
+
+T.D.O
+
+| Objet | Nature/type |
+|---|---|
+| T | Tab |
+
+<!-- TODO vérifier: ajout (notion T.D.N.T absente du PDF de ce chapitre, dont les procédures utilisent le type « tab ») ; forme reprise du cours « Les algorithmes de tris et de recherches » -->
+
 ## II. Calcul du PGCD
 
 ### Méthode de différence

@@ -32,6 +32,22 @@ M = array([[Type] * NBC] * NBL)
 
 <!-- TODO vérifier: le post écrit « from nupmy import array » (corrigé en numpy) ; la ligne algorithme est reprise telle quelle du post -->
 
+Une matrice est un type autre que Entier, Réel, Booléen, Caractère et Chaîne de caractères : elle se définit dans le **T.D.N.T**, puis l'objet se déclare dans le **T.D.O** avec le nom du type.
+
+T.D.N.T
+
+| Type |
+|---|
+| Mat = Tableau de NBL * NBC Type |
+
+T.D.O
+
+| Objet | Nature/type |
+|---|---|
+| M | Mat |
+
+<!-- TODO vérifier: ajout (notion T.D.N.T) : le post ne donne que la ligne « MAT = Tableau de … » ; forme du T.D.N.T / T.D.O reprise du cours « Les structures de données et les structures simples » -->
+
 ### 2. Exemple
 
 Matrice de 15 lignes et 8 colonnes d'entiers :
@@ -43,3 +59,15 @@ MAT = Tableau de 15 * 8 Entier
 ```python
 M = array([[int] * 8] * 15)
 ```
+
+T.D.N.T
+
+| Type |
+|---|
+| Mat = Tableau de 15 * 8 Entiers |
+
+T.D.O
+
+| Objet | Nature/type |
+|---|---|
+| M | Mat |

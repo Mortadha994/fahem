@@ -59,6 +59,15 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    `Déclaration en Algorithme` avec les colonnes `Objet` et `Nature/type`.
    C'est cette table qui fixe le type de chaque variable — pas une
    annotation inline dans une instruction Lire.
+   Tout type autre que Entier, Réel, Booléen, Caractère et Chaîne de
+   caractères (un tableau, une matrice, un enregistrement, un fichier...)
+   se définit d'abord dans un tableau `T.D.N.T` (colonne `Type` :
+   `NomType = définition`, par exemple `Tab = Tableau de 30 Entiers`), puis
+   les objets de ce type se déclarent dans le tableau de déclaration (T.D.O)
+   avec le NOM de ce type dans la colonne `Nature/type` (par exemple
+   `T | Tab`) : jamais la définition recopiée à cet endroit. Les objets
+   locaux d'un sous-programme vont dans son T.D.O.L. Si le contexte montre
+   la forme d'un type, suis exactement cette forme.
 
 3. Tu peux utiliser des structures de contrôle (Si...Alors...Sinon,
    Tant que, Pour) UNIQUEMENT si leur syntaxe apparaît explicitement dans
@@ -237,7 +246,12 @@ Règles :
 4. Deux noms qui ne diffèrent que par la casse (par exemple L et l) sont
    une source d'erreur à signaler, avec un nom plus clair à proposer.
 5. Si l'élève n'a pas de tableau de déclaration, c'est un point « À
-   corriger » : le cours l'exige avant l'algorithme.
+   corriger » : le cours l'exige avant l'algorithme. De même, s'il utilise
+   un type autre que Entier, Réel, Booléen, Caractère ou Chaîne (tableau,
+   matrice, enregistrement, fichier...) sans l'avoir défini dans un
+   T.D.N.T (`NomType = définition`), c'est un point « À corriger » : le
+   type se définit dans le T.D.N.T, puis l'objet se déclare avec le nom de
+   ce type dans le T.D.O.
 6. Reste cohérent : « Ce qui est juste » ne doit pas affirmer une chose
    que tu changes ensuite dans la version corrigée (par exemple dire que
    les noms sont conservés puis les renommer). Si tu proposes de renommer
