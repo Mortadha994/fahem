@@ -134,6 +134,48 @@ def store_markdown(chapter_id: str, data: bytes) -> None:
     _atomic_write(markdown_path(chapter_id), data)
 
 
+# --- exercises added to a built-in chapter ------------------------------------------------
+#
+# Chapter 1 of 2ème is built into Fahem (hand-corrected course, a short list of
+# exercises) and an upload can never replace it. When Classroom has more
+# exercises for it than the built-in list, they are stored here, next to the
+# chapter files, and appended to the built-in list: the course stays as it is,
+# the exercise list grows. [{"id": ..., "question": ...}, ...]
+
+
+def supplement_path(chapter_id: str) -> Path:
+    return CHAPTER_UPLOAD_DIR / f"{chapter_id}.exercises.json"
+
+
+def store_supplement(chapter_id: str, items: list[dict[str, str]]) -> None:
+    import json
+
+    _atomic_write(
+        supplement_path(chapter_id),
+        json.dumps(items, ensure_ascii=False, indent=1).encode("utf-8"),
+    )
+
+
+def supplement_exercises(chapter_id: str) -> list[dict[str, str]]:
+    """The exercises added to a built-in chapter, or []. A missing or unreadable
+    file is "none added", never an error: the built-in list still works."""
+    import json
+
+    path = supplement_path(chapter_id)
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.warning("exercise supplement for chapter %s is unreadable", chapter_id)
+        return []
+    return [
+        {"id": str(e["id"]), "question": str(e["question"])}
+        for e in raw
+        if isinstance(e, dict) and e.get("id") and str(e.get("question", "")).strip()
+    ]
+
+
 def remove_pdf(chapter_id: str) -> None:
     pdf_path(chapter_id).unlink(missing_ok=True)
     markdown_path(chapter_id).unlink(missing_ok=True)

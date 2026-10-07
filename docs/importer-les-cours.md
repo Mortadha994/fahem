@@ -55,6 +55,12 @@ fichiers (même chemin que « envoyer un fichier corrigé » dans la console). U
 avec une autre source (envoyé ou relu à la main dans la console) est ignoré ; `--force` le remplace. La publication ne lance pas le calcul des
 réponses préparées ; il se fait depuis la console, chapitre par chapitre.
 
+## Le chapitre 1 de 2ème (intégré)
+
+Son cours reste celui de Fahem (corrigé à la main). Avec `--apply`, les exercices de ses séries
+Classroom sont **ajoutés à sa liste** (fichier `uploads/chapters/1.exercises.json`), sans doublon avec
+les exercices déjà présents. Les relancer remplace ce complément, jamais le cours.
+
 ## Envoi à la main
 
 Le fichier assemblé (`--write-merged`) peut aussi être envoyé depuis la console admin : l'identifiant

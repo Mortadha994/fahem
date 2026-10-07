@@ -328,6 +328,19 @@ def apply(ch: Chapter, publish: bool, force: bool = False) -> str:
     return outcome
 
 
+def apply_supplement(ch: Chapter) -> str:
+    """The built-in chapter keeps its course; the exercises Classroom has for it
+    are appended to its list (app/rag/chapter_store.supplement_exercises)."""
+    from app.rag import chapter_store as cs
+
+    items = [
+        {"id": f"cl{ch.number}_ex{i + 1}", "question": e["question"]}
+        for i, e in enumerate(ch.course.exercises)
+    ]
+    cs.store_supplement(ch.platform_id, items)
+    return f"cours intégré conservé ; {len(items)} exercices de Classroom ajoutés à sa liste"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", type=Path, default=ROOT, help="courses directory")
@@ -373,7 +386,9 @@ def main(argv: list[str] | None = None) -> int:
             args.write_merged.mkdir(parents=True, exist_ok=True)
             (args.write_merged / f"{ch.niveau}-ch{ch.number:02d}.md").write_text(ch.merged, encoding="utf-8")
         if ch.skip:
-            print(f"    → valide, non importé : {ch.skip}")
+            print(f"    → valide, cours non importé : {ch.skip}")
+            if args.apply and ch.platform_id == BUILTIN_ID:
+                print(f"    → {apply_supplement(ch)}")
         elif args.apply:
             print(f"    → {apply(ch, args.publish, args.force)}")
     return 1 if bad else 0

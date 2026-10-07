@@ -136,13 +136,33 @@ def load_exercises(chapter_id: str) -> list[Exercise]:
         raw = raw.get("problems", [])
 
     wanted = str(chapter_id).strip().lower()
-    return [
+    base = [
         Exercise(id=str(p["id"]), question=str(p["question"]))
         for p in raw
         if str(p.get("chapitre", "")).strip().lower() == wanted
         and p.get("id")
         and p.get("question")
     ]
+    # Exercises added from Classroom (chapter_store.supplement_exercises). One
+    # that is already in the built-in list - same statement - is not listed twice.
+    seen_ids = {e.id for e in base}
+    seen_text = {_statement_key(e.question) for e in base}
+    for extra in chapter_store.supplement_exercises(wanted):
+        key = _statement_key(extra["question"])
+        if extra["id"] in seen_ids or key in seen_text:
+            continue
+        base.append(Exercise(id=extra["id"], question=extra["question"]))
+        seen_ids.add(extra["id"])
+        seen_text.add(key)
+    return base
+
+
+def _statement_key(question: str) -> str:
+    """The statement without the "Série N° k" heading line, case, punctuation
+    and spacing, cut short: enough to recognise the same exercise twice."""
+    lines = [ln for ln in question.splitlines() if not ln.strip().startswith("*Série")]
+    text = "".join(ch for ch in " ".join(lines).lower() if ch.isalnum())
+    return text[:80]
 
 
 router = APIRouter(prefix="/chapters", tags=["chapters"])
