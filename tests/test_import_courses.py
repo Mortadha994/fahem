@@ -10,6 +10,7 @@ Inside the backend container:
 from __future__ import annotations
 
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 
 from app.core import chapter_ids
@@ -251,6 +252,21 @@ def main() -> None:
         check_("everything fits: nothing is dropped",
                [p.chunk_id for p in fit_prerequisites(earlier, "x", 10 * one)] == ["id1", "id2", "id3"])
         check_("the budget leaves room under the model's request limit", 4000 <= MAX_CONTEXT_CHARS <= 9000, str(MAX_CONTEXT_CHARS))
+
+        from app.rag.context import earlier_chapters
+
+        rows = [SimpleNamespace(id=i, niveau=n) for i, n in (
+            ("66", "bac"), ("2", "2eme"), ("62", "bac"), ("31", "3eme"), ("4", "2eme"), ("33", "3eme"), ("61", "bac"))]
+        check_("a 3ème chapter builds on all of 2ème, then on 3ème's earlier chapters, in teaching order",
+               earlier_chapters("3eme", 33, rows) == [("2eme", "2"), ("2eme", "4"), ("3eme", "31")],
+               str(earlier_chapters("3eme", 33, rows)))
+        check_("a Bac chapter builds on 2ème, 3ème and Bac's earlier chapters",
+               [i for _n, i in earlier_chapters("bac", 62, rows)] == ["2", "4", "31", "33", "61"],
+               str(earlier_chapters("bac", 62, rows)))
+        check_("a 2ème chapter builds on no later year", all(n == "2eme" for n, _i in earlier_chapters("2eme", 4, rows)))
+        check_("the first chapter of a year still builds on the years before it",
+               earlier_chapters("bac", 61, rows) == [("2eme", "2"), ("2eme", "4"), ("3eme", "31"), ("3eme", "33")])
+        check_("an unknown year has no earlier chapters", earlier_chapters("1ere", 5, rows) == [])
 
     print(f"\n{failures} failure(s)")
     raise SystemExit(1 if failures else 0)

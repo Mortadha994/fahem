@@ -36,6 +36,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from app.core.chapter_ids import chapter_number
+from app.core.models import niveau_label
 from app.rag.rag_store import QDRANT_URL, TEXT_KEY, scroll_scope
 from app.rag.retrieval import SOLVE_TYPES, Hit, retrieve
 
@@ -265,25 +267,78 @@ def prerequisite_pins(niveau: str, chapitre: str, url: str = QDRANT_URL) -> list
     else. A later chapter that is not published yet is simply absent: the
     student cannot have studied it on Fahem either. Labels are prefixed with
     the chapter so the prompt shows where each sheet comes from.
+
+    The years are cumulative too: a 3ème student has done the whole 2ème
+    programme (sous-programmes included) and a Bac student both before it, so
+    what they learnt earlier stays theirs to use. Those sheets come first, in
+    teaching order; build_context then keeps the ones that fit the budget.
     """
     try:
         n = int(str(chapitre).strip())
     except ValueError:
         return []
+    key = str(niveau).strip().lower()
     pins: list[PinnedChunk] = []
-    if str(niveau).strip().lower() == BUILTIN_PIN_SCOPE[0] and n > 1:
-        pins.extend(resolve_pins(niveau, BUILTIN_PIN_SCOPE[1], url))
-        for p in pins:
-            p.label = f"Ch. 1 — {p.label}"
-    for k in range(2, n):
+    # The built-in 2ème chapter 1 is behind every chapter of every year, except
+    # itself (it has no earlier chapter) and a 2ème chapter 1 lookalike.
+    if key in YEAR_ORDER and not (key == BUILTIN_PIN_SCOPE[0] and n <= 1):
         try:
-            earlier = published_pins(niveau, str(k), url)
+            builtin = resolve_pins(BUILTIN_PIN_SCOPE[0], BUILTIN_PIN_SCOPE[1], url)
+        except PinResolutionError:
+            if key == BUILTIN_PIN_SCOPE[0]:
+                raise  # unchanged for 2ème: its own foundation must resolve
+            builtin = []
+        origin = "" if key == BUILTIN_PIN_SCOPE[0] else f"{niveau_label(BUILTIN_PIN_SCOPE[0])} "
+        for p in builtin:
+            p.label = f"{origin}Ch. 1 — {p.label}"
+        pins.extend(builtin)
+    for earlier_niveau, chapter_id in earlier_chapters(key, n, _published_rows()):
+        try:
+            sheets = published_pins(earlier_niveau, chapter_id, url)
         except PinResolutionError:
             continue
-        for p in earlier:
-            p.label = f"Ch. {k} — {p.label}"
-        pins.extend(earlier)
+        where = f"Ch. {chapter_number(chapter_id)}"
+        if earlier_niveau != key:
+            where = f"{niveau_label(earlier_niveau)} {where}"
+        for p in sheets:
+            p.label = f"{where} — {p.label}"
+        pins.extend(sheets)
     return pins
+
+
+# The years in the order a student goes through them.
+YEAR_ORDER = ("2eme", "3eme", "bac")
+
+
+def _published_rows() -> list[Any]:
+    """The published uploaded chapters (id, niveau); empty if the store is not
+    reachable, which leaves a student with this chapter's own sheets only."""
+    try:
+        from app.rag import chapter_store
+
+        return chapter_store.published_chapters()
+    except Exception:  # noqa: BLE001 - no database in a bare script run
+        log.warning("could not list the published chapters for the earlier-chapter sheets")
+        return []
+
+
+def earlier_chapters(niveau: str, chapitre: int, published: list[Any]) -> list[tuple[str, str]]:
+    """(niveau, chapter id) of the published chapters studied before this one,
+    in teaching order: every chapter of the earlier years, then the chapters of
+    this year that come first. The built-in 2ème chapter 1 is not in the list
+    (it is not an upload; prerequisite_pins adds it)."""
+    if niveau not in YEAR_ORDER:
+        return []
+    mine = YEAR_ORDER.index(niveau)
+    chosen = []
+    for row in published:
+        if row.niveau not in YEAR_ORDER or not str(row.id).isdigit():
+            continue
+        rank = YEAR_ORDER.index(row.niveau)
+        number = int(chapter_number(row.id))
+        if rank < mine or (rank == mine and int(row.id) < chapitre):
+            chosen.append((rank, number, row.niveau, str(row.id)))
+    return [(n, i) for _r, _num, n, i in sorted(chosen)]
 
 
 @dataclass
