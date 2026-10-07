@@ -73,7 +73,10 @@ Règles strictes (uniquement si la règle 0 est satisfaite) :
    Titre de chaque tableau : uniquement le sigle du cours (`T.D.N.T`,
    `T.D.O`, `T.D.O.L`, ou le titre exact du contexte), sans développer le
    sigle ni inventer d'intitulé. Un tableau dont la solution n'a pas besoin
-   n'est ni écrit ni mentionné (pas de phrase « pas de T.D.N.T nécessaire »).
+   n'est ni écrit ni mentionné. INTERDIT : toute phrase comme « aucun type
+   nouveau n'est nécessaire », « donc pas de T.D.N.T », « aucun objet local »
+   ou « T.D.O.L : néant » : si tu n'as rien à déclarer dans un tableau, tu
+   n'en parles pas du tout.
    Le T.D.O.L ne contient que les objets locaux du sous-programme, pas ses
    paramètres déjà donnés dans son entête.
    Ces tableaux fixent le type de chaque objet — pas une annotation inline
