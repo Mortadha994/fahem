@@ -437,3 +437,299 @@ Fin
 <!-- TODO vérifier: dans le PDF, les appels récursifs « Recherche (T, D, M-1, X) » et « Recherche (T, M+1, F, X) » ne sont pas précédés de « Retourner » (transcrit tel quel) -->
 
 **1er Appel :** `B ← Recherche (T, 0, N-1, X)`
+
+## III. Résumé : les tris et les recherches (méthodes itératives et récursives)
+
+<!-- TODO vérifier: résumé « Tris et recherches (itérative + récursive).pdf » du sujet « Les documents importants », rattaché à ce chapitre ; niveau bac déduit du contenu -->
+
+
+<!-- TODO vérifier: PDF de 3 pages (titre « Les tris et les recherches — Méthodes récursives »), uniquement des algorithmes (aucun code Python, aucun texte explicatif) ; présenté dans le PDF en tableau « Nom | Itérative | Récursive », chaque méthode sur une ligne ; ici chaque méthode donne une section avec sa version itérative puis sa version récursive. Niveau « bac » déduit du contenu (tri par insertion, tri Shell, versions récursives) : à confirmer. Mots-clés unifiés (Alors, Sinon, Fin Si, Fin Pour, ET, OU, Faux, Vrai) ; les flèches « ⃪ » du PDF sont notées ← -->
+
+
+### Résumé — 1. Tri à bulles
+
+**Méthode itérative :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; N : Entier)
+Début
+    Répéter
+        permute ← Faux
+        Pour i de 0 à N-2 Faire
+            Si (T[i] > T [i+1]) Alors
+                Aux ← T [i]
+                T [i] ← T [i+1]
+                T [i+1] ← Aux
+                permute ← Vrai
+            Fin Si
+        Fin Pour
+        N ← N-1
+    Jusqu'à ((permute = Faux) OU (N=1))
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; i, N : Entier)
+Début
+    Si (N ≠ 1) Alors
+        Si (i ≤ N-2) Alors
+            Si (T[i] > T [i+1]) Alors
+                Aux ← T[i]
+                T[i] ← T [i+1]
+                T [i+1] ← Aux
+            Fin Si
+            Tri (T, i+1, N)
+        Sinon
+            Tri (T, 0, N-1)
+        Fin Si
+    Fin Si
+Fin
+```
+
+1er Appel : `Tri (T, 0, N)`
+
+### Résumé — 2. Tri par sélection
+
+**Méthode itérative :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; N : Entier)
+Début
+    Pour i de 0 à N-2 Faire
+        Pm ← i
+        Pour j de i+1 à N-1 Faire
+            Si (T [j] < T [Pm]) Alors
+                Pm ← j
+            Fin Si
+        Fin Pour
+        Si (i ≠ Pm) Alors
+            Aux ← T[i]
+            T[i] ← T[Pm]
+            T[Pm] ← Aux
+        Fin Si
+    Fin Pour
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; i, Pm, j, N : Entier)
+Début
+    Si (i ≤ N-2) Alors
+        Si (j ≤ N-1) Alors
+            Si (T [j] < T [Pm]) Alors
+                Pm ← j
+            Fin Si
+            Tri (T, i, Pm, j+1, N)
+        Sinon
+            Si (i ≠ Pm) Alors
+                Aux ← T[i]
+                T[i] ← T[Pm]
+                T[Pm] ← Aux
+            Fin Si
+            Tri (T, i+1, i+1, i+2, N-1)
+        Fin Si
+    Fin Si
+Fin
+```
+
+1er Appel : `Tri (T, 0, 0, 1, N)`
+
+### Résumé — 3. Tri par insertion
+
+**Méthode itérative :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; N : Entier)
+Début
+    Pour i de 1 à N-1 Faire
+        Tmp ← T[i]
+        j ← i
+        Tant que ((j ≥ 1) ET (T [j-1] > Tmp)) Faire
+            T [j] ← T [j-1]
+            j ← j – 1
+        Fin Tant que
+        T [j] ← Tmp
+    Fin Pour
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Procédure Tri (@ T : TAB ; i, Tmp, j, N : Entier)
+Début
+    Si (i ≤ N-1) Alors
+        Si ((j ≥ 1) ET (T [j-1] > Tmp)) Alors
+            T [j] ← T [j-1]
+            Tri (T, i, Tmp, j-1, N)
+        Sinon
+            T [j] ← Tmp
+            Tri (T, i+1, T [i+1], i+1, N)
+        Fin Si
+    Fin Si
+Fin
+```
+
+1er Appel : `Tri (T, 1, T [1], 1, N)`
+
+### Résumé — 4. Tri Shell
+
+**Méthode itérative :**
+
+```algorithme
+Procédure Tri (@ T : Tab ; N : entier)
+Début
+    p ← 0
+    Tant que (p < N-1) Faire
+        p ← 3*p + 1
+    Fin Tant que
+    Tant que (p ≠ 1) Faire
+        p ← p Div 3
+        Pour i de p à N-1 Faire
+            Tmp ← T[i]
+            j ← i
+            Tant que ((j ≥ p) ET (T [j-p] > Tmp)) Faire
+                T[j] ← T [j-p]
+                j ← j-p
+            Fin Tant que
+            T[j] ← Tmp
+        Fin Pour
+    Fin Tant que
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Fonction Pas (P, N : Entier) : Entier
+Début
+    Si (P < N-1) Alors
+        Retourner Pas (3*P+1, N)
+    Sinon
+        Retourner P
+    Fin Si
+Fin
+```
+
+```algorithme
+Procédure Tri (@ T : Tab ; P, i, Tmp, j, N : entier)
+Début
+    Si (P ≠ 0) Alors
+        Si (i ≤ N-1) Alors
+            Si ((j ≥ P) ET (T [j-P] > Tmp)) Alors
+                T [j] ← T [j-P]
+                Tri (T, P, i, Tmp, j-P, N)
+            Sinon
+                T [j] ← Tmp
+                Tri (T, P, i+1, T [i+1], i+1, N)
+            Fin Si
+        Sinon
+            p ← p Div 3
+            Tri (T, P, P, T [P], P, N)
+        Fin Si
+    Fin Si
+Fin
+```
+
+<!-- TODO vérifier: dans la version récursive du tri Shell, « p ← p Div 3 » est écrit avec un « p » minuscule alors que le paramètre est « P » (transcrit tel quel) -->
+
+1er Appel :
+
+```algorithme
+P ← Pas (0, N) Div 3
+Tri (T, P, P, T [P], P, N)
+```
+
+
+### Résumé — 5. Recherche séquentielle
+
+**Méthode itérative :**
+
+```algorithme
+Fonction Recherche (T : TAB ; N, X : Entier) : Booléen
+Début
+    i ← 0
+    Répéter
+        B ← T[i] = X
+        i ← i+1
+    Jusqu'à ((B = Vrai) OU (i = N))
+    Retourner B
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Fonction Recherche (T : TAB ; N, X : Entier) : Booléen
+Début
+    Si (N = -1) Alors
+        Retourner Faux
+    Sinon
+        Si (T [N] = X) Alors
+            Retourner Vrai
+        Sinon
+            Recherche (T, N-1, X)
+        Fin Si
+    Fin Si
+Fin
+```
+
+1er Appel : `B ← Recherche (T, N-1, X)`
+
+<!-- TODO vérifier: dans la version récursive, l'appel « Recherche(T, N-1, X) » n'est pas précédé de « Retourner » dans le PDF (transcrit tel quel) -->
+
+### Résumé — 6. Recherche dichotomique
+
+**Méthode itérative :**
+
+```algorithme
+Fonction Recherche (T : TAB ; N, X : Entier) : Booléen
+Début
+    B ← Faux
+    D ← 0
+    F ← N - 1
+    Répéter
+        M ← (D + F) Div 2
+        Si (T [M] > X) Alors
+            F ← M - 1
+        Sinon
+            Si (T [M] < X) Alors
+                D ← M + 1
+            Sinon
+                B ← Vrai
+            Fin Si
+        Fin Si
+    Jusqu'à ((B = Vrai) OU (D > F))
+    Retourner B
+Fin
+```
+
+**Méthode récursive :**
+
+```algorithme
+Fonction Recherche (T : TAB ; D, F, X : Entier) : Booléen
+Début
+    Si (D > F) Alors
+        Retourner Faux
+    Sinon
+        M ← (D + F) Div 2
+        Si (T [M] > X) Alors
+            Recherche (T, D, M-1, X)
+        Sinon
+            Si (T [M] < X) Alors
+                Recherche (T, M+1, F, X)
+            Sinon
+                Retourner Vrai
+            Fin Si
+        Fin Si
+    Fin Si
+Fin
+```
+
+1er Appel : `B ← Recherche (T, 0, N-1, X)`
+
+<!-- TODO vérifier: comme pour la recherche séquentielle, les appels récursifs « Recherche(T, D, M-1, X) » et « Recherche(T, M+1, F, X) » ne sont pas précédés de « Retourner » dans le PDF (transcrit tel quel) -->

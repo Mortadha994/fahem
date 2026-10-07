@@ -41,7 +41,9 @@ BUILTIN_ID = "1"
 _FENCE = re.compile(r"^\s*(```+|~~~+)")
 _H2 = re.compile(r"^##\s+(.*?)\s*#*\s*$")
 _H1 = re.compile(r"^#\s+(.*?)\s*#*\s*$")
-_EXO = re.compile(r"^(#{2,3})\s+Exercice\s*(?:n\s*°\s*)?(\d+)\b.*$", re.IGNORECASE)
+# "### Exercice 4" and, in some séries, "### Problème 2 : (Carré magique)": both are
+# one exercise in Fahem. A Problème keeps its title as the first line of its statement.
+_EXO = re.compile(r"^(#{2,3})\s+(Exercice|Probl[èe]me)\s*(?:n\s*°\s*)?(\d+)\b(.*)$", re.IGNORECASE)
 _SERIE_H = re.compile(r"^s[ée]rie\b", re.IGNORECASE)
 _DIR = re.compile(r"^ch(\d+)-")
 
@@ -139,7 +141,9 @@ def split_serie(body: str) -> tuple[str, list[tuple[int, list[str]]]]:
         m = None if in_fence else _EXO.match(line)
         if m:
             current = []
-            number = int(m.group(2))
+            number = int(m.group(3))
+            if m.group(2).lower().startswith("probl"):
+                current += [f"**{m.group(2).capitalize()} {m.group(3)}{m.group(4).rstrip()}**", ""]
             exercises.append((number, current))
             continue
         if current is not None:

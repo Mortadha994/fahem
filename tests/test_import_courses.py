@@ -110,6 +110,9 @@ def main() -> None:
     check_("two exercises found", [n for n, _ in exos] == [1, 2], str(exos))
     check_("a Python comment inside a fence is not a heading",
            any("# commentaire" in line for line in exos[0][1]))
+    _b, mixed = split_serie("## Série d'exercices\n\n### Exercice 1\n\nA.\n\n### Problème 2 : (Carré magique)\n\nB.\n")
+    check_("a « Problème N » is an exercise and keeps its title", [n for n, _ in mixed] == [1, 2]
+           and mixed[1][1][0] == "**Problème 2 : (Carré magique)**", str(mixed))
 
     # --- merging --------------------------------------------------------------------------
     with tempfile.TemporaryDirectory() as tmp:
