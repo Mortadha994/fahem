@@ -29,7 +29,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+import logging
+import os
+import re
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +40,19 @@ from app.rag.rag_store import QDRANT_URL, TEXT_KEY, scroll_scope
 from app.rag.retrieval import SOLVE_TYPES, Hit, retrieve
 
 ARROW = "←"
+
+log = logging.getLogger("fahem.context")
+
+# The model takes at most 8000 tokens per request (Groq, on-demand tier, for
+# gpt-oss-120b), and these courses - French, code, tables - cost about 2.4
+# characters per token: roughly 19 000 characters for the whole request. The
+# system prompt takes about 9 500 of them, so the context gets what is left,
+# with margin for the student's problem and the discussion so far. Past the
+# limit the model answers 413 and the student gets no answer at all, which is
+# worse than an answer with a slimmer reference sheet.
+MAX_CONTEXT_CHARS = int(os.environ.get("CONTEXT_MAX_CHARS", "7500"))
+MIN_EXTRAS_BUDGET = 1400  # kept for retrieved extras whenever the pins leave room
+EXTRA_MAX_CHARS = 700  # one retrieved extract, cut
 
 
 @dataclass(frozen=True)
@@ -298,6 +314,50 @@ class Context:
         return "\n".join(parts).rstrip() + "\n"
 
 
+def _pin_cost(pin: PinnedChunk) -> int:
+    return len(pin.label) + len(pin.section) + len(pin.content) + 12
+
+
+def _hit_cost(hit: Hit) -> int:
+    return len(hit.section) + len(hit.type) + len(hit.content) + 12
+
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-zàâçéèêëîïôûùüÿ_]{4,}", text.lower()))
+
+
+def fit_prerequisites(
+    pins: list[PinnedChunk], query: str, budget: int
+) -> list[PinnedChunk]:
+    """The earlier chapters' reference sheets that fit `budget` characters.
+
+    The programme is cumulative, but the whole of it no longer fits in one
+    request. The sheets that share the most vocabulary with the problem go
+    first (Lire/Ecrire for a problem that reads and writes), the most recent
+    chapter breaking ties; what is kept stays in the order a student learnt it.
+    """
+    if budget <= 0 or not pins:
+        return []
+    wanted = _words(query)
+    ranked = sorted(
+        range(len(pins)),
+        key=lambda i: (-len(wanted & _words(pins[i].label + " " + pins[i].content)), -i),
+    )
+    kept: set[int] = set()
+    used = 0
+    for i in ranked:
+        cost = _pin_cost(pins[i])
+        if used + cost <= budget:
+            kept.add(i)
+            used += cost
+    if len(kept) < len(pins):
+        log.info(
+            "context budget: kept %d of %d earlier reference sheets (%d of %d chars)",
+            len(kept), len(pins), used, budget,
+        )
+    return [pins[i] for i in sorted(kept)]
+
+
 def build_context(
     query: str,
     niveau: str,
@@ -305,13 +365,23 @@ def build_context(
     k: int = 5,
     url: str = QDRANT_URL,
 ) -> Context:
-    """Pinned syntax core + k retrieved extras that are not already pinned."""
+    """Pinned syntax core + k retrieved extras that are not already pinned,
+    within MAX_CONTEXT_CHARS."""
     if (str(niveau).strip().lower(), str(chapitre).strip().lower()) == BUILTIN_PIN_SCOPE:
         pinned = resolve_pins(niveau, chapitre, url)
     else:
         # Earlier chapters first, then this one - the order a student learnt
-        # them in. Retrieval below stays scoped to this chapter alone.
-        pinned = prerequisite_pins(niveau, chapitre, url) + published_pins(niveau, chapitre, url)
+        # them in. Retrieval below stays scoped to this chapter alone. This
+        # chapter's own sheets always stay whole; the earlier ones are what
+        # the budget trims.
+        own = published_pins(niveau, chapitre, url)
+        own_cost = sum(_pin_cost(p) for p in own)
+        earlier = fit_prerequisites(
+            prerequisite_pins(niveau, chapitre, url),
+            query,
+            MAX_CONTEXT_CHARS - own_cost - MIN_EXTRAS_BUDGET,
+        )
+        pinned = earlier + own
     pinned_ids = {p.chunk_id for p in pinned}
 
     # Over-fetch so that dropping pinned duplicates still leaves k extras.
@@ -323,7 +393,17 @@ def build_context(
         url=url,
         types=SOLVE_TYPES,
     )
-    extras = [h for h in candidates if h.chunk_id not in pinned_ids][:k]
+    room = MAX_CONTEXT_CHARS - sum(_pin_cost(p) for p in pinned)
+    extras: list[Hit] = []
+    for hit in (h for h in candidates if h.chunk_id not in pinned_ids):
+        if len(extras) == k:
+            break
+        if len(hit.content) > EXTRA_MAX_CHARS:
+            hit = replace(hit, content=hit.content[:EXTRA_MAX_CHARS].rstrip() + " ...")
+        if _hit_cost(hit) > room:
+            continue
+        extras.append(hit)
+        room -= _hit_cost(hit)
 
     return Context(query, niveau, chapitre, pinned, extras)
 

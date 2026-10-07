@@ -226,6 +226,32 @@ def main() -> None:
             check_(f"{rel}: the course shows a T.D.N.T for its structured types",
                    "T.D.N.T" in path.read_text(encoding="utf-8"))
 
+    # --- the request size budget (needs the app's dependencies: skipped on a bare host) ----
+    try:
+        from app.rag.context import MAX_CONTEXT_CHARS, PinnedChunk, _pin_cost, fit_prerequisites
+    except ModuleNotFoundError as exc:
+        print(f"[SKIP] context budget: {exc.name} not installed here (runs in the backend container)")
+    else:
+        def pin(label, text, i):
+            return PinnedChunk(label, text, {"section": label}, f"id{i}")
+
+        earlier = [
+            pin("Ch. 1 — Entrée/sortie", "Lire Ecrire lire saisie " + "a" * 900, 1),
+            pin("Ch. 2 — Boucle Pour", "Pour boucle compteur " + "b" * 900, 2),
+            pin("Ch. 3 — Fichiers", "fichier ouvrir fermer " + "c" * 900, 3),
+        ]
+        one = _pin_cost(earlier[0])
+        kept = fit_prerequisites(earlier, "Lire deux entiers puis Ecrire leur somme", one + 50)
+        check_("a budget for one earlier sheet keeps the one that matches the problem",
+               [p.chunk_id for p in kept] == ["id1"], str([p.chunk_id for p in kept]))
+        kept = fit_prerequisites(earlier, "zzzz", 2 * one + 50)
+        check_("with no match, the most recent chapters are kept (and stay in teaching order)",
+               [p.chunk_id for p in kept] == ["id2", "id3"], str([p.chunk_id for p in kept]))
+        check_("no room, no earlier sheets", fit_prerequisites(earlier, "Lire", 0) == [])
+        check_("everything fits: nothing is dropped",
+               [p.chunk_id for p in fit_prerequisites(earlier, "x", 10 * one)] == ["id1", "id2", "id3"])
+        check_("the budget leaves room under the model's request limit", 4000 <= MAX_CONTEXT_CHARS <= 9000, str(MAX_CONTEXT_CHARS))
+
     print(f"\n{failures} failure(s)")
     raise SystemExit(1 if failures else 0)
 
