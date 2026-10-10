@@ -1,0 +1,44 @@
+# Keeps the free Render instance of Fahem awake.
+#
+# Render's free web service sleeps after 15 minutes without a request, and the
+# next student then waits about a minute for it to wake. This pings the health
+# endpoint every 5 minutes (GitHub's shortest schedule; runs are often a few
+# minutes late, which still beats 15). The public repository has unlimited
+# Actions minutes; a failed run emails whoever last edited this schedule, so
+# it doubles as a down alert.
+#
+# GitHub pauses scheduled workflows after 60 days without a commit to the
+# repository: re-enable it from the Actions tab if it stops.
+name: Keep Fahem awake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /api/health
+        env:
+          URL: https://fahem-deploy.onrender.com/api/health
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 90 "$URL" || true)
+            if [ "$code" = "200" ]; then
+              echo "Fahem is up (HTTP $code, attempt $attempt)"
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP ${code:-none}"
+            sleep 20
+          done
+          echo "::error::Fahem did not answer 200 on $URL after 3 attempts"
+          exit 1
