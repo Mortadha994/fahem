@@ -1,10 +1,45 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Assistant d'algorithmique — 2ème</title>
+    <title>Fahem — tuteur d'algorithmique et Python (2ème, 3ème, Bac) | Tunisie</title>
+    <!-- Search engines and link previews. The public address is fixed
+         (deploy/cloud/README.md); robots.txt and sitemap.xml in public/ point
+         at the same one. -->
+    <meta
+      name="description"
+      content="Exercices d'algorithmique et Python corrigés avec la notation de ton cours (2ème, 3ème, Bac, Tunisie) : solution, mode guidé, vérification. Gratuit."
+    />
+    <link rel="canonical" href="https://fahem-deploy.onrender.com/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#2f5bd3" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Fahem" />
+    <meta property="og:locale" content="fr_TN" />
+    <meta property="og:url" content="https://fahem-deploy.onrender.com/" />
+    <meta property="og:title" content="Fahem — tuteur d'algorithmique et Python pour 2ème, 3ème et Bac" />
+    <meta
+      property="og:description"
+      content="Des solutions d'exercices d'algorithmique avec la notation de ton cours, un mode guidé pas à pas et la vérification de ta réponse."
+    />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Fahem",
+        "url": "https://fahem-deploy.onrender.com/",
+        "description": "Tuteur d'algorithmique et de Python pour les élèves tunisiens de 2ème, 3ème et Bac, fondé sur leur cours.",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "fr",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "TND" },
+        "audience": { "@type": "EducationalAudience", "educationalRole": "student" }
+      }
+    </script>
     <!-- Theme before the first paint, so the page never flashes the wrong one.
          The saved choice (src/lib/theme.js) if there is one, else the device
          setting. Inline and tiny on purpose: a module script would run after
@@ -29,6 +64,27 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- What a crawler that does not run JavaScript reads (and anyone with it
+         off). The app replaces nothing here; browsers with JavaScript never
+         show it. -->
+    <noscript>
+      <main>
+        <h1>Fahem — tuteur d'algorithmique et de Python</h1>
+        <p>
+          Fahem aide les élèves tunisiens de 2ème, 3ème et Bac à résoudre leurs exercices
+          d'algorithmique et de Python avec exactement la notation de leur cours : Lire et
+          Ecrire, l'affectation ←, div et mod, les tableaux de déclaration T.D.O, T.D.N.T et
+          T.D.O.L, les sous-programmes.
+        </p>
+        <ul>
+          <li>La solution complète, en algorithme et en Python côte à côte.</li>
+          <li>Un mode guidé, étape par étape.</li>
+          <li>La vérification de ta propre réponse.</li>
+          <li>Les cours et les séries d'exercices de chaque chapitre de ton année.</li>
+        </ul>
+        <p>Fahem fonctionne avec JavaScript activé. <a href="/confidentialite.html">Confidentialité</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
