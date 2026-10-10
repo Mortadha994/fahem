@@ -1,18 +1,18 @@
-"""Assemble the folder that is pushed to the Hugging Face Space.
+"""Assemble the folder the cloud host builds from.
 
-    python deploy/space/make_bundle.py --out build/space [--runtime-from <main checkout>]
+    python deploy/cloud/make_bundle.py --out build/cloud [--runtime-from <main checkout>]
 
-The Space is its own git repository (huggingface.co/spaces/<you>/<name>), so
-what it needs is copied into one folder, laid out the way deploy/space/Dockerfile
-expects:
+The host (Render) builds from its own private git repository, so what it needs
+is copied into one folder, laid out the way deploy/cloud/Dockerfile expects:
 
-    Dockerfile  README.md  requirements.txt
+    Dockerfile  README.md  requirements-slim.txt
     app/  scripts/  alembic/  alembic.ini  ui/
     deploy/nginx.conf  deploy/start.sh
     runtime/    chunks.json, sample_problems.json, data/<lesson pdf>  (the
                 gitignored files of chapter 1, taken from --runtime-from)
 
-Nothing secret goes in: keys are Space secrets (deploy/space/README.md).
+Nothing secret goes in: keys are environment variables set on the host
+(deploy/cloud/README.md).
 """
 
 from __future__ import annotations
@@ -24,18 +24,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 
-README_HEADER = """---
-title: Fahem
-emoji: 🎓
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
+README_HEADER = """# Fahem — paquet de déploiement
 
-Fahem — tuteur d'algorithmique. Voir le dépôt principal pour la documentation.
+Généré par `deploy/cloud/make_bundle.py` dans le dépôt principal. Ne pas
+modifier ici : regénérer puis pousser.
 """
+
+# Torch-free: the embedding model runs on onnxruntime (EMBEDDING_BACKEND=onnx).
+SLIM_EXTRA = ["onnxruntime>=1.18", "sentencepiece>=0.2", "huggingface_hub>=0.23", "numpy>=1.26"]
+
+
+def slim_requirements(text: str) -> str:
+    kept = [
+        line
+        for line in text.splitlines()
+        if not line.strip().lower().startswith(("sentence-transformers", "torch"))
+    ]
+    return "\n".join(kept + ["", "# onnx embedding backend (make_bundle.py)"] + SLIM_EXTRA) + "\n"
 
 IGNORE = shutil.ignore_patterns(
     "__pycache__", "*.pyc", "node_modules", "dist", ".venv", ".pytest_cache", "tests"
@@ -57,19 +62,26 @@ def lf(path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--out", type=Path, default=ROOT / "build" / "space")
+    parser.add_argument("--out", type=Path, default=ROOT / "build" / "cloud")
     parser.add_argument("--runtime-from", type=Path, default=None)
     args = parser.parse_args()
 
     out: Path = args.out
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
+    # Emptied, except its .git: the folder is a clone of the deploy repository.
+    for child in out.iterdir():
+        if child.name == ".git":
+            continue
+        shutil.rmtree(child) if child.is_dir() else child.unlink()
 
     for name in ("app", "scripts", "alembic", "ui"):
         shutil.copytree(ROOT / name, out / name, ignore=IGNORE)
-    for name in ("alembic.ini", "requirements.txt"):
-        shutil.copy2(ROOT / name, out / name)
+    shutil.copy2(ROOT / "alembic.ini", out / "alembic.ini")
+    (out / "requirements-slim.txt").write_text(
+        slim_requirements((ROOT / "requirements.txt").read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    (out / ".gitattributes").write_text("*.sh text eol=lf\n", encoding="utf-8")
 
     (out / "deploy").mkdir()
     shutil.copy2(HERE / "Dockerfile", out / "Dockerfile")

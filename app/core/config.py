@@ -112,6 +112,9 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
 EMBEDDING_MODEL_NAME = os.environ.get(
     "EMBEDDING_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2"
 )
+# "sentence-transformers" (torch, the default) or "onnx" (same model, int8,
+# no torch: about 1 GB less memory - for free hosts). See app/rag/onnx_embedder.py.
+EMBEDDING_BACKEND = os.environ.get("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
 COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "algorithmique")
 
 # Qdrant replaced Chroma as the vector store in Phase 0b. The practical
