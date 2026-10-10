@@ -16,6 +16,11 @@ declaration table. If a problem genuinely needs something the chapter has not
 covered, it says so instead of inventing it. Every answer shows the exact
 curriculum text it was built on.
 
+**Live:** <https://fahem-deploy.onrender.com> — hosted for free (Render +
+Neon + Qdrant Cloud), see [*Hosting it for free*](#hosting-it-for-free-render--neon--qdrant-cloud).
+It covers the three years of the Tunisian programme: 2ème (chapters 1–4),
+3ème (1–4) and Bac (1–6), each student seeing only their own year.
+
 ---
 
 ## What a student gets
@@ -269,7 +274,12 @@ past work counts and it can never drift from the history.
 | **Chat history** | `app/routes/chat_history.py` stores each account's discussions; every route is scoped to the caller's own rows. The list arrives light and a discussion loads in full when opened; saves upsert messages by id and carry a version (a stale save is a 409, merged and retried); the server saves each finished exchange itself. |
 | **Live controls** | `app/core/runtime_settings.py` (cached, validated) + `app/llm/ai_control.py` + `app/routes/admin/admin_controls.py`: pause, daily budget guard, per-student limit, queue timeout, retries, and a switch per student feature — applied within seconds, each change written to `admin_audit` with who made it, revertible. |
 | **Progress** | `app/routes/progress.py` derives each exercise's status, the next exercise, the latest checks and the recurring mistakes from the chat tables. |
-| **Chapters** | `app/routes/chapters.py` serves the catalogue (scoped to the signed-in student's niveau), each chapter's exercises and the lesson PDF — all behind sign-in. `app/routes/admin/admin_chapters.py` + `app/rag/chapter_store.py` back the admin upload/publish workflow; `app/rag/course_markdown.py` reads a Markdown-authored chapter. |
+| **Chapters** | `app/routes/chapters.py` serves the catalogue, each chapter's exercises, the lesson PDF and, for a Markdown chapter with no PDF, the course text — all behind sign-in. `app/routes/admin/admin_chapters.py` + `app/rag/chapter_store.py` back the admin upload/publish workflow; `app/rag/course_markdown.py` reads a Markdown-authored chapter. Chapter ids are per year (`app/core/chapter_ids.py`: 2ème = n, 3ème = 30 + n, Bac = 60 + n). |
+| **Access by year** | `app/auth/access.py`: a student sees and solves only their own niveau (a direct request for another year is a 403); admins and accounts with `users.full_access` (a switch in the console) see every year. |
+| **Course import** | The Classroom courses are Markdown sources under `courses/<niveau>/chNN-<slug>/`; `scripts/import_courses.py` merges each chapter with its séries, publishes it, and `scripts/build_pdf.py` renders its PDF. See [`docs/importer-les-cours.md`](docs/importer-les-cours.md). |
+| **Context budget** | `app/rag/context.py` keeps every request under the model's 8,000-token limit: the chapter's own reference sheets stay whole, then the sheets of everything learnt before — earlier chapters *and earlier years* (a 3ème student keeps the 2ème sous-programmes) — ranked by relevance to the question. |
+| **Embeddings** | `paraphrase-multilingual-MiniLM-L12-v2` through sentence-transformers (torch) by default; `EMBEDDING_BACKEND=onnx` runs the same model int8 on onnxruntime with its SentencePiece tokenizer (`app/rag/onnx_embedder.py`), about 1 GB less memory and compatible with the existing index (`tests/test_onnx_embedder.py`). |
+| **Hosting** | Online on Render's free tier, one container (nginx + backend + Redis) built from `deploy/cloud/`, with Postgres on Neon and the index on Qdrant Cloud. Uploaded chapter files are mirrored in Postgres (`stored_uploads`) because the host's disk does not survive a deploy. |
 
 ### Data model
 
@@ -554,7 +564,12 @@ Everything tunable is in `app/core/config.py`, read from env with working defaul
 | `SESSION_COOKIE_SAMESITE` | `lax` | |
 | `DATABASE_URL` | `postgresql+psycopg://fahem:fahem@localhost:5432/fahem` | |
 | `QDRANT_URL` | `http://localhost:6333` | |
+| `QDRANT_API_KEY` | *(empty)* | required by Qdrant Cloud |
 | `REDIS_URL` | `redis://localhost:6379` | |
+| `EMBEDDING_BACKEND` | `sentence-transformers` | `onnx` for small hosts (no torch) |
+| `CONTEXT_MAX_CHARS` | `7500` | context budget, keeps requests under the model's token limit |
+| `CHAPTER_UPLOAD_DIR` | `uploads/chapters` | uploaded / imported chapter files |
+| `MIRROR_UPLOADS_TO_DB` | `false` | `true` where the disk is wiped on restart (the cloud image sets it) |
 | `RATE_LIMIT_SOLVE` | `10/minute;100/hour` | per user |
 | `RATE_LIMIT_AUTH` | `30/minute` | per IP |
 | `CORS_ORIGINS` | localhost 5173/5174 | comma-separated |
@@ -574,13 +589,37 @@ Everything tunable is in `app/core/config.py`, read from env with working defaul
 | `TRUSTED_CLIENT_IP_HEADER` | *(empty)* | set by the share modes only (`CF-Connecting-IP`, `X-Forwarded-For`) |
 
 Inside compose, `DATABASE_URL`, `QDRANT_URL` and `REDIS_URL` are overridden to
-point at the sibling containers.
+point at the sibling containers. A managed database's `postgresql://` URL can
+be pasted as given: the driver is added in `config.py`.
 
-### Sharing a test link (free)
+### Hosting it for free (Render + Neon + Qdrant Cloud)
 
-To let friends try Fahem without renting a server, run the stack on your own
-PC and publish it through a free Cloudflare quick tunnel (no account, no
-domain):
+The public site does not depend on any PC:
+
+| Piece | Where | Free tier |
+| --- | --- | --- |
+| UI + API + Redis, one container | Render web service, built from the private repo `fahem-deploy` | 512 MB, sleeps after 15 idle minutes |
+| PostgreSQL | Neon (direct host, not `-pooler`) | 0.5 GB |
+| Vector index | Qdrant Cloud (strict mode: payload indexes required) | 1 GB |
+| LLM | Groq | 8,000 tokens/minute |
+
+To ship a change:
+
+```powershell
+python deploy/cloud/make_bundle.py --out build/cloud   # build/cloud is a clone of fahem-deploy
+cd build/cloud; git add -A; git commit -m "..."; git push   # Render redeploys on push
+```
+
+The full guide — accounts, the one-time data migration
+(`scripts/migrate_to_cloud.py`), the Render settings and the traps met on the
+way — is [`deploy/cloud/README.md`](deploy/cloud/README.md). An uptime ping on
+`/api/health` every 5–10 minutes keeps the free instance awake.
+
+### Sharing a test link from your PC (free)
+
+Before the hosted version, the site was shared from the PC; it still works for
+a quick local demo. Run the stack and publish it through a free Cloudflare
+quick tunnel (no account, no domain):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File share.ps1
@@ -640,6 +679,10 @@ docker compose --env-file env/.env --project-directory . -f docker/docker-compos
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_guided_check     # Mode guidé steps, Vérifier ma réponse, notation pre-check
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_practice_progress  # Exercice similaire, daily limit, progress
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_gatekeeper_meta  # meta answers never leak reasoning (--live calls the model)
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_import_courses   # course import, ids per year, prompts, context budget
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_niveau_access    # each student sees only their own year
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_upload_mirror    # chapter files kept in Postgres and restored (SQLite, no live data)
+docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend sh -c "pip install -q onnxruntime sentencepiece && python -m tests.test_onnx_embedder"   # onnx embeddings agree with the index
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_retrieval  # retrieval inspection (no assertions)
 docker compose --env-file env/.env --project-directory . -f docker/docker-compose.yml exec backend python -m tests.test_gatekeeper_adversarial   # adversarial transcripts; calls the model
 ```
@@ -922,12 +965,15 @@ imports elsewhere keep working.
 | **PR #14** | Surveillance IA KPIs; live AI controls with an action log and revert; the self-updating landing page; bottom toasts; `div` / `mod` guaranteed in the Algorithme column. Session memory and the `FOLLOW_UP` route; the chat audit (per-discussion stop, light history, versioned and server-side saves, feedback, edit / regenerate); Mode guidé; Vérifier ma réponse; Exercice similaire; ▶ Exécuter le Python; Ma progression; the redesigned Contrôles page with a separate Journal tab; Motion throughout. Audit: [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md). |
 | **PR #15** | The audit's first findings closed (the learning modes' `exercise` field through the gatekeeper, « Réussi » only when the check came first, the budget guard on, heading order and live regions, the student bundle down to 695 kB). A landing page rebuilt around a demo anyone can play without an account. The chat's four strips of explanation folded into one line under an answer and one under the composer, and a skip link ahead of both. **Mode guidé as the default.** `llm_calls.user_id`, and an **Activité** tab per account: twelve weeks of charts to decide quotas and offers on. |
 
+| **PR #18** | The Classroom courses of the three years transcribed to Markdown and imported (2ème 1–4, 3ème 1–4, Bac 1–6, with PDFs), chapter ids per year, and the 75 Classroom exercises added to the built-in chapter 1. Access limited to the student's own year (`full_access` for test accounts). Declaration tables that follow the chapter and the solution (T.D.N.T only for a new type, T.D.O, T.D.O.L per sous-programme), the context budget under Groq's 8,000-token limit, and what was learnt in earlier years kept available. **Fahem online for free** on Render + Neon + Qdrant Cloud, with a torch-free embedding backend. |
+
 ## Status and what's next
 
-The product works end to end: sign in, answer the one-time class question,
-pick a chapter for your year, read the lesson, click an exercise or paste one
-(or send a photo of it), get a grounded, checked answer. Friends can test it
-from a share link (see *Sharing a test link*).
+The product works end to end and is online at
+<https://fahem-deploy.onrender.com>: sign in, answer the one-time class
+question, pick a chapter of your year (2ème, 3ème or Bac), read the lesson,
+click an exercise or paste one (or send a photo of it), get a grounded,
+checked answer.
 
 Next, roughly in order (details and more ideas in
 [`docs/audit-2026-09-17-learning-features.md`](docs/audit-2026-09-17-learning-features.md)):
@@ -943,22 +989,20 @@ Next, roughly in order (details and more ideas in
 - **Make practice a game** — an animated execution trace, Parsons puzzles, a bug
   hunt, XP and badges.
 
-- **Before a real deployment** — set a real `SESSION_SECRET_KEY`,
-  `SESSION_COOKIE_SECURE=true` and `CORS_ORIGINS`; enable Qdrant's API key;
-  stop publishing Postgres/Qdrant/Redis ports; and close the items in
-  `README_API.md`'s pre-launch list (generic error bodies, and who may receive
-  curriculum excerpts).
-- **More Groq budget** — the free tier's 200,000 tokens a day is the real
-  ceiling on how many students can use Fahem at once; a paid tier or a second
-  model for the gatekeeper is the lever.
-- **More chapters, more years** — the profile already scopes the chapter list
-  by niveau, so a 3ème/Bac student currently lands on an honest empty state.
-  Each new chapter needs its PDF (or Markdown), its pinned-table anchors in
-  `app/rag/context.py`, and a check with `tests/test_retrieval.py`. This is the main unlock.
-- **Scope the chat to the profile** — the freeform chat still defaults to the
-  2ème corpus; point it at the student's own niveau once that year has content.
+- **Answer quality** — a review of real answers found Python slipping into the
+  Algorithme column (`T ← [0]*100`), invented remarks, a variable renamed
+  between the two columns, and traces nobody asked for; the context budget
+  can also drop an earlier sheet a solution still uses (`print`, `range`).
+- **More Groq budget** — the free tier's 8,000 tokens a minute and 200,000 a
+  day are the real ceiling on how many students can use Fahem at once (429s
+  and waits appear with a few students); a paid tier or a second model for the
+  gatekeeper is the lever.
+- **Before opening wide** — close the items in `README_API.md`'s pre-launch
+  list (generic error bodies, and who may receive curriculum excerpts), and
+  set a real `SESSION_SECRET_KEY` on the local stack too.
+- **Missing Classroom material** — « Révision Synthèse N°1 » and the Bac
+  « Série de récap N°1 » have no PDF on Classroom; corrections and the
+  2026/2027 posts are not imported.
 - **Section-aware chapters** — tag chapters with a section so the catalogue can
   filter on it too, not only the niveau (`catalogue(niveau=…)` is written for
   this).
-- **Chapter 3 (structures itératives)** — still *À venir*; author it in
-  Markdown like chapter 2 and publish it with its série.
