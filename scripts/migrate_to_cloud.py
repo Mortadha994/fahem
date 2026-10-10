@@ -37,6 +37,14 @@ def copy_qdrant(source: str, target: str, target_key: str | None, collection: st
         )
         print(f"created collection {collection!r} on the target")
 
+    # The payload indexes too: Qdrant Cloud runs in strict mode, where a
+    # filter on an unindexed field (niveau, chapitre, type) is refused.
+    have = set((dst.get_collection(collection).payload_schema or {}).keys())
+    for field, schema in (info.payload_schema or {}).items():
+        if field not in have:
+            dst.create_payload_index(collection, field_name=field, field_schema=schema.data_type)
+            print(f"indexed payload field {field!r} ({schema.data_type})")
+
     copied = 0
     offset = None
     while True:

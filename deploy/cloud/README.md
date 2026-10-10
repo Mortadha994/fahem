@@ -31,6 +31,14 @@ sont pas dans le dépôt principal.
 
 ## 1. Migrer les données (une seule fois, depuis le PC, Docker lancé)
 
+Utiliser l'adresse **directe** de Neon : retirer `-pooler` du nom d'hôte.
+Par le pooler, `pg_restore` laisse un `search_path` vide collé à une connexion
+partagée (« relation users does not exist » ensuite), et l'application n'a
+pas besoin du pooler. Après la restauration, passer le schéma à jour
+(`alembic upgrade head` avec `DATABASE_URL` = Neon) avant l'étape c). Le script
+Qdrant recopie aussi les index de champs, sans lesquels Qdrant Cloud (mode
+strict) refuse les recherches filtrées.
+
 ```powershell
 # a) Postgres : sauvegarde locale -> Neon
 docker exec fahem-postgres-1 pg_dump -U fahem -d fahem --no-owner --no-privileges -Fc -f /tmp/fahem.dump
