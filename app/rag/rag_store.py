@@ -38,7 +38,6 @@ from typing import Any, Iterable
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
-from sentence_transformers import SentenceTransformer
 
 # Config moved to app/core/config.py; re-exported here so existing imports keep
 # working unchanged - app/rag/context.py and tests/test_retrieval.py both do
@@ -46,7 +45,9 @@ from sentence_transformers import SentenceTransformer
 from app.core.config import (  # noqa: F401  (re-exported for backwards compatibility)
     COLLECTION_NAME,
     DEFAULT_CHUNKS,
+    EMBEDDING_BACKEND,
     EMBEDDING_MODEL_NAME,
+    QDRANT_API_KEY,
     QDRANT_URL,
 )
 
@@ -75,19 +76,32 @@ POINT_NAMESPACE = uuid.UUID("6f2a1c58-0d4b-5a7e-9c3f-1b8e7d2a4c60")
 DISTANCE = qmodels.Distance.COSINE
 
 
-_model: SentenceTransformer | None = None
+_model: Any = None
 
 
-def get_model(model_name: str = MODEL_NAME) -> SentenceTransformer:
-    """Load the embedding model once per process."""
+def get_model(model_name: str = MODEL_NAME) -> Any:
+    """Load the embedding model once per process.
+
+    EMBEDDING_BACKEND=onnx swaps in the same model on onnxruntime, without
+    torch (app/rag/onnx_embedder.py) - for hosts with 512 MB of memory. Both
+    expose the encode() this module and retrieval.py call. sentence-transformers
+    is imported only on its own path, so the onnx image does not need it.
+    """
     global _model
     if _model is None:
-        _model = SentenceTransformer(model_name)
+        if EMBEDDING_BACKEND == "onnx":
+            from app.rag.onnx_embedder import OnnxEmbedder
+
+            _model = OnnxEmbedder()
+        else:
+            from sentence_transformers import SentenceTransformer
+
+            _model = SentenceTransformer(model_name)
     return _model
 
 
 def get_client(url: str = QDRANT_URL) -> QdrantClient:
-    return QdrantClient(url=url)
+    return QdrantClient(url=url, api_key=QDRANT_API_KEY)
 
 
 def point_id(chunk_id: str) -> str:

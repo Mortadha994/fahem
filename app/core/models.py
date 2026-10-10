@@ -33,6 +33,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     false,
@@ -166,6 +167,13 @@ class User(Base):
     # value. Read by llm_queue.priority_for; not enforced anywhere yet.
     plan: Mapped[str] = mapped_column(
         String(16), nullable=False, default=PLAN_FREE, server_default=PLAN_FREE
+    )
+
+    # Which niveaux the account may open. A student sees their own niveau only
+    # (app/auth/access.py); this lifts that for test accounts, set from the
+    # admin console. Admins have it through their role and never need the flag.
+    full_access: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
     )
 
     # Set when the address owner clicks Fahem's verification link, or completes
@@ -780,4 +788,21 @@ class ExerciseAnswer(Base):
         CheckConstraint("step >= 0 AND step <= 4", name="ck_exercise_answers_step"),
         # The console counts what is ready per chapter on every page load.
         Index("ix_exercise_answers_chapter", "chapter_id"),
+    )
+
+
+class StoredUpload(Base):
+    """A file of CHAPTER_UPLOAD_DIR, kept in the database as well.
+
+    Only written when MIRROR_UPLOADS_TO_DB is on (a host whose disk is wiped on
+    restart); app.rag.chapter_store puts every row back on the disk at boot, so
+    the rest of the code keeps reading plain paths.
+    """
+
+    __tablename__ = "stored_uploads"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

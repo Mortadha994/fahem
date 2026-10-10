@@ -34,7 +34,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from slowapi.errors import RateLimitExceeded
 
-from app.auth import auth, password_auth
+from app.auth import access, auth, password_auth
 from app.core import models, ratelimit, runtime_settings
 from app.core.config import CORS_ORIGINS
 from app.grading import algo_notation, answer_check, session_memory
@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
     the first caller saw 9.3s against 3.5s for everyone after.
     """
     get_model()
+    # A host with a wiped disk (Hugging Face Spaces): put the uploaded PDFs
+    # and course files back before anything reads them.
+    chapter_store.restore_uploads()
     # Phase 9: background extraction/publish tasks die with the process; put
     # any chapter a restart interrupted into a state the console can act on.
     chapter_store.recover_interrupted()
@@ -347,6 +350,9 @@ def solve(
     budget. Separate buckets would let a caller double the spend by
     alternating between two endpoints that do identical work.
     """
+    # A student asks about their own niveau only: before the gatekeeper, so a
+    # request for another year costs no LLM call at all.
+    access.require_niveau(user, payload.niveau)
     started = time.monotonic()
 
     # Gatekeeper: classify before the real pipeline ever sees the message.
@@ -475,6 +481,7 @@ def solve(
 
     # Course notation in the Algorithme column (div, mod, ≠...), even if the
     # model slipped - the student reads and copies this answer as returned.
+    answer, _dropped = algo_notation.strip_absent_table_notes(answer)
     answer, fixed = algo_notation.normalize_answer(answer)
     if fixed:
         log.warning(
@@ -780,6 +787,8 @@ def solve_stream(
 
     /solve is unchanged and still serves the non-streaming path.
     """
+    # A plain 403 before the stream opens, same as the 401: see access.py.
+    access.require_niveau(user, payload.niveau)
     started = time.monotonic()
     # Does the discussion vouch for the exercise this request carries? Decided
     # here, before the cap below reads it (gate_text) and before any route is
@@ -1170,6 +1179,7 @@ def solve_stream(
         # model wrote (ui/src/lib/algoNotation.js); check that version, so a
         # slip the student never sees is not reported as a violation - and
         # log it, so the model's slips stay visible.
+        answer, _dropped = algo_notation.strip_absent_table_notes(answer)
         checked, fixed = algo_notation.normalize_answer(answer)
         if fixed:
             log.warning(

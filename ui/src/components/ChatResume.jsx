@@ -4,6 +4,7 @@ import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { ago } from "../lib/relativeTime.js";
 import { hasQuestion, statusOf } from "../lib/sessionGroups.js";
 import { HOVER_LIFT, PRESS, rise, stagger } from "../lib/motion.js";
+import { chapterNumber } from "../lib/chapterNumber.js";
 
 /**
  * "Reprends où tu t'es arrêté": the latest discussions as cards, shown in an
@@ -52,7 +53,7 @@ export default function ChatResume() {
                 onClick={() => setActiveId(s.id)}
               >
                 <span className="chat-resume-top">
-                  <span className="chat-resume-chip">Chapitre {s.chapitre}</span>
+                  <span className="chat-resume-chip">Chapitre {chapterNumber(s.chapitre)}</span>
                   {VERDICT[status] && (
                     <span className={`chat-resume-verdict is-${status}`}>
                       {VERDICT[status]}

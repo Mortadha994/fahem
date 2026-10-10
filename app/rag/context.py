@@ -29,14 +29,32 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+import logging
+import os
+import re
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from app.core.chapter_ids import chapter_number
+from app.core.models import niveau_label
 from app.rag.rag_store import QDRANT_URL, TEXT_KEY, scroll_scope
 from app.rag.retrieval import SOLVE_TYPES, Hit, retrieve
 
 ARROW = "←"
+
+log = logging.getLogger("fahem.context")
+
+# The model takes at most 8000 tokens per request (Groq, on-demand tier, for
+# gpt-oss-120b), and these courses - French, code, tables - cost about 2.4
+# characters per token: roughly 19 000 characters for the whole request. The
+# system prompt takes about 9 500 of them, so the context gets what is left,
+# with margin for the student's problem and the discussion so far. Past the
+# limit the model answers 413 and the student gets no answer at all, which is
+# worse than an answer with a slimmer reference sheet.
+MAX_CONTEXT_CHARS = int(os.environ.get("CONTEXT_MAX_CHARS", "7500"))
+MIN_EXTRAS_BUDGET = 1400  # kept for retrieved extras whenever the pins leave room
+EXTRA_MAX_CHARS = 700  # one retrieved extract, cut
 
 
 @dataclass(frozen=True)
@@ -249,25 +267,78 @@ def prerequisite_pins(niveau: str, chapitre: str, url: str = QDRANT_URL) -> list
     else. A later chapter that is not published yet is simply absent: the
     student cannot have studied it on Fahem either. Labels are prefixed with
     the chapter so the prompt shows where each sheet comes from.
+
+    The years are cumulative too: a 3ème student has done the whole 2ème
+    programme (sous-programmes included) and a Bac student both before it, so
+    what they learnt earlier stays theirs to use. Those sheets come first, in
+    teaching order; build_context then keeps the ones that fit the budget.
     """
     try:
         n = int(str(chapitre).strip())
     except ValueError:
         return []
+    key = str(niveau).strip().lower()
     pins: list[PinnedChunk] = []
-    if str(niveau).strip().lower() == BUILTIN_PIN_SCOPE[0] and n > 1:
-        pins.extend(resolve_pins(niveau, BUILTIN_PIN_SCOPE[1], url))
-        for p in pins:
-            p.label = f"Ch. 1 — {p.label}"
-    for k in range(2, n):
+    # The built-in 2ème chapter 1 is behind every chapter of every year, except
+    # itself (it has no earlier chapter) and a 2ème chapter 1 lookalike.
+    if key in YEAR_ORDER and not (key == BUILTIN_PIN_SCOPE[0] and n <= 1):
         try:
-            earlier = published_pins(niveau, str(k), url)
+            builtin = resolve_pins(BUILTIN_PIN_SCOPE[0], BUILTIN_PIN_SCOPE[1], url)
+        except PinResolutionError:
+            if key == BUILTIN_PIN_SCOPE[0]:
+                raise  # unchanged for 2ème: its own foundation must resolve
+            builtin = []
+        origin = "" if key == BUILTIN_PIN_SCOPE[0] else f"{niveau_label(BUILTIN_PIN_SCOPE[0])} "
+        for p in builtin:
+            p.label = f"{origin}Ch. 1 — {p.label}"
+        pins.extend(builtin)
+    for earlier_niveau, chapter_id in earlier_chapters(key, n, _published_rows()):
+        try:
+            sheets = published_pins(earlier_niveau, chapter_id, url)
         except PinResolutionError:
             continue
-        for p in earlier:
-            p.label = f"Ch. {k} — {p.label}"
-        pins.extend(earlier)
+        where = f"Ch. {chapter_number(chapter_id)}"
+        if earlier_niveau != key:
+            where = f"{niveau_label(earlier_niveau)} {where}"
+        for p in sheets:
+            p.label = f"{where} — {p.label}"
+        pins.extend(sheets)
     return pins
+
+
+# The years in the order a student goes through them.
+YEAR_ORDER = ("2eme", "3eme", "bac")
+
+
+def _published_rows() -> list[Any]:
+    """The published uploaded chapters (id, niveau); empty if the store is not
+    reachable, which leaves a student with this chapter's own sheets only."""
+    try:
+        from app.rag import chapter_store
+
+        return chapter_store.published_chapters()
+    except Exception:  # noqa: BLE001 - no database in a bare script run
+        log.warning("could not list the published chapters for the earlier-chapter sheets")
+        return []
+
+
+def earlier_chapters(niveau: str, chapitre: int, published: list[Any]) -> list[tuple[str, str]]:
+    """(niveau, chapter id) of the published chapters studied before this one,
+    in teaching order: every chapter of the earlier years, then the chapters of
+    this year that come first. The built-in 2ème chapter 1 is not in the list
+    (it is not an upload; prerequisite_pins adds it)."""
+    if niveau not in YEAR_ORDER:
+        return []
+    mine = YEAR_ORDER.index(niveau)
+    chosen = []
+    for row in published:
+        if row.niveau not in YEAR_ORDER or not str(row.id).isdigit():
+            continue
+        rank = YEAR_ORDER.index(row.niveau)
+        number = int(chapter_number(row.id))
+        if rank < mine or (rank == mine and int(row.id) < chapitre):
+            chosen.append((rank, number, row.niveau, str(row.id)))
+    return [(n, i) for _r, _num, n, i in sorted(chosen)]
 
 
 @dataclass
@@ -298,6 +369,50 @@ class Context:
         return "\n".join(parts).rstrip() + "\n"
 
 
+def _pin_cost(pin: PinnedChunk) -> int:
+    return len(pin.label) + len(pin.section) + len(pin.content) + 12
+
+
+def _hit_cost(hit: Hit) -> int:
+    return len(hit.section) + len(hit.type) + len(hit.content) + 12
+
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-zàâçéèêëîïôûùüÿ_]{4,}", text.lower()))
+
+
+def fit_prerequisites(
+    pins: list[PinnedChunk], query: str, budget: int
+) -> list[PinnedChunk]:
+    """The earlier chapters' reference sheets that fit `budget` characters.
+
+    The programme is cumulative, but the whole of it no longer fits in one
+    request. The sheets that share the most vocabulary with the problem go
+    first (Lire/Ecrire for a problem that reads and writes), the most recent
+    chapter breaking ties; what is kept stays in the order a student learnt it.
+    """
+    if budget <= 0 or not pins:
+        return []
+    wanted = _words(query)
+    ranked = sorted(
+        range(len(pins)),
+        key=lambda i: (-len(wanted & _words(pins[i].label + " " + pins[i].content)), -i),
+    )
+    kept: set[int] = set()
+    used = 0
+    for i in ranked:
+        cost = _pin_cost(pins[i])
+        if used + cost <= budget:
+            kept.add(i)
+            used += cost
+    if len(kept) < len(pins):
+        log.info(
+            "context budget: kept %d of %d earlier reference sheets (%d of %d chars)",
+            len(kept), len(pins), used, budget,
+        )
+    return [pins[i] for i in sorted(kept)]
+
+
 def build_context(
     query: str,
     niveau: str,
@@ -305,13 +420,23 @@ def build_context(
     k: int = 5,
     url: str = QDRANT_URL,
 ) -> Context:
-    """Pinned syntax core + k retrieved extras that are not already pinned."""
+    """Pinned syntax core + k retrieved extras that are not already pinned,
+    within MAX_CONTEXT_CHARS."""
     if (str(niveau).strip().lower(), str(chapitre).strip().lower()) == BUILTIN_PIN_SCOPE:
         pinned = resolve_pins(niveau, chapitre, url)
     else:
         # Earlier chapters first, then this one - the order a student learnt
-        # them in. Retrieval below stays scoped to this chapter alone.
-        pinned = prerequisite_pins(niveau, chapitre, url) + published_pins(niveau, chapitre, url)
+        # them in. Retrieval below stays scoped to this chapter alone. This
+        # chapter's own sheets always stay whole; the earlier ones are what
+        # the budget trims.
+        own = published_pins(niveau, chapitre, url)
+        own_cost = sum(_pin_cost(p) for p in own)
+        earlier = fit_prerequisites(
+            prerequisite_pins(niveau, chapitre, url),
+            query,
+            MAX_CONTEXT_CHARS - own_cost - MIN_EXTRAS_BUDGET,
+        )
+        pinned = earlier + own
     pinned_ids = {p.chunk_id for p in pinned}
 
     # Over-fetch so that dropping pinned duplicates still leaves k extras.
@@ -323,7 +448,17 @@ def build_context(
         url=url,
         types=SOLVE_TYPES,
     )
-    extras = [h for h in candidates if h.chunk_id not in pinned_ids][:k]
+    room = MAX_CONTEXT_CHARS - sum(_pin_cost(p) for p in pinned)
+    extras: list[Hit] = []
+    for hit in (h for h in candidates if h.chunk_id not in pinned_ids):
+        if len(extras) == k:
+            break
+        if len(hit.content) > EXTRA_MAX_CHARS:
+            hit = replace(hit, content=hit.content[:EXTRA_MAX_CHARS].rstrip() + " ...")
+        if _hit_cost(hit) > room:
+            continue
+        extras.append(hit)
+        room -= _hit_cost(hit)
 
     return Context(query, niveau, chapitre, pinned, extras)
 

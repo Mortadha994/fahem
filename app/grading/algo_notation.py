@@ -73,6 +73,47 @@ def to_algo_notation(line: str) -> tuple[str, int]:
     return (result.rstrip() if count else result), count
 
 
+# A remark about a declaration table the solution does not need ("Aucun type
+# nouveau n'est nécessaire, donc pas de T.D.N.T."). The prompt forbids it
+# (rule 2); the model still writes it now and then, and a student reads it as
+# a gap in the course. One line, never a table row, never inside a code fence.
+_ABSENCE = re.compile(
+    r"aucun|aucune|pas d[e']|pas besoin|sans |néant|neant|inutile|"
+    r"n[’']est (?:pas )?(?:nécessaire|necessaire|utile)|n[’']y a pas",
+    re.IGNORECASE,
+)
+_TABLE_WORDS = re.compile(
+    r"t\.d\.n\.t|t\.d\.o\.l|tdnt|tdol|nouveaux? types?|types? nouveaux?|"
+    r"objets? locau[xl]|types? non primitifs?",
+    re.IGNORECASE,
+)
+
+
+def strip_absent_table_notes(markdown: str) -> tuple[str, int]:
+    """The answer without the lines that only announce an unneeded declaration
+    table. Returns (text, number of lines removed)."""
+    kept: list[str] = []
+    removed = 0
+    in_fence = False
+    for line in markdown.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+        elif (
+            not in_fence
+            and stripped
+            and not stripped.startswith("|")
+            and len(stripped) <= 300
+            and _ABSENCE.search(stripped)
+            and _TABLE_WORDS.search(stripped)
+        ):
+            removed += 1
+            continue
+        kept.append(line)
+    text = "\n".join(kept)
+    return (re.sub(r"\n{3,}", "\n\n", text) if removed else markdown), removed
+
+
 def _cells(row: str) -> list[str]:
     inner = row.strip()
     if inner.startswith("|"):
