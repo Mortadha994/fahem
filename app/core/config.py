@@ -123,6 +123,17 @@ COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "algorithmique")
 # file overrides the host portion with the `qdrant` service name - same
 # reasoning as DATABASE_URL below.
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+# Qdrant Cloud (and any Qdrant with API-key auth) wants the key on every call.
+# Empty = none, which is what the compose stack's internal Qdrant uses.
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY") or None
+
+# Hosts whose disk is wiped on restart (Hugging Face Spaces): every file written
+# under CHAPTER_UPLOAD_DIR is also kept in the database and put back on boot.
+MIRROR_UPLOADS_TO_DB = os.environ.get("MIRROR_UPLOADS_TO_DB", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 # Kept CWD-relative on purpose: the container bind-mounts ./chunks.json onto
 # /app, which is also the WORKDIR, so a relative path resolves to the mounted
@@ -165,6 +176,13 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+psycopg://fahem:fahem@localhost:5432/fahem",
 )
+# A managed database (Neon, Supabase) hands out `postgresql://...` or
+# `postgres://...`; SQLAlchemy would pick psycopg2 for those, which is not
+# installed. Name the driver here so the URL can be pasted as it was given.
+for _plain in ("postgresql://", "postgres://"):
+    if DATABASE_URL.startswith(_plain):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_plain) :]
+        break
 
 
 # --- authentication (Google OAuth + session cookie) -------------------------

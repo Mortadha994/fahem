@@ -32,7 +32,7 @@ from typing import Any
 from qdrant_client.http import models as qmodels
 from sqlalchemy import delete, select, update
 
-from app.core.config import CHAPTER_UPLOAD_DIR
+from app.core.config import CHAPTER_UPLOAD_DIR, MIRROR_UPLOADS_TO_DB
 from app.core.db import session_scope
 from app.core.models import (
     CHAPTER_DRAFT,
@@ -42,6 +42,7 @@ from app.core.models import (
     CHAPTER_PUBLISHING,
     ChapterChunk,
     ChapterExercise,
+    StoredUpload,
     UploadedChapter,
 )
 from app.rag import course_markdown, rag_store
@@ -124,6 +125,52 @@ def _atomic_write(path: Path, data: bytes) -> None:
     tmp = path.with_name(path.name + ".part")
     tmp.write_bytes(data)
     tmp.replace(path)  # atomic: never a half-written file at the real name
+    _mirror(path.name, data)
+
+
+# --- the database copy, for hosts whose disk is wiped on restart --------------------------
+#
+# Off by default (MIRROR_UPLOADS_TO_DB). When on, a file is written to the disk
+# AND to `stored_uploads`; restore_uploads() rebuilds the directory at boot.
+# A failure to mirror is logged, never raised: the disk copy still serves the
+# student, and a missing mirror only shows after the next restart.
+
+
+def _mirror(name: str, data: bytes | None) -> None:
+    """Keep the database copy of `name` equal to the disk (None = deleted)."""
+    if not MIRROR_UPLOADS_TO_DB:
+        return
+    try:
+        with session_scope() as s:
+            if data is None:
+                s.execute(delete(StoredUpload).where(StoredUpload.name == name))
+            else:
+                s.merge(StoredUpload(name=name, data=data))
+    except Exception:  # noqa: BLE001
+        log.warning("could not mirror upload %s to the database", name, exc_info=True)
+
+
+def restore_uploads() -> int:
+    """Write every mirrored file that is missing from the disk. Returns how many."""
+    if not MIRROR_UPLOADS_TO_DB:
+        return 0
+    restored = 0
+    try:
+        CHAPTER_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        with session_scope() as s:
+            for row in s.scalars(select(StoredUpload)):
+                target = CHAPTER_UPLOAD_DIR / row.name
+                # A name is "<digits>.<ext>" - never a path - so a row cannot
+                # write outside the upload directory.
+                if target.parent != CHAPTER_UPLOAD_DIR or target.exists():
+                    continue
+                target.write_bytes(row.data)
+                restored += 1
+    except Exception:  # noqa: BLE001
+        log.warning("could not restore uploads from the database", exc_info=True)
+    if restored:
+        log.info("restored %d uploaded file(s) from the database", restored)
+    return restored
 
 
 def store_pdf(chapter_id: str, data: bytes) -> None:
@@ -177,8 +224,9 @@ def supplement_exercises(chapter_id: str) -> list[dict[str, str]]:
 
 
 def remove_pdf(chapter_id: str) -> None:
-    pdf_path(chapter_id).unlink(missing_ok=True)
-    markdown_path(chapter_id).unlink(missing_ok=True)
+    for path in (pdf_path(chapter_id), markdown_path(chapter_id)):
+        path.unlink(missing_ok=True)
+        _mirror(path.name, None)
 
 
 # --- extraction ----------------------------------------------------------------------

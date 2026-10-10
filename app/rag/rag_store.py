@@ -47,6 +47,7 @@ from app.core.config import (  # noqa: F401  (re-exported for backwards compatib
     COLLECTION_NAME,
     DEFAULT_CHUNKS,
     EMBEDDING_MODEL_NAME,
+    QDRANT_API_KEY,
     QDRANT_URL,
 )
 
@@ -87,7 +88,7 @@ def get_model(model_name: str = MODEL_NAME) -> SentenceTransformer:
 
 
 def get_client(url: str = QDRANT_URL) -> QdrantClient:
-    return QdrantClient(url=url)
+    return QdrantClient(url=url, api_key=QDRANT_API_KEY)
 
 
 def point_id(chunk_id: str) -> str:

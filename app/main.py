@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
     the first caller saw 9.3s against 3.5s for everyone after.
     """
     get_model()
+    # A host with a wiped disk (Hugging Face Spaces): put the uploaded PDFs
+    # and course files back before anything reads them.
+    chapter_store.restore_uploads()
     # Phase 9: background extraction/publish tasks die with the process; put
     # any chapter a restart interrupted into a state the console can act on.
     chapter_store.recover_interrupted()

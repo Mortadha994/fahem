@@ -33,6 +33,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     false,
@@ -787,4 +788,21 @@ class ExerciseAnswer(Base):
         CheckConstraint("step >= 0 AND step <= 4", name="ck_exercise_answers_step"),
         # The console counts what is ready per chapter on every page load.
         Index("ix_exercise_answers_chapter", "chapter_id"),
+    )
+
+
+class StoredUpload(Base):
+    """A file of CHAPTER_UPLOAD_DIR, kept in the database as well.
+
+    Only written when MIRROR_UPLOADS_TO_DB is on (a host whose disk is wiped on
+    restart); app.rag.chapter_store puts every row back on the disk at boot, so
+    the rest of the code keeps reading plain paths.
+    """
+
+    __tablename__ = "stored_uploads"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
