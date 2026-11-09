@@ -13,7 +13,10 @@ import EmptyState from "../components/ui/EmptyState.jsx";
 import {
   exerciseLength,
   exerciseTitle,
+  groupBySerie,
   isStarted,
+  plainText,
+  splitSerie,
   startedExerciseTexts,
 } from "../lib/exercises.js";
 import Skeleton from "../components/ui/Skeleton.jsx";
@@ -330,63 +333,104 @@ function ChapterView({ id }) {
           <EmptyState size="sm">Aucun exercice pour ce chapitre.</EmptyState>
         )}
 
-        <ul className="exo-list">
-          {/* One-line-row placeholders, the height of the shortest real
-              exercise, so the list has a shape before the énoncés arrive. */}
-          {exercises === null &&
-            !exosFailed &&
-            [0, 1, 2].map((i) => (
+        {/* One-line-row placeholders, the height of the shortest real
+            exercise, so the list has a shape before the énoncés arrive. */}
+        {exercises === null && !exosFailed && (
+          <ul className="exo-list">
+            {[0, 1, 2].map((i) => (
               <li key={`skeleton-${i}`} aria-hidden="true">
                 <Skeleton height="4.5rem" radius="lg" />
               </li>
             ))}
-          {(exercises ?? []).map((e, index) => {
-            const status = progress ? statusById[e.id] : null;
-            const started = !progress && isStarted(e.question, startedTexts);
-            const shown = EXERCISE_STATUS[status];
-            return (
-              <li key={e.id}>
-                <button
-                  type="button"
-                  className={`exo surface surface-interactive${
-                    e.id === nextId ? " is-next" : ""
-                  }${status === "done" ? " is-done" : ""}`}
-                  onClick={() => solve(e.question)}
-                >
-                  {/* The number is what a student and a teacher say out loud
-                      ("exercice 3"), so it leads the row. */}
-                  <span className="exo-num" aria-hidden="true">
-                    {index + 1}
+          </ul>
+        )}
+
+        {/* One block per série, as on the sheets handed out in class: 44
+            exercises in a single run gave no sense of where one sheet ends.
+            A chapter without séries is a single block with no heading. */}
+        {groupBySerie(exercises ?? []).map((group) => {
+          const done = group.items.filter(
+            ({ exercise }) => statusById[exercise.id] === "done"
+          ).length;
+          return (
+            <section
+              key={group.key}
+              className="exo-group"
+              aria-labelledby={`${group.key}-h`}
+            >
+              {group.serie && (
+                <h2 className="exo-group-head" id={`${group.key}-h`}>
+                  <span className="exo-group-num">Série {group.serie.num}</span>
+                  <span className="exo-group-title">{group.serie.title}</span>
+                  <span className="exo-group-count">
+                    {progress
+                      ? `${done}/${group.items.length} réussis`
+                      : `${group.items.length} exercices`}
                   </span>
-                  <span className="exo-body">
-                    <span className="exo-head">
-                      <span className="exo-title">{exerciseTitle(e.question)}</span>
-                      <span className="exo-meta">
-                        <span className="exo-len">{exerciseLength(e.question)}</span>
-                        {started && <span className="exo-started">à finir</span>}
-                        {shown && <Badge tone={shown.tone}>{shown.short}</Badge>}
-                        {e.id === nextId && !shown && (
-                          <Badge tone="neutral" className="exo-next">
-                            À faire ensuite
-                          </Badge>
-                        )}
-                      </span>
-                    </span>
-                    {/* The full énoncé stays on the page - clamped to two
+                </h2>
+              )}
+              <ul className="exo-list">
+                {group.items.map(({ exercise: e, number }) => (
+                  <ExerciseRow
+                    key={e.id}
+                    exercise={e}
+                    number={number}
+                    status={progress ? statusById[e.id] : null}
+                    started={!progress && isStarted(e.question, startedTexts)}
+                    isNext={e.id === nextId}
+                    onSolve={solve}
+                  />
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </section>
+    </main>
+  );
+}
+
+/** One exercise: its number in the série, a derived title, the énoncé clamped. */
+function ExerciseRow({ exercise: e, number, status, started, isNext, onSolve }) {
+  const shown = EXERCISE_STATUS[status];
+  return (
+    <li>
+      <button
+        type="button"
+        className={`exo surface surface-interactive${
+          isNext ? " is-next" : ""
+        }${status === "done" ? " is-done" : ""}`}
+        onClick={() => onSolve(e.question)}
+      >
+        {/* The number is what a student and a teacher say out loud
+                      ("exercice 3"), so it leads the row. */}
+        <span className="exo-num" aria-hidden="true">
+          {number}
+        </span>
+        <span className="exo-body">
+          <span className="exo-head">
+            <span className="exo-title">{exerciseTitle(e.question)}</span>
+            <span className="exo-meta">
+              <span className="exo-len">{exerciseLength(e.question)}</span>
+              {started && <span className="exo-started">à finir</span>}
+              {shown && <Badge tone={shown.tone}>{shown.short}</Badge>}
+              {isNext && !shown && (
+                <Badge tone="neutral" className="exo-next">
+                  À faire ensuite
+                </Badge>
+              )}
+            </span>
+          </span>
+          {/* The full énoncé stays on the page - clamped to two
                         lines so seven rows still fit a screen, and never
                         truncated in the DOM, so a screen reader and a
                         find-in-page both get all of it. */}
-                    <span className="exo-q">{e.question}</span>
-                  </span>
-                  <span className="exo-go" aria-hidden="true">
-                    Résoudre →
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-    </main>
+          <span className="exo-q">{plainText(splitSerie(e.question).body)}</span>
+        </span>
+        <span className="exo-go" aria-hidden="true">
+          Résoudre →
+        </span>
+      </button>
+    </li>
   );
 }
