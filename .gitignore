@@ -50,3 +50,6 @@ Untitled-*.algo
 # inherit the same restriction as chunks.json. Copy
 # sample_problems.example.json and fill it with your own exercises.
 sample_problems.json
+
+# Assembled deployment bundles (deploy/space/make_bundle.py) and local builds
+build/

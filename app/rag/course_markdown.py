@@ -151,6 +151,51 @@ def _pack(heading: str, blocks: list[str]) -> list[str]:
     return chunks
 
 
+_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+
+
+def student_text(text: str) -> str:
+    """The course as a student reads it on the chapter page: Markdown only.
+
+    A Markdown chapter has no PDF to show, so the page renders its text. What
+    the student must not see is the author's scaffolding: the header, the
+    "# Chapitre" title (the page has its own), the TODO notes, a figure that
+    points at a file that does not exist - shown as its description, in
+    italics - and the exercises, which have their own tab.
+    """
+    text = text.replace("\r\n", "\n").lstrip("﻿")
+    text = _COMMENT.sub("", text)
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                lines = lines[i + 1 :]
+                break
+    kept: list[str] = []
+    in_fence = None
+    for line in lines:
+        fm = _FENCE.match(line)
+        if fm:
+            in_fence = None if in_fence else fm.group(2)[:3]
+        if not in_fence:
+            hm = _HEADING.match(line)
+            if hm:
+                level, title = len(hm.group(1)), hm.group(2).replace(PIN, "").strip()
+                if level == 1:
+                    if _SERIE.match(title):
+                        break
+                    continue
+                if level == 2 and _SERIE.match(title):
+                    break
+                # The pin is the author's marker for the reference sheet, not
+                # something a student should see in a heading.
+                line = line.replace(PIN + " ", "").replace(PIN, "")
+            line = _IMAGE.sub(lambda m: f"*[Figure : {m.group(1)}]*" if m.group(1) else "", line)
+        kept.append(line)
+    cleaned = "\n".join(kept)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
+
+
 def parse(text: str, expected_chapitre: str | None = None) -> ParsedCourse:
     text = text.replace("\r\n", "\n").lstrip("﻿")
     # HTML comments are notes for the author (the template's instructions live

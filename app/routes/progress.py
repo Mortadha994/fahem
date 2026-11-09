@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import case, literal, select
 
-from app.auth import auth
+from app.auth import access, auth
 from app.core.db import session_scope
 from app.core.models import ChatMessage, ChatSession, User
 from app.routes import chapters
@@ -176,7 +176,7 @@ def compute(user: User) -> ProgressOut:
         discussions = _discussions(db, user.id)
 
     out: list[ChapterProgress] = []
-    for chapter in chapters.catalogue(niveau=user.niveau):
+    for chapter in chapters.catalogue(niveau=access.listing_niveau(user)):
         if chapter.status != chapters.ACTIVE:
             continue
         items: list[ExerciseProgress] = []

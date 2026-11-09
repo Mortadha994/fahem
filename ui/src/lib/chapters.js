@@ -57,3 +57,12 @@ export function fetchExercises(chapterId) {
 export function fetchChapterPdf(chapterId) {
   return get(`/chapters/${encodeURIComponent(chapterId)}/pdf`, { as: "blob" });
 }
+
+/**
+ * The course of a Markdown chapter as { title, markdown }. The chapter page
+ * asks for this when there is no PDF to show: a Markdown chapter has none
+ * unless one was uploaded next to it. 404s for any other chapter.
+ */
+export function fetchChapterCourse(chapterId) {
+  return get(`/chapters/${encodeURIComponent(chapterId)}/course`);
+}

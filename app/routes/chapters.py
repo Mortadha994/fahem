@@ -36,10 +36,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.auth import auth
+from app.auth import access, auth
 from app.core import models
 from app.core.config import DEFAULT_PROBLEMS, LESSON_PDF_PATH
-from app.rag import chapter_store
+from app.rag import chapter_store, course_markdown
 
 ACTIVE = "active"
 COMING_SOON = "coming_soon"
@@ -136,13 +136,33 @@ def load_exercises(chapter_id: str) -> list[Exercise]:
         raw = raw.get("problems", [])
 
     wanted = str(chapter_id).strip().lower()
-    return [
+    base = [
         Exercise(id=str(p["id"]), question=str(p["question"]))
         for p in raw
         if str(p.get("chapitre", "")).strip().lower() == wanted
         and p.get("id")
         and p.get("question")
     ]
+    # Exercises added from Classroom (chapter_store.supplement_exercises). One
+    # that is already in the built-in list - same statement - is not listed twice.
+    seen_ids = {e.id for e in base}
+    seen_text = {_statement_key(e.question) for e in base}
+    for extra in chapter_store.supplement_exercises(wanted):
+        key = _statement_key(extra["question"])
+        if extra["id"] in seen_ids or key in seen_text:
+            continue
+        base.append(Exercise(id=extra["id"], question=extra["question"]))
+        seen_ids.add(extra["id"])
+        seen_text.add(key)
+    return base
+
+
+def _statement_key(question: str) -> str:
+    """The statement without the "Série N° k" heading line, case, punctuation
+    and spacing, cut short: enough to recognise the same exercise twice."""
+    lines = [ln for ln in question.splitlines() if not ln.strip().startswith("*Série")]
+    text = "".join(ch for ch in " ".join(lines).lower() if ch.isalnum())
+    return text[:80]
 
 
 router = APIRouter(prefix="/chapters", tags=["chapters"])
@@ -183,9 +203,23 @@ def list_chapters(user: models.User = Depends(auth.get_current_user)) -> list[Ch
     Scoped to the student's own niveau (from their profile), so a Bac student
     is not offered 2ème chapters and vice versa. The scope comes from the
     server-verified account, never a query parameter - the student cannot ask
-    for another year's list. A user with no niveau (an admin) gets every year.
+    for another year's list. An admin or a test account (full access) gets every
+    year; a student whose profile is empty gets none (app/auth/access.py).
     """
-    return catalogue(niveau=user.niveau)
+    return catalogue(niveau=access.listing_niveau(user))
+
+
+def _require_chapter_niveau(user: models.User, chapter_id: str) -> None:
+    """403 when the chapter belongs to another year than the user's.
+
+    The list above only hides other years' chapters; this is what stops a
+    student who types the address, or calls the API, from opening one. A chapter
+    that does not exist is left to the 404 each route already raises.
+    """
+    for chapter in catalogue():
+        if chapter.id == chapter_id:
+            access.require_niveau(user, chapter.niveau)
+            return
 
 
 @router.get("/{chapter_id}/exercises", response_model=list[Exercise])
@@ -194,6 +228,7 @@ def list_exercises(
     user: models.User = Depends(auth.get_current_user),
 ) -> list[Exercise]:
     """Exercises for one active chapter."""
+    _require_chapter_niveau(user, chapter_id)
     uploaded = _published_upload(chapter_id)
     if uploaded is not None:
         return [
@@ -211,6 +246,35 @@ def _published_upload(chapter_id: str):
     return chapter_store.published_chapter(chapter_id)
 
 
+class CourseText(BaseModel):
+    title: str
+    markdown: str
+
+
+@router.get("/{chapter_id}/course", response_model=CourseText)
+def chapter_course(
+    chapter_id: str,
+    user: models.User = Depends(auth.get_current_user),
+) -> CourseText:
+    """The course of a published Markdown chapter, as text.
+
+    A Markdown chapter has no PDF unless someone uploads one, so the chapter
+    page falls back to rendering this. 404 for anything else (built-in chapter,
+    PDF chapter, unpublished) - the page then has nothing to show and says so.
+    """
+    _require_chapter_niveau(user, chapter_id)
+    uploaded = _published_upload(chapter_id)
+    if uploaded is None or uploaded.source_kind != "markdown":
+        raise HTTPException(status_code=404, detail="no course text for this chapter")
+    path = chapter_store.markdown_path(chapter_id)
+    if not path.exists():
+        raise HTTPException(status_code=503, detail="lesson document is unavailable")
+    return CourseText(
+        title=uploaded.published_title or uploaded.title,
+        markdown=course_markdown.student_text(path.read_text(encoding="utf-8")),
+    )
+
+
 @router.get("/{chapter_id}/pdf")
 def chapter_pdf(
     chapter_id: str,
@@ -223,6 +287,7 @@ def chapter_pdf(
     defaults to attachment once a filename is set, so the disposition is
     stated explicitly.
     """
+    _require_chapter_niveau(user, chapter_id)
     uploaded = _published_upload(chapter_id)
     if uploaded is not None:
         path = chapter_store.pdf_path(chapter_id)

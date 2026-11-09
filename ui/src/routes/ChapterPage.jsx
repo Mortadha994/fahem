@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  fetchChapterCourse,
   fetchChapterPdf,
   fetchChapters,
   fetchExercises,
@@ -20,6 +21,8 @@ import {
 } from "../lib/exercises.js";
 import Skeleton from "../components/ui/Skeleton.jsx";
 import Badge from "../components/ui/Badge.jsx";
+import Markdown from "../components/Markdown.jsx";
+import { chapterNumber } from "../lib/chapterNumber.js";
 import { EXERCISE_STATUS, fetchProgress } from "../lib/progressApi.js";
 
 const DOC = "doc";
@@ -62,6 +65,8 @@ function ChapterView({ id }) {
   const [chapter, setChapter] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfFailed, setPdfFailed] = useState(false);
+  // A Markdown chapter has no PDF: its course is rendered from text instead.
+  const [courseText, setCourseText] = useState(null);
   const [exercises, setExercises] = useState(null);
   const [exosFailed, setExosFailed] = useState(false);
 
@@ -127,8 +132,19 @@ function ChapterView({ id }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err instanceof UnauthorizedError) onUnauthorized();
-        else setPdfFailed(true);
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized();
+          return;
+        }
+        // No PDF: a Markdown chapter shows its course as text. Only when that
+        // is missing too is the course really unavailable.
+        fetchChapterCourse(id)
+          .then((course) => !cancelled && setCourseText(course.markdown))
+          .catch((err2) => {
+            if (cancelled) return;
+            if (err2 instanceof UnauthorizedError) onUnauthorized();
+            else setPdfFailed(true);
+          });
       });
 
     return () => {
@@ -199,9 +215,9 @@ function ChapterView({ id }) {
           <Link to="/" className="page-back">
             ← Chapitres
           </Link>
-          <span className="chapter-head-id">Chapitre {id}</span>
+          <span className="chapter-head-id">Chapitre {chapterNumber(id)}</span>
         </div>
-        <h1>{chapter?.title ?? `Chapitre ${id}`}</h1>
+        <h1>{chapter?.title ?? `Chapitre ${chapterNumber(id)}`}</h1>
       </header>
 
       <div className="tabs" role="tablist" aria-label="Contenu du chapitre">
@@ -256,7 +272,14 @@ function ChapterView({ id }) {
         tabIndex={0}
         hidden={tab !== DOC}
       >
-        {pdfFailed ? (
+        {courseText ? (
+          <article
+            className="course-text surface"
+            aria-label={`Cours du chapitre ${chapterNumber(id)}${chapter?.title ? ` : ${chapter.title}` : ""}`}
+          >
+            <Markdown>{courseText}</Markdown>
+          </article>
+        ) : pdfFailed ? (
           <Alert className="page-alert">
             Impossible d'afficher le cours. Recharge la page pour réessayer.
           </Alert>
@@ -267,7 +290,7 @@ function ChapterView({ id }) {
             type="application/pdf"
             // Named, so a screen reader announces the embedded document
             // rather than an unlabelled frame (axe: object-alt).
-            aria-label={`Cours du chapitre ${id}${chapter?.title ? ` : ${chapter.title}` : ""}`}
+            aria-label={`Cours du chapitre ${chapterNumber(id)}${chapter?.title ? ` : ${chapter.title}` : ""}`}
           >
             {/* Shown only if the browser has no built-in PDF viewer. */}
             <p className="page-muted">

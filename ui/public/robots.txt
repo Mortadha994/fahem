@@ -1,0 +1,12 @@
+# Fahem - only the public pages are worth indexing; everything else needs a
+# sign-in and would only show crawlers the sign-in form.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /chat
+Disallow: /chapitre/
+Disallow: /progression
+Disallow: /connexion
+
+Sitemap: https://fahem-deploy.onrender.com/sitemap.xml

@@ -47,6 +47,7 @@ function accountForm(u) {
     niveau: u.niveau ?? "",
     section: u.section ?? "",
     plan: u.plan ?? "free",
+    fullAccess: Boolean(u.full_access),
     customLimit: Boolean(u.solve_rate_limit),
     perMinute: limit?.[1] ?? "5",
     perHour: limit?.[2] ?? "50",
@@ -163,6 +164,7 @@ export default function AdminUserDetail() {
     (control.niveau !== (account.niveau ?? "") ||
       control.section !== (account.section ?? "") ||
       control.plan !== (account.plan ?? "free") ||
+      control.fullAccess !== Boolean(account.full_access) ||
       control.customLimit !== Boolean(account.solve_rate_limit) ||
       (control.customLimit &&
         `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour` !==
@@ -178,6 +180,7 @@ export default function AdminUserDetail() {
     setBusy("account");
     const body = {
       plan: control.plan,
+      full_access: control.fullAccess,
       solve_rate_limit: control.customLimit
         ? `${Number(control.perMinute)}/minute;${Number(control.perHour)}/hour`
         : null,
@@ -458,6 +461,25 @@ export default function AdminUserDetail() {
                           </select>
                         </label>
                       </div>
+
+                      <fieldset className="ctl-field">
+                        <legend>Accès aux niveaux</legend>
+                        <label className="adm-check">
+                          <input
+                            type="checkbox"
+                            checked={control.fullAccess || account.role === "admin"}
+                            disabled={account.role === "admin"}
+                            onChange={(e) =>
+                              setControl((c) => ({ ...c, fullAccess: e.target.checked }))
+                            }
+                          />
+                          <span>
+                            {account.role === "admin"
+                              ? "Administrateur : voit tous les niveaux"
+                              : "Compte de test : voit tous les niveaux (sinon, uniquement son propre niveau)"}
+                          </span>
+                        </label>
+                      </fieldset>
 
                       <fieldset className="ctl-field">
                         <legend>Limite de requêtes</legend>

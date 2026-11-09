@@ -64,3 +64,36 @@ export const algoText = (text) =>
     .split("\n")
     .map((line) => toAlgoNotation(line)[0])
     .join("\n");
+
+// A remark about a declaration table the solution does not need ("Aucun type
+// nouveau n'est nécessaire, donc pas de T.D.N.T."): the browser twin of
+// strip_absent_table_notes in app/grading/algo_notation.py. One line, never a
+// table row, never inside a code fence.
+const ABSENCE =
+  /aucun|aucune|pas d[e']|pas besoin|sans |néant|neant|inutile|n[’']est (?:pas )?(?:nécessaire|necessaire|utile)|n[’']y a pas/i;
+const TABLE_WORDS =
+  /t\.d\.n\.t|t\.d\.o\.l|tdnt|tdol|nouveaux? types?|types? nouveaux?|objets? locau[xl]|types? non primitifs?/i;
+
+export function stripAbsentTableNotes(markdown) {
+  const text = String(markdown);
+  let inFence = false;
+  let removed = 0;
+  const kept = [];
+  for (const line of text.split("\n")) {
+    const s = line.trim();
+    if (s.startsWith("```")) inFence = !inFence;
+    else if (
+      !inFence &&
+      s &&
+      !s.startsWith("|") &&
+      s.length <= 300 &&
+      ABSENCE.test(s) &&
+      TABLE_WORDS.test(s)
+    ) {
+      removed += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  return removed ? kept.join("\n").replace(/\n{3,}/g, "\n\n") : text;
+}

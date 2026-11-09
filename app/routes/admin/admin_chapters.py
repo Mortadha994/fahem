@@ -26,15 +26,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.auth import auth
+from app.core import chapter_ids
 from app.core.config import MAX_CHAPTER_PDF_BYTES
 from app.core.db import session_scope
 from app.core.models import (
     CHAPTER_PROCESSING,
     CHAPTER_PUBLISHING,
+    NIVEAUX,
     ChapterChunk,
     ChapterExercise,
     UploadedChapter,
 )
+from app.llm import answer_cache
 from app.rag import chapter_store as cs
 from app.rag import course_markdown
 
@@ -49,6 +52,15 @@ _BUSY = (CHAPTER_PROCESSING, CHAPTER_PUBLISHING)
 
 
 # --- schemas ------------------------------------------------------------------------
+
+
+class AnswerCacheState(BaseModel):
+    """How much of a chapter is precomputed. `total` is exercises × the modes
+    the cache covers, so "12 / 38" reads as an amount of work left rather than
+    a number needing explanation."""
+
+    ready: int
+    total: int
 
 
 class ChapterSummary(BaseModel):
@@ -191,11 +203,33 @@ async def _read_source(
     except UnicodeDecodeError:
         raise HTTPException(status_code=415, detail="Le fichier .md doit être encodé en UTF-8.")
     try:
-        course = course_markdown.parse(text, chapter_id)
+        course = course_markdown.parse(text)
     except course_markdown.ParseError as exc:
         raise HTTPException(
             status_code=422,
             detail={"message": "Le cours ne respecte pas le modèle.", "problems": exc.problems},
+        )
+    # The course carries its year and its number inside that year; the id is
+    # derived from the two (app/core/chapter_ids.py), so "chapitre: 1" of
+    # 3ème is chapter 31 here without the file saying so.
+    problem = None
+    if course.niveau not in NIVEAUX:
+        problem = f"En-tête : niveau {course.niveau!r} inconnu (attendu : {', '.join(NIVEAUX)})."
+    else:
+        try:
+            expected = chapter_ids.platform_id(course.niveau, course.chapitre)
+        except ValueError as exc:
+            problem = f"En-tête : {exc}."
+        else:
+            if expected != chapter_id:
+                problem = (
+                    f"En-tête : le chapitre {course.chapitre} de {course.niveau} porte le numéro "
+                    f"{expected} dans Fahem, mais le fichier est envoyé comme chapitre {chapter_id!r}."
+                )
+    if problem:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Le cours ne respecte pas le modèle.", "problems": [problem]},
         )
     return "markdown", data, course
 
@@ -289,14 +323,23 @@ async def upload_chapter(
     id: str = Query(..., description="chapter number, e.g. 2"),
     title: str | None = Query(None, max_length=200, description="required for a PDF"),
     filename: str = Query("chapitre.pdf", max_length=255),
+    niveau: str = Query("2eme", description="year of a PDF chapter; a Markdown course names its own"),
 ) -> ChapterSummary:
     """Create a chapter from a PDF or a Markdown course; import in the background."""
     chapter_id = _valid_id(id.strip())
     kind, data, course = await _read_source(request, filename, chapter_id)
-    # A Markdown course carries its own title in the header.
+    # A Markdown course carries its own title and year in the header.
     final_title = course.titre if course else (title or "").strip()
     if not final_title:
         raise HTTPException(status_code=422, detail="Le titre du chapitre est requis.")
+    final_niveau = course.niveau if course else niveau.strip().lower()
+    if final_niveau not in NIVEAUX:
+        raise HTTPException(status_code=422, detail=f"Niveau inconnu : {niveau!r}.")
+    if chapter_ids.niveau_of_id(chapter_id) != final_niveau:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Le numéro {chapter_id} n'appartient pas aux chapitres de {final_niveau}.",
+        )
 
     with session_scope() as s:
         if s.get(UploadedChapter, chapter_id) is not None:
@@ -306,7 +349,7 @@ async def upload_chapter(
             )
         row = UploadedChapter(
             id=chapter_id,
-            niveau="2eme",
+            niveau=final_niveau,
             title=final_title,
             topics=course.notions if course else "",
             status=CHAPTER_PROCESSING,
@@ -405,8 +448,36 @@ def publish_chapter(chapter_id: str, background: BackgroundTasks) -> ChapterSumm
     if not cs.begin_publish(chapter_id):
         raise HTTPException(status_code=409, detail="Une publication est déjà en cours.")
     background.add_task(cs.publish, chapter_id)
+    # The exercises the students will see are about to change, so whatever was
+    # cached for this chapter answers the previous ones. Dropped rather than
+    # left to the statement hash: the hash would catch a changed exercise, but
+    # a *removed* one would keep its answer in the table forever.
+    background.add_task(answer_cache.forget_chapter, chapter_id)
+    # Then fill it again, in the background, at a priority below every
+    # student - see app/llm/answer_cache.py. Queued after publish so it reads
+    # the new snapshot, and harmless if it fails: a missing answer is a live
+    # request, not an error.
+    background.add_task(answer_cache.warm_chapter, chapter_id)
     with session_scope() as s:
         return ChapterSummary(**_summary(_get(s, chapter_id)))
+
+
+@router.get("/{chapter_id}/answers", response_model=AnswerCacheState)
+def answer_cache_state(chapter_id: str) -> AnswerCacheState:
+    """How many of this chapter's answers are precomputed."""
+    return AnswerCacheState(**answer_cache.progress(chapter_id))
+
+
+@router.post("/{chapter_id}/answers", response_model=AnswerCacheState, status_code=status.HTTP_202_ACCEPTED)
+def warm_answers(chapter_id: str, background: BackgroundTasks) -> AnswerCacheState:
+    """Generate the answers this chapter is still missing.
+
+    Idempotent, so pressing it twice costs nothing the second time: the job
+    looks each answer up before generating it. Returns the state as it is
+    now - the count rises as the job works, and the console re-reads it.
+    """
+    background.add_task(answer_cache.warm_chapter, chapter_id)
+    return AnswerCacheState(**answer_cache.progress(chapter_id))
 
 
 @router.post("/{chapter_id}/unpublish", response_model=ChapterDetail)

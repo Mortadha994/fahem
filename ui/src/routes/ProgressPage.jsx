@@ -13,6 +13,7 @@ import EmptyState from "../components/ui/EmptyState.jsx";
 import Skeleton from "../components/ui/Skeleton.jsx";
 import CountUp from "../components/CountUp.jsx";
 import { Burst } from "../components/learning/Learning.jsx";
+import { chapterNumber } from "../lib/chapterNumber.js";
 
 /**
  * Ma progression: where the student is in each chapter (réussis by themselves,
@@ -94,7 +95,7 @@ export default function ProgressPage() {
               >
                 <header className="prog-card-head">
                   <div>
-                    <p className="prog-card-meta">Chapitre {c.id}</p>
+                    <p className="prog-card-meta">Chapitre {chapterNumber(c.id)}</p>
                     <h2 className="prog-card-title">
                       <Link to={`/chapitre/${c.id}`}>{c.title}</Link>
                     </h2>
@@ -183,7 +184,7 @@ export default function ProgressPage() {
                         >
                           <span className="prog-check-title">{r.title}</span>
                           <span className="prog-check-meta">
-                            Chapitre {r.chapitre}
+                            Chapitre {chapterNumber(r.chapitre)}
                             {r.checks > 1 ? ` · ${r.checks} essais` : ""}
                           </span>
                           {v ? (
