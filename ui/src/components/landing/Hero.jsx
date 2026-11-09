@@ -61,6 +61,10 @@ export default function Hero({ exercises }) {
       <div className="fx-hero-inner">
         <div className="fx-hero-copy">
           <m.h1 className="fx-h1" {...rise(0.06)}>
+            {/* The brand in the page's one heading, for screen readers and
+                search engines ("fahem" should find this page); the bar above
+                already shows it, so it stays off screen. */}
+            <span className="sr-only">Fahem — </span>
             Ton prof d'algo,
             <br />
             <span className="fx-h1-grad">disponible 24/7.</span>
