@@ -43,9 +43,9 @@ from app.llm import ai_control, answer_cache, gatekeeper, llm_queue
 from app.llm.generate import GROQ_MODEL, generate, pick_backend
 from app.llm.llm_stream import stream_groq
 from app.llm.prompts import CHECK_CORRECTION_HEADING, build_messages
-from app.rag import chapter_store
+from app.rag import chapter_store, rag_store
 from app.rag.context import build_context
-from app.rag.rag_store import get_model
+from app.rag.rag_store import COLLECTION_NAME, get_model
 from app.routes import attachments, chapters, chat_history, progress, public_overview
 from app.routes.admin import (
     admin,
@@ -310,7 +310,29 @@ class SolveResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
+    # Render's own health check polls this every few seconds: it must stay
+    # cheap and must not depend on Qdrant, or a Qdrant outage would get the
+    # whole service restarted in a loop. /health/qdrant is the deep check.
     return {"status": "ok", "model": GROQ_MODEL}
+
+
+@app.get("/health/qdrant")
+def health_qdrant(response: Response) -> dict:
+    """One small real read from the course store (Qdrant Cloud).
+
+    The keep-awake workflow (.github/workflows/keep-awake.yml) calls this
+    every few minutes, for two reasons: it keeps the free Qdrant cluster in
+    use, where /health alone only ever woke Render; and it turns a Qdrant
+    outage into a failed workflow run, instead of something only a student
+    finds, as the generic "Une erreur est survenue" on every question.
+    """
+    try:
+        points = rag_store.get_client().count(COLLECTION_NAME, exact=False).count
+    except Exception as exc:  # unreachable, refused, or the collection is gone
+        log.warning("qdrant health check failed: %s", exc)
+        response.status_code = 503
+        return {"status": "error", "qdrant": "unavailable"}
+    return {"status": "ok", "qdrant": "ok", "points": points}
 
 
 @app.post("/solve", response_model=SolveResponse)

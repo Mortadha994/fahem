@@ -36,6 +36,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
+import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 
@@ -100,8 +101,23 @@ def get_model(model_name: str = MODEL_NAME) -> Any:
     return _model
 
 
+# How many times a failed *connection* to Qdrant is retried before the error
+# reaches the caller. In production (Qdrant Cloud), a TLS handshake reset by
+# the peer ("[Errno 104] Connection reset by peer" in start_tls) failed every
+# lookup of a solve, and the student got the generic error. httpcore retries
+# only connection setup - TCP connect and TLS handshake, with backoff
+# 0s, 0.5s, 1s - so no request is ever sent twice: safe for writes too.
+QDRANT_CONNECT_RETRIES = 3
+
+
 def get_client(url: str = QDRANT_URL) -> QdrantClient:
-    return QdrantClient(url=url, api_key=QDRANT_API_KEY)
+    # `transport` is passed through QdrantClient's **kwargs to its httpx
+    # client. Timeouts still apply: they travel with each request.
+    return QdrantClient(
+        url=url,
+        api_key=QDRANT_API_KEY,
+        transport=httpx.HTTPTransport(retries=QDRANT_CONNECT_RETRIES),
+    )
 
 
 def point_id(chunk_id: str) -> str:
