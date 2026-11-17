@@ -1,11 +1,18 @@
-# Keeps the free Render instance of Fahem awake.
+# Keeps the free Render instance of Fahem awake - and its Qdrant Cloud cluster
+# in use.
 #
 # Render's free web service sleeps after 15 minutes without a request, and the
-# next student then waits about a minute for it to wake. This pings the health
-# endpoint every 5 minutes (GitHub's shortest schedule; runs are often a few
-# minutes late, which still beats 15). The public repository has unlimited
+# next student then waits about a minute for it to wake. This pings the
+# /api/health/qdrant endpoint every 5 minutes (GitHub's shortest schedule;
+# runs are often a few minutes late, which still beats 15). The public repository has unlimited
 # Actions minutes; a failed run emails whoever last edited this schedule, so
 # it doubles as a down alert.
+#
+# /api/health/qdrant, not /api/health: it also makes one small read from the
+# course store. On 2026-11-17 the Qdrant connection was being reset while
+# /api/health still answered 200, so every question failed and nothing here
+# noticed. A 503 from this endpoint means Render is up but Qdrant is not:
+# check the cluster at cloud.qdrant.io.
 #
 # GitHub pauses scheduled workflows after 60 days without a commit to the
 # repository: re-enable it from the Actions tab if it stops.
@@ -27,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ping /api/health
+      - name: Ping /api/health/qdrant
         env:
-          URL: https://fahem-deploy.onrender.com/api/health
+          URL: https://fahem-deploy.onrender.com/api/health/qdrant
         run: |
           for attempt in 1 2 3; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -m 90 "$URL" || true)
