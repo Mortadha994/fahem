@@ -17,7 +17,9 @@ import { fetchChatFeatures, sendFeedback, titleFrom } from "../lib/sessions.js";
 import {
   ACTION_LABELS,
   PRACTICE_LEVELS,
+  MODES,
   currentExercise,
+  discussionMode,
   guidedState,
 } from "../lib/learning.js";
 import { fetchChapters, fetchExercises } from "../lib/chapters.js";
@@ -211,15 +213,16 @@ export default function Chat() {
       cancelled = true;
     };
   }, []);
-  // The mode the student picked per discussion; otherwise a discussion with a
-  // guided exercise under way stays guided, and a new one takes the default.
+  // A discussion's mode is fixed by its first question (discussionMode).
+  // Before that, the mode the student picked for it; otherwise the default.
   const [modeById, setModeById] = useState({});
   const modeFor = useCallback(
     (session) => {
       if (!features.guided) return "full";
+      const locked = session ? discussionMode(session.messages) : null;
+      if (locked) return locked;
       const picked = session ? modeById[session.id] : modeById.__new__;
       if (picked) return picked;
-      if (session && guidedState(session.messages)) return "guided";
       return features.defaultMode === "guided" ? "guided" : "full";
     },
     [features, modeById]
@@ -326,6 +329,17 @@ export default function Chat() {
     if (blank) setActiveId(blank.id);
     else createSession(chapterChoice);
     setDraft("");
+    composerRef.current?.focus();
+  };
+
+  // The other mode, from a discussion already in one: a new discussion in
+  // that mode. The draft stays, so a statement typed in the wrong mode is
+  // not lost.
+  const startInMode = (mode) => {
+    const blank = sessions.find((s) => !s.messages?.length);
+    const id = blank ? blank.id : createSession(chapterChoice).id;
+    if (blank) setActiveId(blank.id);
+    setModeById((prev) => ({ ...prev, [id]: mode }));
     composerRef.current?.focus();
   };
 
@@ -938,6 +952,8 @@ export default function Chat() {
   // attaches it again (or a better one) instead.
   // The guided exercise under way, if any (its step decides the buttons).
   const activeGuided = useMemo(() => guidedState(active?.messages ?? []), [active]);
+  // The mode this discussion is in, once its first question is asked.
+  const lockedMode = useMemo(() => discussionMode(active?.messages), [active]);
   const lastUserHasText = Boolean(
     messages.findLast((msg) => msg.role === "user")?.content
   );
@@ -981,7 +997,18 @@ export default function Chat() {
             {isEmpty ? "Nouvelle discussion" : active.title}
           </h1>
           <p className="chat-head-meta">
-            <span className="chat-head-chip">Chapitre {chapterNumber(currentChapter)}</span>
+            <span className="chat-head-chip">
+              Chapitre {chapterNumber(currentChapter)}
+            </span>
+            {features.guided && lockedMode && (
+              <span
+                className={`chat-head-mode is-${lockedMode}`}
+                title={MODES[lockedMode].title}
+              >
+                <span aria-hidden="true">{MODES[lockedMode].icon}</span>{" "}
+                {MODES[lockedMode].label}
+              </span>
+            )}
             <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
           </p>
         </div>
@@ -1219,6 +1246,7 @@ export default function Chat() {
                         : undefined
                     }
                     guidedAvailable={features.guided}
+                    discussionMode={features.guided ? lockedMode : null}
                     fresh={msg.id === freshId}
                     live={msg.id === lastMessageId}
                     onPropose={
@@ -1266,6 +1294,8 @@ export default function Chat() {
         onCheck={features.check ? handleCheck : undefined}
         mode={modeFor(active)}
         onModeChange={features.guided ? chooseMode : undefined}
+        modeLocked={Boolean(lockedMode)}
+        onSwitchMode={features.guided ? startInMode : undefined}
         onStop={handleStop}
         streaming={streaming}
         disabled={activeLoading}

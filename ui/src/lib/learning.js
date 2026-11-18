@@ -50,6 +50,37 @@ export function guidedState(messages) {
   return null;
 }
 
+/**
+ * The mode a discussion is in, fixed by its first question: "guided" or
+ * "full", or null while nothing has been asked yet. "Solution complète" and
+ * "Mode guidé" are separate discussions: to change mode the student starts a
+ * new one, so a guided exercise and a full solution never share a thread.
+ * Vérifier ma réponse and Exercice similaire are actions inside either mode,
+ * so they do not decide it.
+ */
+export function discussionMode(messages) {
+  for (const msg of messages ?? []) {
+    if (msg.role !== "user") continue;
+    if (msg.mode === "check" || msg.mode === "practice") continue;
+    return msg.mode === "guided" ? "guided" : "full";
+  }
+  return null;
+}
+
+/** What each mode is called, wherever the chat names it. */
+export const MODES = {
+  full: {
+    icon: "📖",
+    label: "Solution complète",
+    title: "La solution entière, avec le tableau et la trace",
+  },
+  guided: {
+    icon: "🧭",
+    label: "Mode guidé",
+    title: "Des indices étape par étape avant la solution",
+  },
+};
+
 // Must match prompts.PRACTICE_HEADING.
 export const PRACTICE_HEADING = "### Exercice similaire";
 
