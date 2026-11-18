@@ -55,6 +55,9 @@ function Message({
   onPractice,
   onPracticeStart,
   guidedAvailable,
+  // The discussion's mode (learning.discussionMode): a generated exercise is
+  // taken on in that mode only, so the two modes never mix in one thread.
+  discussionMode = null,
   fresh = false,
   live = false,
 }) {
@@ -193,10 +196,10 @@ function Message({
 
           {/* The guided exercise's next move: another hint, the student's own
               attempt (checked), or the whole solution. */}
-          {/* A generated exercise: take it on, guided or not, or answer it. */}
+          {/* A generated exercise: take it on in the discussion's mode, or answer it. */}
           {finished && message.practice && (onPracticeStart || onPropose) && (
             <ActionRow fresh={fresh}>
-              {onPracticeStart && guidedAvailable && (
+              {onPracticeStart && guidedAvailable && discussionMode !== "full" && (
                 <ActionButton
                   tone="primary"
                   onClick={() => onPracticeStart(practiceStatement(content), "guided")}
@@ -212,7 +215,7 @@ function Message({
                   <span aria-hidden="true">✍️</span> Je propose ma solution
                 </ActionButton>
               )}
-              {onPracticeStart && (
+              {onPracticeStart && discussionMode !== "guided" && (
                 <ActionButton
                   tone="quiet"
                   onClick={() => onPracticeStart(practiceStatement(content), "full")}

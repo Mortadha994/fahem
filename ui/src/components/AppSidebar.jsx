@@ -1,10 +1,12 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import Button from "./ui/Button.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { useAuth } from "../lib/authContext.js";
 import { isAdmin } from "../lib/auth.js";
 import { profileLabel } from "../lib/profile.js";
 import { SCOPE_LABEL } from "../config.js";
+import { useChatSessions } from "../lib/chatSessionsContext.js";
+import { MODES } from "../lib/learning.js";
 
 /**
  * The app's one sidebar: where a student is, where they can go, and who they
@@ -27,6 +29,11 @@ export default function AppSidebar({ onNavigate }) {
   const initial = label.trim().charAt(0).toUpperCase() || "?";
 
   const linkClass = ({ isActive }) => `appnav-link${isActive ? " appnav-link-on" : ""}`;
+  // The chat's two modes, each its own entry: highlighted while the chat is
+  // open in it (the chat publishes its mode through the sessions context).
+  const { chatMode } = useChatSessions();
+  const { pathname } = useLocation();
+  const modes = chatMode.guided ? ["full", "guided"] : [];
 
   return (
     <aside className="appnav" aria-label="Navigation principale">
@@ -50,6 +57,28 @@ export default function AppSidebar({ onNavigate }) {
             <NavLink to="/chat" className={linkClass} onClick={onNavigate}>
               Poser une question
             </NavLink>
+            {modes.length > 0 && (
+              <ul className="appnav-sublist" aria-label="Modes de réponse">
+                {modes.map((mode) => {
+                  const on = pathname === "/chat" && chatMode.current === mode;
+                  return (
+                    <li key={mode}>
+                      <Link
+                        to="/chat"
+                        state={{ mode }}
+                        className={`appnav-link appnav-sublink${on ? " appnav-sublink-on" : ""}`}
+                        aria-current={on ? "true" : undefined}
+                        title={MODES[mode].title}
+                        onClick={onNavigate}
+                      >
+                        <span aria-hidden="true">{MODES[mode].icon}</span>{" "}
+                        {MODES[mode].label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </li>
           <li>
             <NavLink to="/progression" className={linkClass} onClick={onNavigate}>

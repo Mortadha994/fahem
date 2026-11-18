@@ -3,6 +3,9 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { ATTACHMENT_TYPES } from "../lib/api.js";
 import { SPRING_HOVER } from "../lib/motion.js";
+import { MODES } from "../lib/learning.js";
+
+const OTHER_MODE = { full: "guided", guided: "full" };
 
 /**
  * The message box: an auto-resizing textarea on a card, with the send (or
@@ -17,7 +20,9 @@ import { SPRING_HOVER } from "../lib/motion.js";
  * so this component only collects it and shows it.
  *
  * Modes: `onModeChange` shows the Solution complète / Mode guidé switch
- * (`mode` is the discussion's), and `onCheck` the "Vérifier ma réponse"
+ * (`mode` is the discussion's). Once the discussion has started, its mode is
+ * fixed (`modeLocked`): the switch gives way to the mode's name and a button
+ * that opens a new discussion in the other one (`onSwitchMode`). And `onCheck` the "Vérifier ma réponse"
  * button, which sends the box's content to be corrected instead of answered.
  * Either is hidden when the admin turned it off.
  *
@@ -38,6 +43,8 @@ export default function Composer({
   onCheck,
   mode = "full",
   onModeChange,
+  modeLocked = false,
+  onSwitchMode,
   onStop,
   streaming,
   disabled = false,
@@ -212,7 +219,33 @@ export default function Composer({
         )}
         {(onModeChange || onCheck) && (
           <div className="composer-modes">
-            {onModeChange && (
+            {onModeChange && modeLocked && (
+              <div className={`mode-locked is-${mode}`}>
+                <span className="mode-locked-name" title={MODES[mode].title}>
+                  <span aria-hidden="true">{MODES[mode].icon}</span> {MODES[mode].label}
+                </span>
+                {onSwitchMode && (
+                  <button
+                    type="button"
+                    className="mode-locked-switch"
+                    onClick={() => onSwitchMode(OTHER_MODE[mode])}
+                    disabled={streaming}
+                    title={`Ouvre une nouvelle discussion en ${MODES[OTHER_MODE[mode]].label}`}
+                  >
+                    <span className="mode-locked-icon" aria-hidden="true">
+                      {MODES[OTHER_MODE[mode]].icon}
+                    </span>
+                    <span className="mode-locked-long">
+                      Nouvelle discussion en {MODES[OTHER_MODE[mode]].label}
+                    </span>
+                    <span className="mode-locked-short">
+                      Passer en {OTHER_MODE[mode] === "guided" ? "guidé" : "solution"}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+            {onModeChange && !modeLocked && (
               <div
                 className={`mode-switch is-${mode}`}
                 role="radiogroup"
@@ -227,46 +260,40 @@ export default function Composer({
                   animate={{ x: mode === "guided" ? "100%" : "0%" }}
                   transition={SPRING_HOVER}
                 />
-                {[
-                  [
-                    "full",
-                    "📖",
-                    "Solution complète",
-                    "La solution entière, avec le tableau et la trace",
-                  ],
-                  [
-                    "guided",
-                    "🧭",
-                    "Mode guidé",
-                    "Des indices étape par étape avant la solution",
-                  ],
-                ].map(([value, icon, label, title]) => (
-                  <m.button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === value}
-                    className={`mode-option${mode === value ? " is-on" : ""}`}
-                    onClick={() => onModeChange(value)}
-                    disabled={streaming}
-                    title={title}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <m.span
-                      className="mode-icon"
-                      aria-hidden="true"
-                      animate={
-                        mode === value
-                          ? { scale: [1, 1.35, 1], rotate: [0, -12, 0] }
-                          : { scale: 1 }
-                      }
-                      transition={{ duration: 0.45 }}
+                {["full", "guided"]
+                  .map((value) => [
+                    value,
+                    MODES[value].icon,
+                    MODES[value].label,
+                    MODES[value].title,
+                  ])
+                  .map(([value, icon, label, title]) => (
+                    <m.button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === value}
+                      className={`mode-option${mode === value ? " is-on" : ""}`}
+                      onClick={() => onModeChange(value)}
+                      disabled={streaming}
+                      title={title}
+                      whileTap={{ scale: 0.95 }}
                     >
-                      {icon}
-                    </m.span>
-                    <span className="mode-label">{label}</span>
-                  </m.button>
-                ))}
+                      <m.span
+                        className="mode-icon"
+                        aria-hidden="true"
+                        animate={
+                          mode === value
+                            ? { scale: [1, 1.35, 1], rotate: [0, -12, 0] }
+                            : { scale: 1 }
+                        }
+                        transition={{ duration: 0.45 }}
+                      >
+                        {icon}
+                      </m.span>
+                      <span className="mode-label">{label}</span>
+                    </m.button>
+                  ))}
               </div>
             )}
             {onCheck && (

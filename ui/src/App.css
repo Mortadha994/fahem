@@ -508,6 +508,19 @@ h3 {
   color: var(--fg);
   font-weight: 600;
 }
+/* The discussion's mode (Solution complète / Mode guidé), fixed once it starts. */
+.chat-head-mode {
+  flex: none;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--fg);
+  font-weight: 600;
+}
+.chat-head-mode.is-guided {
+  color: var(--accent);
+}
 .chat-head-scope {
   overflow: hidden;
   white-space: nowrap;
@@ -2343,6 +2356,25 @@ h3 {
 .appnav-link:focus-visible {
   outline: 2px solid transparent;
   box-shadow: var(--focus-ring);
+}
+/* The chat's two modes, under "Poser une question" (AppSidebar.jsx). */
+.appnav-sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+}
+.appnav-sublink {
+  min-height: 2.25rem;
+  gap: 0.4em;
+}
+.appnav-sublink-on,
+.appnav-sublink-on:hover {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--bg-alt);
 }
 
 /* Pinned to the bottom: identity is reference, not navigation. */
@@ -6474,5 +6506,80 @@ h3 {
   }
   .lp-parents {
     padding: var(--space-4);
+  }
+}
+
+/* --- composer: the discussion's mode, once fixed (Composer.jsx modeLocked) ------------------------ */
+.mode-locked {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.mode-locked-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.mode-locked.is-guided .mode-locked-name {
+  color: var(--accent);
+}
+.mode-locked-switch {
+  min-height: 2rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.mode-locked-switch:hover:not(:disabled) {
+  color: var(--fg);
+}
+.mode-locked-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.mode-locked-switch:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+.mode-locked-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  text-decoration: none;
+}
+.mode-locked-long,
+.mode-locked-short {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mode-locked-short {
+  display: none;
+}
+@media (max-width: 560px) {
+  .mode-locked {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+  .mode-locked-long {
+    display: none;
+  }
+  .mode-locked-short {
+    display: inline;
   }
 }

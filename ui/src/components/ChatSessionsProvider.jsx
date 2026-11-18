@@ -67,6 +67,9 @@ export default function ChatSessionsProvider({ children }) {
   const [sessions, setSessions] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [historyStatus, setHistoryStatus] = useState("loading"); // loading|ready|error
+  // The mode the chat shows (Solution complète / Mode guidé) and whether
+  // Mode guidé is on, published by the chat for the sidebar's mode entries.
+  const [chatMode, setChatMode] = useState({ current: null, guided: true });
   const [retryTick, setRetryTick] = useState(0);
 
   // id -> the payload last saved, as a string. What makes "changed?" cheap.
@@ -290,6 +293,8 @@ export default function ChatSessionsProvider({ children }) {
       setVersion,
       flush,
       historyStatus,
+      chatMode,
+      setChatMode,
     }),
     [
       sessions,
@@ -302,6 +307,7 @@ export default function ChatSessionsProvider({ children }) {
       setVersion,
       flush,
       historyStatus,
+      chatMode,
     ]
   );
 
