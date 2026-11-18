@@ -43,6 +43,7 @@ from app.llm import ai_control, answer_cache, gatekeeper, llm_queue
 from app.llm.generate import GROQ_MODEL, generate, pick_backend
 from app.llm.llm_stream import stream_groq
 from app.llm.prompts import CHECK_CORRECTION_HEADING, build_messages
+from app.modes import full, guided
 from app.rag import chapter_store
 from app.rag.context import build_context
 from app.rag.rag_store import get_model
@@ -534,15 +535,7 @@ def skips_classifier(payload: SolveRequest, memory: list, note: str | None) -> b
         return True
     if payload.mode == "practice" and runtime_settings.get("practice_enabled"):
         return payload.exercise_trusted
-    if payload.mode != "guided" or not runtime_settings.get("guided_mode_enabled"):
-        return False
-    if not payload.exercise_trusted:
-        return False
-    return bool(payload.action) or bool(
-        payload.step
-        and session_memory.is_follow_up(payload.problem, memory, note)
-        and not session_memory.looks_like_statement(payload.problem)
-    )
+    return guided.skips_classifier(payload, memory, note)
 
 
 def learning_route(
@@ -553,13 +546,11 @@ def learning_route(
     The admin switches decide first: with a mode turned off, a request in that
     mode is answered the normal way. Then:
       - CHECK: the button, or a message asking to check pasted work;
-      - GUIDED: a new statement starts at step 1; a button moves the step on;
-        anything else in an exercise under way stays at its step (a pasted
-        solution there is checked);
-      - otherwise FOLLOW_UP or the classifier's route, as before.
+      - GUIDED: whatever guided.route claims (app/modes/guided.py);
+      - otherwise the full solution: FOLLOW_UP or the classifier's route
+        (app/modes/full.py).
     """
     check_on = bool(runtime_settings.get("check_answer_enabled"))
-    guided_on = bool(runtime_settings.get("guided_mode_enabled"))
     if (
         payload.mode == "practice"
         and payload.exercise_trusted
@@ -575,20 +566,10 @@ def learning_route(
         or (route in ("CODE", "PROBLEM") and answer_check.looks_like_check(payload.problem))
     ):
         return "CHECK", None, False
-    if guided_on and payload.mode == "guided":
-        in_exercise = bool(payload.step and payload.exercise)
-        in_exercise = in_exercise and payload.exercise_trusted
-        if in_exercise and payload.action == "show_solution":
-            return "GUIDED", 4, False
-        if in_exercise and payload.action == "next_step":
-            return "GUIDED", min(4, payload.step + 1), False
-        if route == "PROBLEM" and not follow:
-            return "GUIDED", 1, True
-        if in_exercise:
-            if route == "CODE" and check_on:
-                return "CHECK", None, False
-            return "GUIDED", payload.step, False
-    return ("FOLLOW_UP" if follow else route), None, False
+    claimed = guided.route(payload, route, follow, check_on)
+    if claimed is not None:
+        return claimed
+    return full.prompt_route(route, follow), None, False
 
 
 PRACTICE_LIMIT_MESSAGE = (
@@ -915,16 +896,7 @@ def solve_stream(
         """
         if not payload.exercise_id or payload.history:
             return None
-        if payload.mode == "full":
-            return (models.ANSWER_MODE_FULL, 0)
-        if (
-            payload.mode == "guided"
-            and not payload.step
-            and not payload.action
-            and runtime_settings.get("guided_mode_enabled")
-        ):
-            return (models.ANSWER_MODE_GUIDED, 1)
-        return None
+        return full.cache_target(payload) or guided.cache_target(payload)
 
     def cache_hit():
         """The stored answer for this request, or None. Never raises: a cache
@@ -944,21 +916,17 @@ def solve_stream(
         # with no queue, no 429 and nothing against the daily token budget.
         hit = cache_hit()
         if hit is not None:
-            guided = (
-                {"step": 1, "exerciseId": payload.exercise_id}
-                if payload.mode == "guided"
-                else None
+            guided_state = (
+                guided.state(1, payload.exercise_id) if payload.mode == guided.MODE else None
             )
-            route_label = "GUIDED" if payload.mode == "guided" else "PROBLEM"
+            route_label = guided.ROUTE if guided_state else full.ROUTE
             # The same verdict a live answer of this shape would carry. Not a
             # status of its own ("cached"): the chat renders the syntax badge
             # off these three values, and a fourth would simply not draw.
             # A guided hint vouches for nothing, exactly as at line ~1190.
-            has_solution = _has_solution_table(hit.answer) and route_label != "GUIDED"
+            has_solution = _has_solution_table(hit.answer) and not guided_state
             status_value = (
-                "warned"
-                if hit.warnings and has_solution
-                else ("clean" if has_solution else "none")
+                "warned" if hit.warnings and has_solution else ("clean" if has_solution else "none")
             )
             version = persist(
                 hit.answer,
@@ -967,14 +935,14 @@ def solve_stream(
                 warnings=hit.warnings if has_solution else [],
                 pinned=hit.pinned,
                 retrieved=hit.retrieved,
-                learning=guided,
+                learning=guided_state,
             )
             yield from _gatekeeper_stream(
                 hit.answer,
                 hit.model,
                 payload,
                 started,
-                done_extra(route_label, version, guided),
+                done_extra(route_label, version, guided_state),
                 pinned=hit.pinned,
                 retrieved=hit.retrieved,
                 warnings=hit.warnings,
@@ -1047,14 +1015,14 @@ def solve_stream(
             else (payload.exercise_id or payload.user_message_id)
         )
         findings = answer_check.precheck(payload.problem) if prompt_route == "CHECK" else []
-        guided = {"step": step, "exerciseId": exercise_id} if prompt_route == "GUIDED" else None
+        guided_state = guided.state(step, exercise_id) if prompt_route == guided.ROUTE else None
 
         try:
             context = build_context(
                 # A button's text ("Indice suivant") retrieves nothing useful;
                 # the exercise does.
                 session_memory.retrieval_query(
-                    exercise if prompt_route == "GUIDED" else payload.problem, memory
+                    exercise if guided_state else payload.problem, memory
                 ),
                 niveau=payload.niveau,
                 chapitre=payload.chapitre,
@@ -1087,9 +1055,7 @@ def solve_stream(
             memory=memory_text,
             step=step,
             exercise=exercise,
-            # Neither a new exercise nor a button: the student answering the
-            # tutor's question at this step.
-            reply=prompt_route == "GUIDED" and not starts_exercise and not payload.action,
+            reply=bool(guided_state) and guided.is_reply(payload, starts_exercise),
             difficulty=payload.difficulty,
             precheck=answer_check.findings_block(findings) if prompt_route == "CHECK" else None,
         )
@@ -1115,7 +1081,7 @@ def solve_stream(
                 "niveau": payload.niveau,
                 "chapitre": payload.chapitre,
                 "route": prompt_route,
-                **({"guided": guided} if guided else {}),
+                **({"guided": guided_state} if guided_state else {}),
                 "pinned": pinned,
                 "retrieved": retrieved,
             },
@@ -1170,7 +1136,7 @@ def solve_stream(
                 [],
                 pinned,
                 retrieved,
-                {"guided": guided} if guided else None,
+                {"guided": guided_state} if guided_state else None,
             )
             raise
 
@@ -1196,18 +1162,12 @@ def solve_stream(
                 "verdict": answer_check.parse_verdict(answer),
                 "findings": sorted({f.kind for f in findings}),
             }
-        if guided:
-            learning["guided"] = guided
         if prompt_route == "PRACTICE":
             learning["practice"] = {"difficulty": payload.difficulty or "same"}
         violations, notes = check_constraints(checked, rendered)
         has_solution = _has_solution_table(checked)
-        if guided and guided["step"] < 4:
-            if has_solution:
-                # The step rules forbid it; kept visible in the logs and the console.
-                log.warning("guided step %d answered with a full solution table", guided["step"])
-                learning["guided"] = {**guided, "leak": True}
-            has_solution = False  # a hint is not a solution to vouch for
+        if guided_state:
+            learning["guided"], has_solution = guided.review(guided_state, has_solution)
         version = persist(
             answer,
             "warned" if violations and has_solution else ("clean" if has_solution else "none"),
