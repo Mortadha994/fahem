@@ -2357,6 +2357,25 @@ h3 {
   outline: 2px solid transparent;
   box-shadow: var(--focus-ring);
 }
+/* The chat's two modes, under "Poser une question" (AppSidebar.jsx). */
+.appnav-sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+}
+.appnav-sublink {
+  min-height: 2.25rem;
+  gap: 0.4em;
+}
+.appnav-sublink-on,
+.appnav-sublink-on:hover {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--bg-alt);
+}
 
 /* Pinned to the bottom: identity is reference, not navigation. */
 .appnav-foot {

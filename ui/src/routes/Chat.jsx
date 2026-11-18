@@ -80,6 +80,7 @@ export default function Chat() {
     patchMessage,
     ensureLoaded,
     setVersion,
+    setChatMode,
     flush,
   } = useChatSessions();
   const location = useLocation();
@@ -983,6 +984,29 @@ export default function Chat() {
     navigate("/chat", { replace: true, state: null });
     send(problem, createSession(chapitre));
   }, [location.state, navigate, send, createSession]);
+
+  // The sidebar's Solution complète / Mode guidé entries: that mode, in the
+  // open discussion if it is already in it, otherwise in a new discussion.
+  const openMode = location.state?.mode;
+  useEffect(() => {
+    if (openMode !== "full" && openMode !== "guided") return;
+    navigate("/chat", { replace: true, state: null });
+    if (!features.guided) return;
+    if (active && discussionMode(active.messages) === openMode) return;
+    startInMode(openMode);
+    // Keyed on the navigation: each click on an entry is one request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
+  // What the sidebar highlights.
+  const shownMode = modeFor(active);
+  useEffect(() => {
+    setChatMode({ current: shownMode, guided: features.guided });
+  }, [shownMode, features.guided, setChatMode]);
+  useEffect(
+    () => () => setChatMode((prev) => ({ ...prev, current: null })),
+    [setChatMode]
+  );
 
   return (
     <main className="chat">
