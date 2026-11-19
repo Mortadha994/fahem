@@ -9,15 +9,21 @@
    small text on the dark muted surface). Status colours (--ok/--warn/--err)
    stay the app's own, tuned earlier for contrast. */
 :root {
-  /* The page behind everything; cards and panels sit on it as --bg. */
-  --canvas: #f8fafc;
+  /* The page behind everything; cards and panels sit on it as --bg.
+     Redesign (2026-11): a neutral, slightly cool grey ground with white
+     cards, and ONE accent - indigo - used flat. The violet/blue/green
+     gradients that every primary button carried are gone. */
+  --canvas: #f6f6f8;
   --bg: #ffffff;
-  --bg-alt: #f3f4f6;
-  --side: #ffffff;
-  --line: #e5e7eb;
-  --fg: #030712;
-  --fg-dim: #636b78;
-  --accent: #6b26d9;
+  --bg-alt: #f1f1f5;
+  --side: #fbfbfc;
+  --line: #e4e4ea;
+  --fg: #16161d;
+  --fg-dim: #5b5b6b;
+  --accent: #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-rgb: 79 70 229;
+  --accent-soft: #eef0ff;
   --accent-fg: #fff;
   --ok: #166534;
   --ok-bg: #e9f6ec;
@@ -80,8 +86,8 @@
      dropdown or dialog needs to sit above the page there is one answer
      rather than an invented shadow. */
   /* Violet Dusk's soft, violet-tinted elevation (8px down, 30px blur). */
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 14px rgb(107 38 217 / 0.06);
-  --shadow-md: 0 8px 30px rgb(107 38 217 / 0.08), 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(16 16 24 / 0.05), 0 2px 8px rgb(16 16 24 / 0.04);
+  --shadow-md: 0 1px 2px rgb(16 16 24 / 0.05), 0 8px 24px rgb(16 16 24 / 0.07);
 
   /* Motion. */
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
@@ -114,16 +120,19 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  /* Violet Dusk dark: violet-black canvas, cards a step up, violet-tinted
-     borders. */
-  --canvas: #050408;
-  --bg: #09080d;
-  --bg-alt: #1c1825;
-  --side: #07060b;
-  --line: #241f2e;
-  --fg: #f8fafc;
-  --fg-dim: #b0abba;
-  --accent: #a371f3;
+  /* Dark: near-black neutral ground, cards a step up, the indigo accent
+     lightened so it reads as text on them. */
+  --canvas: #0e0e12;
+  --bg: #16161c;
+  --bg-alt: #1e1e26;
+  --side: #121217;
+  --line: #2a2a34;
+  --fg: #f3f3f6;
+  --fg-dim: #a6a6b5;
+  --accent: #8f8cff;
+  --accent-strong: #a5a3ff;
+  --accent-rgb: 143 140 255;
+  --accent-soft: #23223a;
   --ok: #7ee2a8;
   --ok-bg: #14321f;
   --warn: #f0c674;
@@ -504,7 +513,7 @@ h3 {
   flex: none;
   padding: 0 var(--space-2);
   border-radius: var(--radius-full);
-  background: rgb(106 79 224 / 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
   color: var(--fg);
   font-weight: 600;
 }
@@ -687,7 +696,7 @@ h3 {
 .history-search-input:focus-visible {
   outline: 2px solid transparent;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(63 111 181 / 0.18);
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
 }
 .history-body {
   flex: 1;
@@ -736,7 +745,7 @@ h3 {
 }
 .history-row.is-active,
 .history-row.is-active:hover {
-  background: rgb(106 79 224 / 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
 }
 .history-row-btn {
   flex: 1;
@@ -873,7 +882,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, rgb(63 111 181 / 0.08), rgb(106 79 224 / 0.06)), var(--bg);
+    linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08), rgb(var(--accent-rgb) / 0.06)), var(--bg);
   font: inherit;
   color: inherit;
   text-align: left;
@@ -1126,9 +1135,9 @@ h3 {
 .msg-user .bubble {
   max-width: 80%;
   padding: var(--space-2) var(--space-4);
-  border: 1px solid rgb(106 79 224 / 0.22);
+  border: 1px solid rgb(var(--accent-rgb) / 0.22);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
-  background: rgb(106 79 224 / 0.1);
+  background: rgb(var(--accent-rgb) / 0.1);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1534,7 +1543,7 @@ h3 {
   border-color: var(--accent);
   box-shadow:
     var(--shadow-md),
-    0 0 0 3px rgb(63 111 181 / 0.18);
+    0 0 0 3px rgb(var(--accent-rgb) / 0.18);
 }
 .composer textarea {
   width: 100%;
@@ -2335,7 +2344,7 @@ h3 {
    sidebar should stay quieter than the content beside it. */
 .appnav-link-on,
 .appnav-link-on:hover {
-  background: rgb(106 79 224 / 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
   color: var(--fg);
   font-weight: 600;
 }
@@ -2921,10 +2930,12 @@ h3 {
    - nothing here invents a number: see Home.jsx. */
 
 .shell {
-  --brand-blue: #3f6fb5;
-  --brand-violet: #6a4fe0;
-  --brand-teal: #0f9f8f;
-  --brand-grad: linear-gradient(120deg, var(--brand-blue), var(--brand-violet));
+  /* One accent: the old blue-to-violet pair is the accent twice, so every
+     rule still written against --brand-grad now paints it flat. */
+  --brand-blue: var(--accent);
+  --brand-violet: var(--accent);
+  --brand-teal: var(--accent);
+  --brand-grad: linear-gradient(var(--accent), var(--accent));
 }
 
 /* The small gradient ← beside the wordmark, in the sidebar and the phone bar
@@ -3075,8 +3086,8 @@ h3 {
   background:
     linear-gradient(
       135deg,
-      rgb(63 111 181 / 0.16),
-      rgb(106 79 224 / 0.12) 55%,
+      rgb(var(--accent-rgb) / 0.16),
+      rgb(var(--accent-rgb) / 0.12) 55%,
       rgb(15 159 143 / 0.06)
     ),
     var(--bg);
@@ -3337,7 +3348,7 @@ h3 {
   z-index: -1;
   background: radial-gradient(
     18rem circle at var(--mx, 50%) var(--my, 0%),
-    rgb(106 79 224 / 0.14),
+    rgb(var(--accent-rgb) / 0.14),
     transparent 70%
   );
   opacity: 0;
@@ -3733,10 +3744,10 @@ h3 {
 }
 @keyframes goal-reached {
   from {
-    box-shadow: 0 0 0 0 rgb(106 79 224 / 0.45);
+    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.45);
   }
   to {
-    box-shadow: 0 0 0 18px rgb(106 79 224 / 0);
+    box-shadow: 0 0 0 18px rgb(var(--accent-rgb) / 0);
   }
 }
 .goal-form {
@@ -4319,8 +4330,8 @@ h3 {
   background:
     linear-gradient(
       160deg,
-      rgb(63 111 181 / 0.16),
-      rgb(106 79 224 / 0.1) 55%,
+      rgb(var(--accent-rgb) / 0.16),
+      rgb(var(--accent-rgb) / 0.1) 55%,
       rgb(15 159 143 / 0.08)
     ),
     var(--glass-panel);
@@ -4478,7 +4489,7 @@ h3 {
   pointer-events: none;
   background: radial-gradient(
     520px circle at var(--mx, 50%) var(--my, 0%),
-    rgb(106 79 224 / 0.15),
+    rgb(var(--accent-rgb) / 0.15),
     transparent 62%
   );
   opacity: 0;
@@ -4648,7 +4659,7 @@ h3 {
   border-color: var(--brand-violet);
   box-shadow:
     var(--focus-ring),
-    0 0 0 8px rgb(106 79 224 / 0.16);
+    0 0 0 8px rgb(var(--accent-rgb) / 0.16);
 }
 
 /* Primary action: blue-to-violet, white ink (5.1:1 at the blue end, 5.5:1 at
@@ -4921,7 +4932,7 @@ h3 {
   margin-left: auto;
 }
 .msg-rate.is-on {
-  background: rgb(106 79 224 / 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
   color: var(--accent);
 }
 .msg-rate.is-on.is-down {
@@ -5601,10 +5612,10 @@ h3 {
   background: var(--bg);
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.08),
-    0 4px 12px rgb(107 38 217 / 0.14);
+    0 4px 12px rgb(var(--accent-rgb) / 0.14);
 }
 .mode-switch.is-guided .mode-pill {
-  background: linear-gradient(135deg, #7c3aed, #6b26d9);
+  background: linear-gradient(135deg, var(--accent), var(--accent));
 }
 .mode-option {
   position: relative;
@@ -5630,13 +5641,13 @@ h3 {
   min-height: 2.25rem;
   background:
     linear-gradient(var(--bg), var(--bg)) padding-box,
-    linear-gradient(135deg, #22c55e, #6b26d9) border-box;
+    linear-gradient(135deg, #22c55e, var(--accent)) border-box;
   border: 1.5px solid transparent;
 }
 .composer-check:hover:not(:disabled) {
   color: var(--accent);
   border-color: transparent;
-  box-shadow: 0 6px 16px rgb(107 38 217 / 0.16);
+  box-shadow: 0 6px 16px rgb(var(--accent-rgb) / 0.16);
 }
 
 /* --- Mode guidé: step chip and rail ------------------------------------------------------------------ */
@@ -5645,7 +5656,7 @@ h3 {
   padding: var(--space-3) var(--space-4) var(--space-2);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(120% 160% at 0% 0%, rgb(107 38 217 / 0.1), transparent 60%),
+    radial-gradient(120% 160% at 0% 0%, rgb(var(--accent-rgb) / 0.1), transparent 60%),
     var(--bg-alt);
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
 }
@@ -5667,7 +5678,7 @@ h3 {
   height: 1.9rem;
   border-radius: 50%;
   background: var(--bg);
-  box-shadow: 0 2px 8px rgb(107 38 217 / 0.16);
+  box-shadow: 0 2px 8px rgb(var(--accent-rgb) / 0.16);
   font-size: 1.05rem;
 }
 .gs-rail-wrap {
@@ -5686,7 +5697,7 @@ h3 {
 .gs-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #22c55e, #6b26d9);
+  background: linear-gradient(90deg, #22c55e, var(--accent));
   transform-origin: left;
 }
 .gs-rail {
@@ -5728,7 +5739,7 @@ h3 {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 0 0 4px rgb(107 38 217 / 0.18);
+  box-shadow: 0 0 0 4px rgb(var(--accent-rgb) / 0.18);
 }
 .gs-ping {
   position: absolute;
@@ -5771,12 +5782,12 @@ h3 {
 }
 .guided-btn.is-primary {
   border: 0;
-  background: linear-gradient(135deg, #7c3aed, #6b26d9 60%, #5b21b6);
-  box-shadow: 0 6px 18px rgb(107 38 217 / 0.3);
+  background: linear-gradient(135deg, var(--accent), var(--accent) 60%, var(--accent-strong));
+  box-shadow: 0 6px 18px rgb(var(--accent-rgb) / 0.3);
 }
 .guided-btn.is-primary:hover {
   filter: none;
-  box-shadow: 0 10px 24px rgb(107 38 217 / 0.38);
+  box-shadow: 0 10px 24px rgb(var(--accent-rgb) / 0.38);
 }
 .guided-arrow {
   display: inline-block;
@@ -5865,7 +5876,7 @@ h3 {
 
 /* --- Exercice similaire: challenge card and menu ----------------------------------------------------- */
 .pc {
-  --pc-tone: #6b26d9;
+  --pc-tone: var(--accent);
   margin-bottom: var(--space-3);
   border-radius: var(--radius-lg);
   background:
@@ -6172,7 +6183,7 @@ h3 {
   transition: box-shadow 200ms;
 }
 .prog-card:hover {
-  box-shadow: 0 12px 30px rgb(107 38 217 / 0.1);
+  box-shadow: 0 12px 30px rgb(var(--accent-rgb) / 0.1);
 }
 .prog-trophy {
   position: relative;
@@ -6182,7 +6193,7 @@ h3 {
 }
 .prog-next {
   background:
-    radial-gradient(100% 140% at 100% 0%, rgb(107 38 217 / 0.1), transparent 60%),
+    radial-gradient(100% 140% at 100% 0%, rgb(var(--accent-rgb) / 0.1), transparent 60%),
     var(--bg-alt);
 }
 
@@ -6342,7 +6353,7 @@ h3 {
     color 160ms;
 }
 .lpd-mode.is-on {
-  background: linear-gradient(135deg, #7c3aed, #6b26d9);
+  background: linear-gradient(135deg, var(--accent), var(--accent));
   color: #fff;
 }
 .lpd-mode:focus-visible {

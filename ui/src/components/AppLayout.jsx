@@ -7,6 +7,7 @@ import MotionProvider from "./MotionProvider.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
 import Button from "./ui/Button.jsx";
+import Icon, { LogoMark } from "./ui/Icon.jsx";
 
 /**
  * The shell every authenticated route sits in.
@@ -70,12 +71,10 @@ export default function AppLayout() {
               aria-controls="app-nav"
               onClick={() => setNavOpen((v) => !v)}
             >
-              ☰
+              <Icon name="menu" size={20} />
             </Button>
             <Link to="/" className="mobilebar-brand">
-              <span className="brand-mark" aria-hidden="true">
-                ←
-              </span>
+              <LogoMark size={28} />
               Fahem
             </Link>
             {/* The sidebar's copy is inside the drawer on a phone; this one

@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
-import Button from "./ui/Button.jsx";
+import Icon, { LogoMark } from "./ui/Icon.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { useAuth } from "../lib/authContext.js";
 import { isAdmin } from "../lib/auth.js";
@@ -38,10 +38,8 @@ export default function AppSidebar({ onNavigate }) {
   return (
     <aside className="appnav" aria-label="Navigation principale">
       <Link to="/" className="appnav-brand" onClick={onNavigate}>
-        <span className="brand-mark" aria-hidden="true">
-          ←
-        </span>
-        Fahem
+        <LogoMark size={30} />
+        <span className="appnav-brand-name">Fahem</span>
       </Link>
 
       <nav aria-label="Sections">
@@ -50,11 +48,13 @@ export default function AppSidebar({ onNavigate }) {
             {/* `end`, so "Chapitres" is only current on / and not on every
                 route beneath it. */}
             <NavLink to="/" end className={linkClass} onClick={onNavigate}>
+              <Icon name="home" />
               Chapitres
             </NavLink>
           </li>
           <li>
             <NavLink to="/chat" className={linkClass} onClick={onNavigate}>
+              <Icon name="chat" />
               Poser une question
             </NavLink>
             {modes.length > 0 && (
@@ -71,7 +71,7 @@ export default function AppSidebar({ onNavigate }) {
                         title={MODES[mode].title}
                         onClick={onNavigate}
                       >
-                        <span aria-hidden="true">{MODES[mode].icon}</span>{" "}
+                        <Icon name={MODES[mode].icon} size={16} />
                         {MODES[mode].label}
                       </Link>
                     </li>
@@ -82,6 +82,7 @@ export default function AppSidebar({ onNavigate }) {
           </li>
           <li>
             <NavLink to="/progression" className={linkClass} onClick={onNavigate}>
+              <Icon name="progress" />
               Ma progression
             </NavLink>
           </li>
@@ -92,6 +93,7 @@ export default function AppSidebar({ onNavigate }) {
           {isAdmin(user) && (
             <li>
               <NavLink to="/admin" className={linkClass} onClick={onNavigate}>
+                <Icon name="admin" />
                 Administration
               </NavLink>
             </li>
@@ -126,6 +128,9 @@ export default function AppSidebar({ onNavigate }) {
         ) : (
           <p className="appnav-scope">{SCOPE_LABEL}</p>
         )}
+        {/* Who is signed in, with the two things about this browser session
+            beside it: the theme and signing out. Icon buttons, so the row
+            stays one line instead of a full-width Déconnexion button. */}
         <div className="account">
           <span className="account-avatar" aria-hidden="true">
             {initial}
@@ -134,19 +139,18 @@ export default function AppSidebar({ onNavigate }) {
             <span className="account-name">{label}</span>
             {user?.email && <span className="account-mail">{user.email}</span>}
           </span>
-        </div>
-        {/* Theme beside sign-out: both are about this browser session, not
-            about where to go, so they share the account block's row. */}
-        <div className="appnav-actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="appnav-logout"
-            onClick={logout}
-          >
-            Déconnexion
-          </Button>
-          <ThemeToggle className="appnav-theme" />
+          <span className="account-actions">
+            <ThemeToggle className="appnav-theme" />
+            <button
+              type="button"
+              className="icon-btn appnav-logout"
+              onClick={logout}
+              aria-label="Déconnexion"
+              title="Déconnexion"
+            >
+              <Icon name="logout" />
+            </button>
+          </span>
         </div>
       </div>
     </aside>
