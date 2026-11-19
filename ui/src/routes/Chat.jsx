@@ -1017,7 +1017,18 @@ export default function Chat() {
           only again. Its title is the page's <h1>, so a screen reader hears
           which discussion is open, not a generic "Discussion". */}
       <header className="chat-head">
-        <div className="chat-head-text">
+        {/* Phones only (CSS): the app bar is hidden on this screen, so the
+            menu lives here. AppLayout listens for the event. */}
+        <button
+          type="button"
+          className="icon-btn chat-head-menu"
+          aria-label="Afficher la navigation"
+          onClick={() => window.dispatchEvent(new Event("fahem:open-nav"))}
+        >
+          <Icon name="menu" size={20} />
+        </button>
+        {/* The chapter's full name is the tooltip, not a third item on the line. */}
+        <div className="chat-head-text" title={currentTitle ?? SCOPE_LABEL}>
           <h1 className="chat-title">
             {isEmpty ? "Nouvelle discussion" : active.title}
           </h1>
@@ -1034,7 +1045,6 @@ export default function Chat() {
                 {MODES[lockedMode].label}
               </span>
             )}
-            <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
           </p>
         </div>
         <div className="chat-head-actions">

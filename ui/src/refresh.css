@@ -822,3 +822,56 @@
 .skip-link:not(:focus) {
   box-shadow: none;
 }
+
+/* --- declutter, part 1: the chat bar ------------------------------------
+   One line of meta in plain text ("Chapitre 1 · Mode guidé"), not two
+   pills and the chapter's full name; the name is the tooltip. */
+.chat-head-meta {
+  gap: 0;
+}
+.chat-head-chip,
+.chat-head-mode,
+.chat-head-mode.is-guided {
+  padding: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.chat-head-mode.is-guided {
+  color: var(--accent);
+}
+.chat-head-chip + .chat-head-mode::before {
+  content: "·";
+  margin: 0 6px;
+  color: var(--fg-dim);
+}
+.chat-head-mode .icon {
+  display: none;
+}
+.chat-history-count {
+  display: none;
+}
+@media (max-width: 560px) {
+  .chat-head-chip + .chat-head-mode::before {
+    content: none;
+  }
+}
+
+/* One bar on a phone's chat screen: the chat bar takes the menu button and
+   the app bar (logo + theme) steps aside. The theme stays in the drawer. */
+.chat-head-menu {
+  display: none;
+}
+@media (max-width: 900px) {
+  .shell-chat .mobilebar {
+    display: none;
+  }
+  .chat-head-menu {
+    display: inline-grid;
+    margin-left: calc(-1 * var(--space-2));
+    color: var(--fg);
+  }
+  .chat-head-text {
+    flex: 1;
+  }
+}
