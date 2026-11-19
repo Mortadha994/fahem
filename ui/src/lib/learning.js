@@ -70,12 +70,12 @@ export function discussionMode(messages) {
 /** What each mode is called, wherever the chat names it. */
 export const MODES = {
   full: {
-    icon: "📖",
+    icon: "book",
     label: "Solution complète",
     title: "La solution entière, avec le tableau et la trace",
   },
   guided: {
-    icon: "🧭",
+    icon: "compass",
     label: "Mode guidé",
     title: "Des indices étape par étape avant la solution",
   },

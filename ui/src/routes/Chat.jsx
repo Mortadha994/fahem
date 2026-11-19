@@ -33,6 +33,7 @@ import { useChatSessions } from "../lib/chatSessionsContext.js";
 import { NIVEAU, CHAPITRE, SCOPE_LABEL } from "../config.js";
 import { rateLimitMessage } from "../lib/rateLimit.js";
 import { chapterNumber, niveauOfChapter } from "../lib/chapterNumber.js";
+import Icon from "../components/ui/Icon.jsx";
 
 // For the shortcut hint only; the handler accepts both Ctrl and Cmd anyway.
 const IS_MAC =
@@ -1016,7 +1017,18 @@ export default function Chat() {
           only again. Its title is the page's <h1>, so a screen reader hears
           which discussion is open, not a generic "Discussion". */}
       <header className="chat-head">
-        <div className="chat-head-text">
+        {/* Phones only (CSS): the app bar is hidden on this screen, so the
+            menu lives here. AppLayout listens for the event. */}
+        <button
+          type="button"
+          className="icon-btn chat-head-menu"
+          aria-label="Afficher la navigation"
+          onClick={() => window.dispatchEvent(new Event("fahem:open-nav"))}
+        >
+          <Icon name="menu" size={20} />
+        </button>
+        {/* The chapter's full name is the tooltip, not a third item on the line. */}
+        <div className="chat-head-text" title={currentTitle ?? SCOPE_LABEL}>
           <h1 className="chat-title">
             {isEmpty ? "Nouvelle discussion" : active.title}
           </h1>
@@ -1029,11 +1041,10 @@ export default function Chat() {
                 className={`chat-head-mode is-${lockedMode}`}
                 title={MODES[lockedMode].title}
               >
-                <span aria-hidden="true">{MODES[lockedMode].icon}</span>{" "}
+                <Icon name={MODES[lockedMode].icon} size={14} />
                 {MODES[lockedMode].label}
               </span>
             )}
-            <span className="chat-head-scope">{currentTitle ?? SCOPE_LABEL}</span>
           </p>
         </div>
         <div className="chat-head-actions">
@@ -1044,12 +1055,11 @@ export default function Chat() {
             aria-haspopup="dialog"
             aria-expanded={historyOpen}
             aria-keyshortcuts="Control+K Meta+K"
+            title={`Historique (${IS_MAC ? "⌘K" : "Ctrl K"})`}
             onClick={() => setHistoryOpen(true)}
             whileTap={PRESS}
           >
-            <span className="chat-history-icon" aria-hidden="true">
-              ▤
-            </span>
+            <Icon name="history" className="chat-history-icon" />
             <span className="chat-history-label">Historique</span>
             {historyCount > 0 && (
               <span
@@ -1059,9 +1069,6 @@ export default function Chat() {
                 {historyCount}
               </span>
             )}
-            <kbd className="chat-history-kbd" aria-hidden="true">
-              {IS_MAC ? "⌘K" : "Ctrl K"}
-            </kbd>
           </m.button>
           <m.button
             type="button"
@@ -1070,7 +1077,7 @@ export default function Chat() {
             whileTap={PRESS}
             aria-label="Nouvelle discussion"
           >
-            <span aria-hidden="true">+</span>
+            <Icon name="plus" />
             <span className="chat-new-label">Nouvelle</span>
           </m.button>
         </div>

@@ -11,6 +11,7 @@ import Alert from "../components/ui/Alert.jsx";
 import Badge from "../components/ui/Badge.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import Skeleton from "../components/ui/Skeleton.jsx";
+import Icon from "../components/ui/Icon.jsx";
 import CountUp from "../components/CountUp.jsx";
 import { Burst } from "../components/learning/Learning.jsx";
 import { chapterNumber } from "../lib/chapterNumber.js";
@@ -137,7 +138,7 @@ export default function ProgressPage() {
                           className="guided-btn is-primary"
                           onClick={() => startExercise(c.id, c.next_exercise.question)}
                         >
-                          Commencer →
+                          Commencer <Icon name="arrowRight" size={16} />
                         </button>
                       )}
                     </div>
@@ -146,7 +147,7 @@ export default function ProgressPage() {
                   c.total > 0 && (
                     <p className="prog-all-done">
                       <span className="prog-trophy">
-                        🏆
+                        <Icon name="trophy" size={20} />
                         <Burst count={16} spread={80} />
                       </span>
                       Tous les exercices de ce chapitre sont réussis !
@@ -243,31 +244,31 @@ export default function ProgressPage() {
 const MOODS = [
   {
     upTo: 0,
-    emoji: "🚀",
+    emoji: "rocket",
     title: "C'est parti !",
     sub: "Choisis un exercice et vérifie ta solution : ta première réussite t'attend.",
   },
   {
     upTo: 0.25,
-    emoji: "🌱",
+    emoji: "sprout",
     title: "Beau début !",
     sub: "Chaque exercice réussi seul compte. Continue sur ta lancée.",
   },
   {
     upTo: 0.5,
-    emoji: "⚡",
+    emoji: "bolt",
     title: "Tu avances bien !",
     sub: "Tu as déjà fait une belle partie du programme.",
   },
   {
     upTo: 0.99,
-    emoji: "🔥",
+    emoji: "flame",
     title: "Plus que quelques-uns !",
     sub: "La ligne d'arrivée est en vue.",
   },
   {
     upTo: 1,
-    emoji: "🏆",
+    emoji: "trophy",
     title: "Champion !",
     sub: "Tous les exercices sont réussis. Essaie les exercices similaires plus difficiles !",
   },
@@ -327,7 +328,7 @@ function Summary({ chapters }) {
               delay: 0.5,
             }}
           >
-            {mood.emoji}
+            <Icon name={mood.emoji} size={22} />
           </m.span>
           {mood.title}
         </p>

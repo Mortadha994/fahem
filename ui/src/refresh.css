@@ -1,0 +1,877 @@
+/* ==========================================================================
+   Interface refresh (2026-11)
+
+   Loaded after App.css. App.css keeps the layout of every screen; this file
+   is the visual layer on top of it, in one place, so the redesign can be read
+   (and reverted) as a unit:
+
+   - one accent, used flat (no gradients on buttons, chips or rails);
+   - one icon set (components/ui/Icon.jsx) instead of emoji;
+   - quieter surfaces: hairline borders, small neutral shadows;
+   - a slimmer chat bar and a one-row message box, on desktop and phone.
+
+   The colour tokens themselves changed at the top of App.css.
+   ========================================================================== */
+
+.icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* --- buttons ------------------------------------------------------------- */
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  filter: none;
+}
+
+/* A square button holding one icon. */
+.icon-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.icon-btn:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.icon-btn:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+
+/* --- brand --------------------------------------------------------------- */
+
+.logo-mark {
+  flex: none;
+  display: block;
+}
+.appnav-brand,
+.mobilebar-brand {
+  gap: 0.6rem;
+  color: var(--fg);
+  font-size: 1.125rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+/* --- sidebar ------------------------------------------------------------- */
+
+.appnav {
+  gap: var(--space-4);
+  padding-inline: var(--space-3);
+  background: var(--side);
+}
+.appnav-brand {
+  padding-inline: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.appnav-list {
+  gap: 2px;
+}
+.appnav-link {
+  gap: 0.7rem;
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+.appnav-link .icon {
+  color: var(--fg-dim);
+  transition: color var(--dur-fast) var(--ease);
+}
+.appnav-link:hover .icon {
+  color: var(--fg);
+}
+.appnav-link-on,
+.appnav-link-on:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+.appnav-link-on .icon,
+.appnav-link-on:hover .icon {
+  color: var(--accent);
+}
+/* The bar at the edge is gone: the tint and the coloured icon already say
+   "you are here". */
+.appnav-link-on::before {
+  content: none;
+}
+.appnav-sublist {
+  gap: 0;
+  margin: 2px 0 var(--space-1);
+  padding-left: 1.55rem;
+  border-left: 1px solid var(--line);
+  margin-left: 1.3rem;
+}
+.appnav-sublink {
+  min-height: 2.1rem;
+  gap: 0.55rem;
+  padding-left: var(--space-3);
+  font-size: 0.8125rem;
+}
+.appnav-sublink-on,
+.appnav-sublink-on:hover {
+  background: transparent;
+  color: var(--accent);
+}
+.appnav-sublink-on .icon {
+  color: var(--accent);
+}
+
+.appnav-foot {
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.appnav-profile {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.appnav-profile:hover {
+  background: var(--bg-alt);
+  border-color: var(--line);
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-inline: var(--space-1);
+}
+.account-avatar {
+  width: 2rem;
+  height: 2rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.account-id {
+  flex: 1;
+  min-width: 0;
+}
+.account-name,
+.account-mail {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.account-name {
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.account-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.account-actions .theme-toggle {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+}
+.account-actions .theme-toggle:hover {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.account-actions .theme-toggle-icon {
+  width: 18px;
+  height: 18px;
+}
+.appnav-logout {
+  width: 2.25rem;
+}
+
+/* --- phone bar ----------------------------------------------------------- */
+
+.mobilebar {
+  min-height: 3.25rem;
+  padding: 0 var(--space-2);
+  background: var(--bg);
+}
+.mobilebar .btn-burger {
+  width: 2.5rem;
+  height: 2.5rem;
+  min-height: 0;
+  padding: 0;
+  color: var(--fg);
+}
+.mobilebar-theme {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+/* --- chat bar ------------------------------------------------------------ */
+
+.chat-head {
+  min-height: 3.5rem;
+  padding: var(--space-2) var(--space-5);
+  background: var(--bg);
+}
+.chat-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+.chat-head-meta {
+  margin-top: 3px;
+  gap: var(--space-2);
+}
+.chat-head-chip,
+.chat-head-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  box-shadow: none;
+  color: var(--fg-dim);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.chat-head-mode,
+.chat-head-mode.is-guided {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.chat-history-btn {
+  min-height: 2.25rem;
+  padding-inline: var(--space-3);
+  border-color: var(--line);
+  background: var(--bg);
+  box-shadow: none;
+}
+.chat-history-icon {
+  color: var(--fg-dim);
+}
+.chat-history-count {
+  background: var(--bg-alt);
+  box-shadow: none;
+  color: var(--fg-dim);
+}
+.chat-new-btn {
+  min-height: 2.25rem;
+  gap: 6px;
+  padding-inline: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.chat-new-btn:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  filter: none;
+}
+@media (max-width: 560px) {
+  .chat-head {
+    min-height: 3rem;
+    padding: var(--space-2) var(--space-3);
+  }
+  /* The chapter chip repeats what the drawer already says; the mode stays,
+     since it decides what the buttons below do. */
+  .chat-head-chip {
+    display: none;
+  }
+  .chat-history-btn,
+  .chat-new-btn {
+    width: 2.25rem;
+    padding: 0;
+    justify-content: center;
+  }
+  .chat-history-btn {
+    border-color: transparent;
+    position: relative;
+  }
+  .chat-history-count {
+    position: absolute;
+    top: 0;
+    right: -2px;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 3px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: 0.625rem;
+    line-height: 1rem;
+  }
+}
+
+/* --- thread -------------------------------------------------------------- */
+
+.msg-user .msg-bubble,
+.msg-user > .bubble {
+  border: 0;
+}
+.msg-author {
+  font-weight: 650;
+}
+
+/* --- message box --------------------------------------------------------- */
+
+.composer {
+  padding-top: var(--space-1);
+}
+.composer-card {
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.composer-card:focus-within {
+  border-color: rgb(var(--accent-rgb) / 0.6);
+  box-shadow:
+    var(--shadow-sm),
+    0 0 0 3px rgb(var(--accent-rgb) / 0.14);
+}
+.composer-bar {
+  gap: var(--space-2);
+}
+.composer-tools,
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.composer-tools {
+  flex: 1;
+}
+.composer-actions {
+  flex: none;
+}
+.composer-attach {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+}
+.composer-attach:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+/* The line under the box: small, centred, and only one line. */
+.composer > .composer-hint {
+  display: block;
+  max-width: 52rem;
+  min-height: 1.1rem;
+  margin: 6px auto 0;
+  color: var(--fg-dim);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+/* The mode, once the discussion has one: a tinted chip and a quiet link to
+   open the other mode. */
+.mode-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.mode-locked-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 2rem;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.mode-locked.is-full .mode-locked-name {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.mode-locked-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 2rem;
+  min-width: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  text-decoration: none;
+  cursor: pointer;
+}
+.mode-locked-switch:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--fg);
+}
+.mode-locked-switch > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+/* The mode picker before the first question: a plain segmented control. */
+.mode-switch {
+  padding: 3px;
+  background: var(--bg-alt);
+  box-shadow: none;
+}
+.mode-switch .mode-pill,
+.mode-switch.is-guided .mode-pill {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px rgb(16 16 24 / 0.1),
+    0 0 0 1px var(--line);
+}
+.mode-option {
+  min-height: 2rem;
+  font-size: 0.8125rem;
+}
+.mode-option.is-on,
+.mode-switch.is-guided .mode-option.is-on {
+  color: var(--accent);
+}
+.mode-icon {
+  display: inline-grid;
+}
+
+/* Vérifier ma réponse: a secondary button, not a second accent. */
+.composer-check {
+  min-height: 2.25rem;
+  gap: 6px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.8125rem;
+}
+.composer-check:hover:not(:disabled) {
+  border-color: rgb(var(--accent-rgb) / 0.5);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
+}
+.composer-check .icon {
+  color: var(--ok);
+}
+.composer-check:hover:not(:disabled) .icon {
+  color: inherit;
+}
+.composer-check-short {
+  display: none;
+}
+
+.composer-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-full);
+  border: 0;
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+}
+.composer-btn.is-send:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.composer-btn.is-send:not(:disabled):hover {
+  background: var(--accent-strong);
+  filter: none;
+}
+
+@media (max-width: 560px) {
+  .composer-card {
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  }
+  .composer-check-long,
+  .mode-locked-long {
+    display: none;
+  }
+  .composer-check-short {
+    display: inline;
+  }
+  .composer-check {
+    padding: 0 10px;
+  }
+  /* The hint line costs a row a phone cannot spare. */
+  .composer > .composer-hint {
+    display: none;
+  }
+  .mode-option {
+    padding: 0 10px;
+  }
+  /* Before the first question the picker needs the whole row; the actions
+     shrink to their icons. */
+  .mode-switch .mode-label {
+    font-size: 0.75rem;
+  }
+}
+
+/* --- Mode guidé: steps and buttons --------------------------------------- */
+
+.gs {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  box-shadow: none;
+}
+.gs-chip {
+  margin-bottom: var(--space-3);
+  font-size: 0.8125rem;
+}
+.gs-chip-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  box-shadow: none;
+  color: var(--accent);
+}
+.gs-track {
+  height: 2px;
+  top: 0.75rem;
+}
+.gs-fill {
+  background: var(--accent);
+}
+.gs-dot {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 1.5px;
+  font-weight: 700;
+}
+.gs-step.is-done .gs-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.gs-step.is-current .gs-dot {
+  background: var(--bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.15);
+}
+.gs-step.is-current .gs-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.guided-btn {
+  min-height: 2.5rem;
+  gap: 8px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+.guided-btn:hover {
+  border-color: rgb(var(--accent-rgb) / 0.5);
+  color: var(--accent);
+}
+.guided-btn.is-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.guided-btn.is-primary:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+.guided-btn.is-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-dim);
+}
+.guided-btn.is-quiet:hover {
+  color: var(--fg);
+  background: var(--bg-alt);
+}
+@media (max-width: 560px) {
+  .guided-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .guided-actions .guided-btn {
+    justify-content: center;
+    padding: 0 var(--space-3);
+  }
+  /* The main action on its own row, the two others side by side. */
+  .guided-actions .guided-btn.is-primary {
+    grid-column: 1 / -1;
+  }
+}
+
+/* --- answers: code, tables, chips ---------------------------------------- */
+
+.md pre,
+.markdown pre {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.msg-chip {
+  border-radius: var(--radius-full);
+}
+
+/* --- home ---------------------------------------------------------------- */
+
+.hero {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: none;
+}
+.hero::before,
+.hero::after {
+  display: none;
+}
+
+/* Verdict and progress icons sit in a small tinted square, like the step chip. */
+.vc-emoji,
+.prog-hero-emoji,
+.prog-trophy {
+  display: inline-grid;
+  place-items: center;
+}
+.prog-hero-emoji {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* --- phone fixes ---------------------------------------------------------- */
+.msg-author {
+  gap: 0.5rem;
+}
+.msg-author .logo-mark {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  /* Only the swap icon on a phone: its name is in aria-label and title. */
+  .mode-locked-short {
+    display: none;
+  }
+  .mode-locked-switch {
+    width: 2.25rem;
+    justify-content: center;
+    padding: 0;
+  }
+  .guided-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .guided-actions .guided-btn {
+    white-space: nowrap;
+  }
+}
+
+/* --- home: a calm welcome card ------------------------------------------- */
+.hero {
+  background: var(--bg);
+}
+.hero-glow {
+  display: none;
+}
+/* The big ← tile read as a "back" button; the greeting does the work. */
+.hero-art {
+  display: none;
+}
+.hero-primary {
+  background: var(--accent);
+  box-shadow: none;
+}
+.hero-primary:hover {
+  background: var(--accent-strong);
+  filter: none;
+}
+.hero-primary::after {
+  display: none;
+}
+
+/* --- message box on a phone, before the first question ------------------- */
+@media (max-width: 560px) {
+  /* The picker takes its own full row above the paperclip and the actions. */
+  .composer-tools:has(.mode-switch) {
+    display: contents;
+  }
+  .composer-bar:has(.mode-switch) {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+  .composer-bar .mode-switch {
+    order: -1;
+    flex: 1 0 100%;
+    display: flex;
+  }
+  .composer-bar .mode-switch .mode-option {
+    flex: 1;
+  }
+  .composer-bar:has(.mode-switch) .composer-actions {
+    margin-left: auto;
+  }
+  .mode-locked {
+    flex-wrap: nowrap;
+  }
+}
+
+/* --- progress: same calm card as the home welcome ------------------------ */
+.prog-hero {
+  background: var(--bg);
+}
+
+/* --- code highlighting in dark mode -------------------------------------
+   highlight.js ships the light GitHub theme only (App.css imports it), so in
+   dark mode plain Python text was dark grey on a dark card - unreadable.
+   These are GitHub Dark's token colours. */
+:root[data-theme="dark"] .hljs {
+  color: #e6edf3;
+  background: transparent;
+}
+:root[data-theme="dark"]
+  :is(
+    .hljs-keyword,
+    .hljs-meta .hljs-keyword,
+    .hljs-doctag,
+    .hljs-template-tag,
+    .hljs-template-variable,
+    .hljs-type,
+    .hljs-variable.language_
+  ) {
+  color: #ff7b72;
+}
+:root[data-theme="dark"] :is(.hljs-title, .hljs-title.class_, .hljs-title.function_) {
+  color: #d2a8ff;
+}
+:root[data-theme="dark"]
+  :is(
+    .hljs-attr,
+    .hljs-attribute,
+    .hljs-literal,
+    .hljs-meta,
+    .hljs-number,
+    .hljs-operator,
+    .hljs-variable,
+    .hljs-selector-attr,
+    .hljs-selector-class,
+    .hljs-selector-id
+  ) {
+  color: #79c0ff;
+}
+:root[data-theme="dark"] :is(.hljs-regexp, .hljs-string, .hljs-meta .hljs-string) {
+  color: #a5d6ff;
+}
+:root[data-theme="dark"] :is(.hljs-built_in, .hljs-symbol) {
+  color: #ffa657;
+}
+:root[data-theme="dark"] :is(.hljs-comment, .hljs-code, .hljs-formula) {
+  color: #8b949e;
+}
+:root[data-theme="dark"]
+  :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo) {
+  color: #7ee787;
+}
+:root[data-theme="dark"] .hljs-params {
+  color: #e6edf3;
+}
+
+/* The skip link waits above the screen; its shadow used to show as a grey
+   smudge in the top-left corner. Only the focused link casts one. */
+.skip-link:not(:focus) {
+  box-shadow: none;
+}
+
+/* --- declutter, part 1: the chat bar ------------------------------------
+   One line of meta in plain text ("Chapitre 1 · Mode guidé"), not two
+   pills and the chapter's full name; the name is the tooltip. */
+.chat-head-meta {
+  gap: 0;
+}
+.chat-head-chip,
+.chat-head-mode,
+.chat-head-mode.is-guided {
+  padding: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+.chat-head-mode.is-guided {
+  color: var(--accent);
+}
+.chat-head-chip + .chat-head-mode::before {
+  content: "·";
+  margin: 0 6px;
+  color: var(--fg-dim);
+}
+.chat-head-mode .icon {
+  display: none;
+}
+.chat-history-count {
+  display: none;
+}
+@media (max-width: 560px) {
+  .chat-head-chip + .chat-head-mode::before {
+    content: none;
+  }
+}
+
+/* One bar on a phone's chat screen: the chat bar takes the menu button and
+   the app bar (logo + theme) steps aside. The theme stays in the drawer. */
+.chat-head-menu {
+  display: none;
+}
+@media (max-width: 900px) {
+  .shell-chat .mobilebar {
+    display: none;
+  }
+  .chat-head-menu {
+    display: inline-grid;
+    margin-left: calc(-1 * var(--space-2));
+    color: var(--fg);
+  }
+  .chat-head-text {
+    flex: 1;
+  }
+}

@@ -1,3 +1,4 @@
+import Icon from "../ui/Icon.jsx";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
@@ -24,8 +25,8 @@ import {
  * and the confetti is not drawn at all.
  */
 
-const STEP_ICONS = { 1: "🔍", 2: "💡", 3: "🧩", 4: "🏁" };
-const LEVEL_ICONS = { easier: "🌱", same: "⚖️", harder: "🔥" };
+const STEP_ICONS = { 1: "search", 2: "bulb", 3: "puzzle", 4: "flag" };
+const LEVEL_ICONS = { easier: "sprout", same: "scale", harder: "flame" };
 const PRESS = { scale: 0.96 };
 const LIFT = { y: -2, transition: SPRING_HOVER };
 
@@ -95,7 +96,7 @@ export function GuidedSteps({ step, fresh, live }) {
             transition: { ...SPRING_HOVER, delay: 0.25 },
           }}
         >
-          {STEP_ICONS[step]}
+          <Icon name={STEP_ICONS[step]} size={18} />
         </m.span>
         Étape {step} sur 4 · <b>{current?.label}</b>
       </p>
@@ -201,17 +202,17 @@ export function ActionButton({ tone = "", onClick, children }) {
 
 const VERDICT_TEXT = {
   correct: {
-    emoji: "🎉",
+    emoji: "sparkle",
     title: "Bravo, ta solution est correcte !",
     sub: "Tu as résolu cet exercice toi-même. Il compte dans ta progression.",
   },
   presque: {
-    emoji: "💪",
+    emoji: "muscle",
     title: "Presque ! Il reste quelques détails.",
     sub: "Regarde ce qu'il faut corriger, puis vérifie à nouveau.",
   },
   a_revoir: {
-    emoji: "🔁",
+    emoji: "repeat",
     title: "À revoir : on corrige ensemble.",
     sub: "Commence par la correction la plus importante, en bas.",
   },
@@ -246,7 +247,7 @@ export function CheckedAnswer({ content, verdict, fresh }) {
               animate={fresh ? VERDICT_MOTION[verdict] : {}}
               transition={{ duration: 0.7, delay: 0.15 }}
             >
-              {text.emoji}
+              <Icon name={text.emoji} size={26} />
             </m.span>
             {fresh && verdict === "correct" && <Burst />}
           </span>
@@ -324,11 +325,11 @@ export function PracticeCard({ content, difficulty, fresh }) {
             transition: { type: "spring", visualDuration: 0.6, bounce: 0.45 },
           }}
         >
-          🎲
+          <Icon name="dice" size={20} />
         </m.span>
         <span className="pc-title">Nouveau défi</span>
         <span className="pc-level">
-          <span aria-hidden="true">{LEVEL_ICONS[level.value]}</span> {level.label}
+          <Icon name={LEVEL_ICONS[level.value]} size={16} /> {level.label}
         </span>
       </div>
       <div className="pc-body">
@@ -407,7 +408,7 @@ export function PracticeMenu({ onPick }) {
                   onPick(level.value);
                 }}
               >
-                <span aria-hidden="true">{LEVEL_ICONS[level.value]}</span> {level.label}
+                <Icon name={LEVEL_ICONS[level.value]} size={16} /> {level.label}
               </m.button>
             ))}
           </m.span>

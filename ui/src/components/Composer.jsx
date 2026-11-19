@@ -4,6 +4,7 @@ import * as m from "motion/react-m";
 import { ATTACHMENT_TYPES } from "../lib/api.js";
 import { SPRING_HOVER } from "../lib/motion.js";
 import { MODES } from "../lib/learning.js";
+import Icon from "./ui/Icon.jsx";
 
 const OTHER_MODE = { full: "guided", guided: "full" };
 
@@ -193,7 +194,7 @@ export default function Composer({
                   : "Colle ton énoncé : Fahem te guide étape par étape…"
                 : followUp
                   ? "Pose une question de suivi, ou colle un autre énoncé…"
-                  : "Un exercice, une question, ton programme… ou une photo 📎"
+                  : "Un exercice, une question, ton programme…"
           }
           aria-label="Ton message"
           aria-describedby={showCount ? "composer-count" : undefined}
@@ -217,12 +218,41 @@ export default function Composer({
             {attachError}
           </p>
         )}
-        {(onModeChange || onCheck) && (
-          <div className="composer-modes">
+        {/* One row under the text: the paperclip and the discussion's mode on
+            the left, Vérifier and send on the right. The mode, the switch,
+            Vérifier and a note used to be two rows of their own here, which
+            on a phone made the box a quarter of the screen. */}
+        <div className="composer-bar">
+          <div className="composer-tools">
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ATTACHMENT_TYPES.join(",")}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onAttach(file);
+                // Reset so choosing the same file again still fires onChange.
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="composer-attach"
+              onClick={() => fileRef.current?.click()}
+              disabled={streaming}
+              aria-label="Joindre une photo ou un PDF de l'exercice"
+              title="Joindre une photo ou un PDF"
+            >
+              <Icon name="paperclip" size={18} />
+            </button>
             {onModeChange && modeLocked && (
               <div className={`mode-locked is-${mode}`}>
                 <span className="mode-locked-name" title={MODES[mode].title}>
-                  <span aria-hidden="true">{MODES[mode].icon}</span> {MODES[mode].label}
+                  <Icon name={MODES[mode].icon} size={16} />
+                  {MODES[mode].label}
                 </span>
                 {onSwitchMode && (
                   <button
@@ -231,10 +261,9 @@ export default function Composer({
                     onClick={() => onSwitchMode(OTHER_MODE[mode])}
                     disabled={streaming}
                     title={`Ouvre une nouvelle discussion en ${MODES[OTHER_MODE[mode]].label}`}
+                    aria-label={`Nouvelle discussion en ${MODES[OTHER_MODE[mode]].label}`}
                   >
-                    <span className="mode-locked-icon" aria-hidden="true">
-                      {MODES[OTHER_MODE[mode]].icon}
-                    </span>
+                    <Icon name="swap" size={15} className="mode-locked-icon" />
                     <span className="mode-locked-long">
                       Nouvelle discussion en {MODES[OTHER_MODE[mode]].label}
                     </span>
@@ -252,7 +281,7 @@ export default function Composer({
                 aria-label="Façon de répondre"
               >
                 {/* One pill sliding under the two choices (a transform: the
-                    student app has no layout animations). */}
+                      student app has no layout animations). */}
                 <m.span
                   className="mode-pill"
                   aria-hidden="true"
@@ -289,13 +318,15 @@ export default function Composer({
                         }
                         transition={{ duration: 0.45 }}
                       >
-                        {icon}
+                        <Icon name={icon} size={16} />
                       </m.span>
                       <span className="mode-label">{label}</span>
                     </m.button>
                   ))}
               </div>
             )}
+          </div>
+          <div className="composer-actions">
             {onCheck && (
               <m.button
                 type="button"
@@ -306,92 +337,61 @@ export default function Composer({
                 whileHover={canSend ? { y: -2 } : undefined}
                 whileTap={canSend ? { scale: 0.95 } : undefined}
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 11.5 11.5 14 16 9.5M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z" />
-                </svg>
-                Vérifier ma réponse
+                <Icon name="checkCircle" size={17} />
+                <span className="composer-check-long">Vérifier ma réponse</span>
+                <span className="composer-check-short">Vérifier</span>
               </m.button>
             )}
-          </div>
-        )}
-        <div className="composer-bar">
-          <div className="composer-context">
-            <input
-              ref={fileRef}
-              type="file"
-              accept={ATTACHMENT_TYPES.join(",")}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onAttach(file);
-                // Reset so choosing the same file again still fires onChange.
-                e.target.value = "";
-              }}
-            />
-            <button
-              type="button"
-              className="composer-attach"
-              onClick={() => fileRef.current?.click()}
-              disabled={streaming}
-              aria-label="Joindre une photo ou un PDF de l'exercice"
-              title="Joindre une photo ou un PDF"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M20.5 11.5 12.4 19.6a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
-              </svg>
-            </button>
-            {/* is-keys marks the one variant that assumes a keyboard, so a
-                touch screen can drop it and keep the note. */}
-            <span className={`composer-hint${keys ? " is-keys" : ""}`}>
-              {dragging
-                ? "Dépose ta photo ou ton PDF ici"
-                : keys
-                  ? "Entrée pour envoyer · Maj+Entrée pour aller à la ligne · Ctrl+V une capture"
-                  : note}
-            </span>
-          </div>
-          {/* Send and stop swap with a quick scale-fade; the one showing
+            {/* Send and stop swap with a quick scale-fade; the one showing
               presses with a spring. */}
-          <AnimatePresence mode="wait" initial={false}>
-            {streaming ? (
-              <m.button
-                key="stop"
-                type="button"
-                className="composer-btn is-stop"
-                onClick={onStop}
-                aria-label="Arrêter la réponse"
-                title="Arrêter"
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
-                exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.1 } }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <span className="stop-square" aria-hidden="true" />
-              </m.button>
-            ) : (
-              <m.button
-                key="send"
-                type="button"
-                className="composer-btn is-send"
-                onClick={onSend}
-                disabled={!canSend}
-                aria-label={attachment ? "Envoyer et résoudre" : "Envoyer"}
-                title={attachment ? "Envoyer et résoudre" : "Envoyer"}
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
-                exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.1 } }}
-                whileTap={canSend ? { scale: 0.9 } : undefined}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" />
-                </svg>
-              </m.button>
-            )}
-          </AnimatePresence>
+            <AnimatePresence mode="wait" initial={false}>
+              {streaming ? (
+                <m.button
+                  key="stop"
+                  type="button"
+                  className="composer-btn is-stop"
+                  onClick={onStop}
+                  aria-label="Arrêter la réponse"
+                  title="Arrêter"
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
+                  exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.1 } }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <span className="stop-square" aria-hidden="true" />
+                </m.button>
+              ) : (
+                <m.button
+                  key="send"
+                  type="button"
+                  className="composer-btn is-send"
+                  onClick={onSend}
+                  disabled={!canSend}
+                  aria-label={attachment ? "Envoyer et résoudre" : "Envoyer"}
+                  title={attachment ? "Envoyer et résoudre" : "Envoyer"}
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1, transition: SPRING_HOVER }}
+                  exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.1 } }}
+                  whileTap={canSend ? { scale: 0.9 } : undefined}
+                >
+                  <Icon name="arrowUp" size={18} strokeWidth={2.2} />
+                </m.button>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
+      {/* The quiet line under the box: what Fahem remembers, the keys while
+          the box has focus, or where to drop a file. */}
+      {/* is-keys marks the one variant that assumes a keyboard, so a
+          touch screen can drop it and keep the note. */}
+      <span className={`composer-hint${keys ? " is-keys" : ""}`}>
+        {dragging
+          ? "Dépose ta photo ou ton PDF ici"
+          : keys
+            ? "Entrée pour envoyer · Maj+Entrée pour aller à la ligne · Ctrl+V une capture"
+            : note}
+      </span>
     </div>
   );
 }

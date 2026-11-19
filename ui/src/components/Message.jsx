@@ -1,3 +1,4 @@
+import Icon, { LogoMark } from "./ui/Icon.jsx";
 import { memo, useState } from "react";
 import * as m from "motion/react-m";
 import Markdown from "./Markdown.jsx";
@@ -120,7 +121,7 @@ function Message({
           own block after the student's question - and hear "writing" through
           the thinking indicator's status role and the chat's live region. */}
       <p className="msg-author" aria-hidden="true">
-        <span className="brand-mark">←</span>
+        <LogoMark size={22} />
         Fahem
         {writing && content && (
           <span className="msg-writing">
@@ -207,12 +208,12 @@ function Message({
                   {/* The emoji is decoration on a labelled button. Left bare
                       it joins the accessible name, and the button announces
                       as "compass Me guider pas à pas". */}
-                  <span aria-hidden="true">🧭</span> Me guider pas à pas
+                  <Icon name="compass" /> Me guider pas à pas
                 </ActionButton>
               )}
               {onPropose && (
                 <ActionButton onClick={onPropose}>
-                  <span aria-hidden="true">✍️</span> Je propose ma solution
+                  <Icon name="pencil" /> Je propose ma solution
                 </ActionButton>
               )}
               {onPracticeStart && discussionMode !== "guided" && (
@@ -230,16 +231,14 @@ function Message({
             <ActionRow fresh={fresh}>
               {onGuided && (
                 <ActionButton tone="primary" onClick={() => onGuided("next_step")}>
-                  <span aria-hidden="true">{guidedStep === 3 ? "🏁" : "💡"}</span>{" "}
+                  <Icon name={guidedStep === 3 ? "flag" : "bulb"} />
                   {guidedStep === 3 ? "Dernière étape" : "Indice suivant"}
-                  <span className="guided-arrow" aria-hidden="true">
-                    →
-                  </span>
+                  <Icon name="arrowRight" className="guided-arrow" size={16} />
                 </ActionButton>
               )}
               {onPropose && (
                 <ActionButton onClick={onPropose}>
-                  <span aria-hidden="true">✍️</span> Je propose ma solution
+                  <Icon name="pencil" /> Je propose ma solution
                 </ActionButton>
               )}
               {onGuided && (

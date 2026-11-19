@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import AppSidebar from "./AppSidebar.jsx";
 import ChatSessionsProvider from "./ChatSessionsProvider.jsx";
 import { useAuth } from "../lib/authContext.js";
@@ -7,6 +7,7 @@ import MotionProvider from "./MotionProvider.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import VerifyEmailBanner from "./VerifyEmailBanner.jsx";
 import Button from "./ui/Button.jsx";
+import Icon, { LogoMark } from "./ui/Icon.jsx";
 
 /**
  * The shell every authenticated route sits in.
@@ -28,6 +29,14 @@ import Button from "./ui/Button.jsx";
 export default function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
   const { user } = useAuth();
+  // On a phone the chat carries its own menu button in its bar (Chat.jsx), so
+  // the app bar above it is hidden there: one bar, not two stacked.
+  const onChat = useLocation().pathname === "/chat";
+  useEffect(() => {
+    const open = () => setNavOpen(true);
+    window.addEventListener("fahem:open-nav", open);
+    return () => window.removeEventListener("fahem:open-nav", open);
+  }, []);
 
   // Closing on navigation is handled by the links themselves (onNavigate
   // below), not by an effect watching the pathname: every way out of the
@@ -48,7 +57,9 @@ export default function AppLayout() {
     // from their own rows, never the previous account's list still in memory.
     <ChatSessionsProvider key={user?.id ?? "anon"}>
       <MotionProvider>
-        <div className={`shell${navOpen ? " shell-nav-open" : ""}`}>
+        <div
+          className={`shell${navOpen ? " shell-nav-open" : ""}${onChat ? " shell-chat" : ""}`}
+        >
           {/* First thing Tab reaches, on every page. Without it a keyboard or
               switch user crosses the whole sidebar - brand, five nav links,
               the profile block, Déconnexion, the theme toggle - before
@@ -70,12 +81,10 @@ export default function AppLayout() {
               aria-controls="app-nav"
               onClick={() => setNavOpen((v) => !v)}
             >
-              ☰
+              <Icon name="menu" size={20} />
             </Button>
             <Link to="/" className="mobilebar-brand">
-              <span className="brand-mark" aria-hidden="true">
-                ←
-              </span>
+              <LogoMark size={28} />
               Fahem
             </Link>
             {/* The sidebar's copy is inside the drawer on a phone; this one

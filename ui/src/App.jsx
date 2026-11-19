@@ -32,6 +32,7 @@ import {
 import { AuthContext } from "./lib/authContext.js";
 import { clearVerifyBannerDismissals, readVerifyOutcome } from "./lib/verifyBanner.js";
 import "./App.css";
+import "./refresh.css";
 
 const SIGNIN_FAILED =
   "La connexion a échoué. Réessaie, ou vérifie que tu utilises un compte Google valide.";
